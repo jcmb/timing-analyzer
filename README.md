@@ -77,6 +77,3 @@ The application uses the structured `log/slog` package to output runtime informa
 * **Level 1:** Adds logs for the initial warmup phase and notifications when jitter is suppressed due to previous packet compensation.
 * **Level 2:** Logs metadata for every single packet received, including OS delay microseconds, exact timestamps, and calculated delta times.
 
----
-
-Would you like me to help you draft some unit tests to validate the `runTimingEngine` logic, or perhaps generate a `Dockerfile` so you can easily containerize this tool?
