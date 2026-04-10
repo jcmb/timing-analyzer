@@ -12,29 +12,29 @@ import (
 )
 
 type Config struct {
-	Protocol	  string
-	Host		  string
-	Port		  int
-	RateHz		  float64
-	JitterMs	  float64
-	TimeoutExit	  bool
-	Verbose		  int
+	Protocol      string
+	Host          string
+	Port          int
+	RateHz        float64
+	JitterMs      float64
+	TimeoutExit   bool
+	Verbose       int
 	WarmupPackets int
-	Decode		  string
+	Decode        string
 }
 
 type PacketEvent struct {
-	BestTime	  time.Time
-	GoTime		  time.Time
-	KernelTime	  time.Time
-	Length		  int
-	RemoteAddr	  string
-	PacketType	  int
-	Decoded		  bool
-	IsCMR		  bool
+	BestTime      time.Time
+	GoTime        time.Time
+	KernelTime    time.Time
+	Length        int
+	RemoteAddr    string
+	PacketType    int
+	Decoded       bool
+	IsCMR         bool
 	PacketSubType int
-	Version		  int
-	StationID	  int
+	Version       int
+	StationID     int
 	IsLastInBurst bool
 }
 
@@ -126,17 +126,17 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		}
 
 		out <- PacketEvent{
-			BestTime:	   bestTime,
-			GoTime:		   goTime,
-			KernelTime:	   kernelTime,
-			Length:		   totalExpectedLen,
-			RemoteAddr:	   remoteAddr,
-			PacketType:	   int(pktType),
-			Decoded:	   true,
-			IsCMR:		   isCMR,
+			BestTime:      bestTime,
+			GoTime:        goTime,
+			KernelTime:    kernelTime,
+			Length:        totalExpectedLen,
+			RemoteAddr:    remoteAddr,
+			PacketType:    int(pktType),
+			Decoded:       true,
+			IsCMR:         isCMR,
 			PacketSubType: subType,
-			Version:	   version,
-			StationID:	   stationID,
+			Version:       version,
+			StationID:     stationID,
 			IsLastInBurst: isLastInBurst,
 		}
 
@@ -153,24 +153,23 @@ func main() {
 	timeoutExit := flag.Bool("timeout-exit", true, "Exit with error if no data in 100 epochs")
 	verbose := flag.Int("verbose", 0, "Verbosity level (1=warmup, 2=all packets, 3=parser debug)")
 	warmup := flag.Int("warmup", 0, "Number of initial packets to ignore (0 to disable)")
-	decode := flag.String("decode", "none", "Protocol decoder: 'none' or 'dcol'")
+	decode := flag.String("decode", "none", "Protocol decoder: 'none', 'dcol', or 'mb-cmr'")
 	flag.Parse()
 
-	// If host is provided, automatically assume TCP
 	if *host != "" {
 		*protocol = "tcp"
 	}
 
 	cfg := Config{
-		Protocol:	   *protocol,
-		Host:		   *host,
-		Port:		   *port,
-		RateHz:		   *rate,
-		JitterMs:	   *jitter,
+		Protocol:      *protocol,
+		Host:          *host,
+		Port:          *port,
+		RateHz:        *rate,
+		JitterMs:      *jitter,
 		TimeoutExit:   *timeoutExit,
-		Verbose:	   *verbose,
+		Verbose:       *verbose,
 		WarmupPackets: *warmup,
-		Decode:		   *decode,
+		Decode:        *decode,
 	}
 
 	packetChan := make(chan PacketEvent, 1000)
@@ -265,19 +264,19 @@ func startListener(cfg Config, packetChan chan<- PacketEvent) {
 				}
 			}
 
-			if cfg.Decode == "dcol" {
+			if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
 				if parsers[ip] == nil {
 					parsers[ip] = &DCOLParser{}
 				}
 				parsers[ip].Process(buf[:n], bestTime, goTime, kernelTime, ip, cfg.Verbose, packetChan)
 			} else {
 				packetChan <- PacketEvent{
-					BestTime:	   bestTime,
-					GoTime:		   goTime,
-					KernelTime:	   kernelTime,
-					Length:		   n,
-					RemoteAddr:	   ip,
-					PacketType:	   -1,
+					BestTime:      bestTime,
+					GoTime:        goTime,
+					KernelTime:    kernelTime,
+					Length:        n,
+					RemoteAddr:    ip,
+					PacketType:    -1,
 					IsLastInBurst: true,
 				}
 			}
@@ -301,15 +300,15 @@ func handleTCPConn(conn net.Conn, cfg Config, packetChan chan<- PacketEvent) {
 			return
 		}
 
-		if cfg.Decode == "dcol" {
+		if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
 			parser.Process(buf[:n], goTime, goTime, time.Time{}, remoteIP, cfg.Verbose, packetChan)
 		} else {
 			packetChan <- PacketEvent{
-				BestTime:	   goTime,
-				GoTime:		   goTime,
-				Length:		   n,
-				RemoteAddr:	   remoteIP,
-				PacketType:	   -1,
+				BestTime:      goTime,
+				GoTime:        goTime,
+				Length:        n,
+				RemoteAddr:    remoteIP,
+				PacketType:    -1,
 				IsLastInBurst: true,
 			}
 		}
@@ -318,12 +317,13 @@ func handleTCPConn(conn net.Conn, cfg Config, packetChan chan<- PacketEvent) {
 
 type TimingState struct {
 	LastPacketTime time.Time
-	PacketCount	   uint64
-	PrevError	   time.Duration
+	PacketCount    uint64
+	PrevError      time.Duration
 }
 
-func getNiceName(timingKey string) string {
-	switch timingKey {
+// Map the Display Keys to their human-readable Names
+func getNiceName(displayKey string) string {
+	switch displayKey {
 	case "0x93-0":
 		return "CMR GPS"
 	case "0x93-1":
@@ -332,20 +332,26 @@ func getNiceName(timingKey string) string {
 		return "CMR Base Name"
 	case "0x93-3":
 		return "CMR GLN-STD"
+	case "0x93-4":
+		return "GPS Delta"
 	case "0x94":
 		return "CMR+ Base"
+	case "0x98-0":
+		return "CMR GLONASS"
 	case "0x98-1":
 		return "CMR Time"
+	case "0x98-4":
+		return "GLN Delta"
 	case "0x40":
 		return "GSOF"
 	default:
-		return timingKey
+		return displayKey
 	}
 }
 
-func logAligned(level string, t time.Time, event string, timingKey string, count uint64, delta, expected int64, extra string) {
+func logAligned(level string, t time.Time, event string, displayKey string, count uint64, delta, expected int64, extra string) {
 	timeStr := t.Format("15:04:05.000000")
-	niceName := getNiceName(timingKey)
+	niceName := getNiceName(displayKey)
 
 	var deltaStr, expStr string
 	if delta == -1 {
@@ -386,15 +392,29 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 		select {
 		case pkt := <-packetChan:
 
+			displayKey := "RAW"
 			timingKey := "RAW"
+
 			if pkt.Decoded {
 				if pkt.IsCMR {
-					timingKey = fmt.Sprintf("0x%02X-%d", pkt.PacketType, pkt.PacketSubType)
+					displayKey = fmt.Sprintf("0x%02X-%d", pkt.PacketType, pkt.PacketSubType)
+					timingKey = displayKey
+
+					// Apply shared-slot substitution logic for mb-cmr mode
+					if cfg.Decode == "mb-cmr" {
+						if displayKey == "0x93-0" || displayKey == "0x93-4" {
+							timingKey = "0x93-MAIN"
+						} else if displayKey == "0x98-0" || displayKey == "0x98-4" {
+							timingKey = "0x98-MAIN"
+						}
+					}
 				} else {
-					timingKey = fmt.Sprintf("0x%02X", pkt.PacketType)
+					displayKey = fmt.Sprintf("0x%02X", pkt.PacketType)
+					timingKey = displayKey
 				}
 			}
 
+			// We load the state based on the TIMING key so substituted packets share a history
 			state, exists := states[timingKey]
 			if !exists {
 				state = &TimingState{}
@@ -404,7 +424,8 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 			if !pkt.IsLastInBurst {
 				if cfg.Verbose >= 2 {
 					extra := fmt.Sprintf("IP: %s | Len: %d | Burst Part (Ignored for Timing)", pkt.RemoteAddr, pkt.Length)
-					logAligned("INFO", pkt.BestTime, "burst_part_rx", timingKey, state.PacketCount, -1, -1, extra)
+					// We pass displayKey to the logger so you see exactly what type arrived
+					logAligned("INFO", pkt.BestTime, "burst_part_rx", displayKey, state.PacketCount, -1, -1, extra)
 				}
 				continue
 			}
@@ -428,22 +449,33 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				osDelayUs = 0
 			}
 
-			// --- Override expected period for specific CMR messages ---
+			// --- Setup expected period mapping ---
 			currentExpectedPeriod := baseExpectedPeriod
-			if timingKey == "0x93-1" || timingKey == "0x93-2" {
-				currentExpectedPeriod = 10 * time.Second
+
+			if cfg.Decode == "dcol" {
+				if displayKey == "0x93-1" || displayKey == "0x93-2" {
+					currentExpectedPeriod = 10 * time.Second
+				}
+			} else if cfg.Decode == "mb-cmr" {
+				// mb-cmr independent overrrides
+				// Removed 0x93-1 from here so it correctly falls back to baseExpectedPeriod (at rate)
+				if displayKey == "0x93-2" {
+					currentExpectedPeriod = 10 * time.Second
+				} else if displayKey == "0x98-1" {
+					currentExpectedPeriod = 1 * time.Second
+				}
 			}
 
 			if cfg.Verbose >= 2 {
 				extra := fmt.Sprintf("IP: %s | Len: %3d bytes | OS_Delay: %4dus", pkt.RemoteAddr, pkt.Length, osDelayUs)
-				if pkt.IsCMR {
+				if pkt.IsCMR && pkt.PacketType != 0x98 { // Only 0x93 carries Version/StationID
 					extra += fmt.Sprintf(" | CMR Ver: %d, StaID: %d", pkt.Version, pkt.StationID)
 				}
 
 				if isFirstPacket {
-					logAligned("INFO", pkt.BestTime, "packet_received", timingKey, state.PacketCount, -1, -1, extra+" (First Packet/Burst)")
+					logAligned("INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, -1, -1, extra+" (First Packet/Burst)")
 				} else {
-					logAligned("INFO", pkt.BestTime, "packet_received", timingKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+					logAligned("INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 				}
 			}
 
@@ -451,7 +483,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				continue
 			}
 
-			// Core math relies rigidly on currentExpectedPeriod
 			minExpected := currentExpectedPeriod - jitterDur
 			maxExpected := currentExpectedPeriod + jitterDur
 			missedThreshold := (2 * currentExpectedPeriod) - jitterDur
@@ -467,7 +498,7 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					}
 
 					extra := fmt.Sprintf("Missed roughly %d packets!", estimatedMissed)
-					logAligned("ERROR", pkt.BestTime, "missed_packet", timingKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+					logAligned("ERROR", pkt.BestTime, "missed_packet", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 
 					expectedMultiPeriod := currentExpectedPeriod * time.Duration(estimatedMissed+1)
 					state.PrevError = delta - expectedMultiPeriod
@@ -476,12 +507,12 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					if adjustedDelta >= minExpected && adjustedDelta <= maxExpected {
 						if cfg.Verbose >= 1 {
 							extra := fmt.Sprintf("Adj Delta: %d ms (Compensated by previous offset)", adjustedDelta.Milliseconds())
-							logAligned("INFO", pkt.BestTime, "jitter_suppressed", timingKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+							logAligned("INFO", pkt.BestTime, "jitter_suppressed", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 						}
 						state.PrevError = 0
 					} else {
 						extra := fmt.Sprintf("Adj Delta: %d ms | Allowed Jitter: ±%.0f ms", adjustedDelta.Milliseconds(), cfg.JitterMs)
-						logAligned("WARN", pkt.BestTime, "jitter_violation", timingKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+						logAligned("WARN", pkt.BestTime, "jitter_violation", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 						state.PrevError = currentError
 					}
 				} else {
@@ -489,7 +520,7 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				}
 
 			} else if cfg.Verbose >= 1 && state.PacketCount > 1 {
-				logAligned("INFO", pkt.BestTime, "warmup_phase", timingKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), "Ignoring jitter during warmup")
+				logAligned("INFO", pkt.BestTime, "warmup_phase", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), "Ignoring jitter during warmup")
 				state.PrevError = 0
 			}
 
