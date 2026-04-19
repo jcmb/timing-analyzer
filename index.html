@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jitter Telemetry Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
+        .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .card { background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        h2 { margin-top: 0; color: #ffffff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+
+        /* Table Styles */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
+        th { color: #888; text-transform: uppercase; font-size: 12px; }
+
+        /* Log Styles */
+        #log-container { height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; background: #000; padding: 10px; border-radius: 4px; }
+        .log-row { padding: 4px 0; border-bottom: 1px solid #222; }
+        .status-info { color: #4CAF50; }
+        .status-warn { color: #FFC107; }
+        .status-error { color: #F44336; }
+        .timestamp { color: #888; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h1 style="margin: 0; color: #fff;">Network Jitter Telemetry</h1>
+        <div id="connection-status" style="color: #FFC107; font-weight: bold;">Connecting...</div>
+    </div>
+
+    <div class="grid">
+        <div class="card" style="grid-column: span 2;">
+            <h2>Live Jitter (Delta ms)</h2>
+            <canvas id="jitterChart" height="80"></canvas>
+        </div>
+
+        <div class="card">
+            <h2>Stream Statistics</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Stream Type</th>
+                        <th>Total Packets</th>
+                        <th>Latest Delta</th>
+                        <th>Expected</th>
+                    </tr>
+                </thead>
+                <tbody id="stats-body">
+                    </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2>Live Event Log</h2>
+            <div id="log-container"></div>
+        </div>
+    </div>
+
+    <script>
+        // Setup Chart.js
+        const ctx = document.getElementById('jitterChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: {
+                responsive: true,
+                animation: false,
+                scales: {
+                    x: { display: false }, // Hide X axis labels for cleaner look
+                    y: {
+                        title: { display: true, text: 'Delta (ms)', color: '#888' },
+                        grid: { color: '#333' }
+                    }
+                },
+                plugins: { legend: { labels: { color: '#e0e0e0' } } }
+            }
+        });
+
+        const colors = ['#4CAF50', '#2196F3', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4'];
+        let colorIdx = 0;
+        const maxDataPoints = 100;
+        const statsMap = {};
+
+        // Setup Server-Sent Events (SSE) Connection
+        const evtSource = new EventSource("/events");
+        const statusDiv = document.getElementById('connection-status');
+
+        evtSource.onopen = () => {
+            statusDiv.textContent = "Live \u25CF";
+            statusDiv.style.color = "#4CAF50";
+        };
+
+        evtSource.onerror = () => {
+            statusDiv.textContent = "Disconnected \u25CF";
+            statusDiv.style.color = "#F44336";
+        };
+
+        evtSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+
+            // 1. Update Chart
+            if (data.actual_delta_ms > 0) {
+                let dataset = chart.data.datasets.find(d => d.label === data.display_key);
+                if (!dataset) {
+                    dataset = {
+                        label: data.display_key,
+                        data: [],
+                        borderColor: colors[colorIdx % colors.length],
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 2
+                    };
+                    chart.data.datasets.push(dataset);
+                    colorIdx++;
+                }
+
+                // Add point and shift if too long
+                chart.data.labels.push(data.timestamp);
+                dataset.data.push(data.actual_delta_ms);
+
+                if (chart.data.labels.length > maxDataPoints) {
+                    chart.data.labels.shift();
+                    chart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
+                }
+                chart.update();
+            }
+
+            // 2. Update Table
+            statsMap[data.display_key] = data;
+            const tbody = document.getElementById('stats-body');
+            tbody.innerHTML = '';
+            for (const key in statsMap) {
+                const s = statsMap[key];
+                const deltaStr = s.actual_delta_ms > 0 ? s.actual_delta_ms + ' ms' : '---';
+                const row = `<tr>
+                    <td style="font-weight: bold; color: #fff;">${s.display_key}</td>
+                    <td>${s.count}</td>
+                    <td>${deltaStr}</td>
+                    <td>${s.expected_ms > 0 ? s.expected_ms + ' ms' : '---'}</td>
+                </tr>`;
+                tbody.innerHTML += row;
+            }
+
+            // 3. Update Log
+            const logContainer = document.getElementById('log-container');
+            const logRow = document.createElement('div');
+            logRow.className = `log-row status-${data.status}`;
+            logRow.innerHTML = `<span class="timestamp">${data.timestamp}</span> <strong>[${data.display_key.padEnd(12)}]</strong> Count: ${data.count} | Delta: ${data.actual_delta_ms > 0 ? data.actual_delta_ms : '---'} | Exp: ${data.expected_ms} | ${data.message}`;
+
+            logContainer.appendChild(logRow);
+            if (logContainer.childElementCount > 100) {
+                logContainer.removeChild(logContainer.firstChild);
+            }
+            logContainer.scrollTop = logContainer.scrollHeight;
+        };
+    </script>
+</body>
+</html>

@@ -1,20 +1,27 @@
 package main
 
 import (
+	_ "embed"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"syscall"
 	"time"
 	"unsafe"
 )
 
+//go:embed index.html
+var indexHTML []byte
+
 type Config struct {
 	Protocol      string
 	Host          string
 	Port          int
+	WebPort       int
 	RateHz        float64
 	JitterMs      float64
 	TimeoutExit   bool
@@ -36,6 +43,89 @@ type PacketEvent struct {
 	Version       int
 	StationID     int
 	IsLastInBurst bool
+}
+
+// TelemetryEvent is the JSON payload sent to the Web Interface
+type TelemetryEvent struct {
+	Timestamp     string `json:"timestamp"`
+	DisplayKey    string `json:"display_key"`
+	Count         uint64 `json:"count"`
+	ActualDeltaMs int64  `json:"actual_delta_ms"`
+	ExpectedMs    int64  `json:"expected_ms"`
+	Status        string `json:"status"` // "info", "warn", "error"
+	Message       string `json:"message"`
+}
+
+// SSEBroker handles pushing real-time events to connected web browsers
+type SSEBroker struct {
+	Notifier       chan TelemetryEvent
+	newClients     chan chan TelemetryEvent
+	closingClients chan chan TelemetryEvent
+	clients        map[chan TelemetryEvent]bool
+}
+
+func NewSSEBroker() *SSEBroker {
+	broker := &SSEBroker{
+		Notifier:       make(chan TelemetryEvent, 10),
+		newClients:     make(chan chan TelemetryEvent),
+		closingClients: make(chan chan TelemetryEvent),
+		clients:        make(map[chan TelemetryEvent]bool),
+	}
+	go broker.listen()
+	return broker
+}
+
+func (b *SSEBroker) listen() {
+	for {
+		select {
+		case s := <-b.newClients:
+			b.clients[s] = true
+			slog.Info("Web UI Client Connected", "active_clients", len(b.clients))
+		case s := <-b.closingClients:
+			delete(b.clients, s)
+			slog.Info("Web UI Client Disconnected", "active_clients", len(b.clients))
+		case event := <-b.Notifier:
+			for clientMessageChan := range b.clients {
+				select {
+				case clientMessageChan <- event:
+				default:
+					// If client is stuck, don't block the timing engine
+				}
+			}
+		}
+	}
+}
+
+func (b *SSEBroker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	rw.Header().Set("Content-Type", "text/event-stream")
+	rw.Header().Set("Cache-Control", "no-cache")
+	rw.Header().Set("Connection", "keep-alive")
+	rw.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := rw.(http.Flusher)
+	if !ok {
+		http.Error(rw, "Streaming unsupported!", http.StatusInternalServerError)
+		return
+	}
+
+	messageChan := make(chan TelemetryEvent)
+	b.newClients <- messageChan
+
+	defer func() {
+		b.closingClients <- messageChan
+	}()
+
+	notify := req.Context().Done()
+	for {
+		select {
+		case <-notify:
+			return
+		case event := <-messageChan:
+			jsonData, _ := json.Marshal(event)
+			fmt.Fprintf(rw, "data: %s\n\n", jsonData)
+			flusher.Flush()
+		}
+	}
 }
 
 type DCOLParser struct {
@@ -99,7 +189,6 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			if payloadLen >= 2 {
 				firstByte := p.buf[4]
 				secondByte := p.buf[5]
-
 				version = int((firstByte >> 5) & 0x07)
 				stationID = int(firstByte & 0x1F)
 				subType = int((secondByte >> 5) & 0x07)
@@ -110,7 +199,6 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			isCMR = true
 			if payloadLen >= 1 {
 				firstByte := p.buf[4]
-
 				version = 0
 				stationID = 0
 				subType = int(firstByte)
@@ -118,7 +206,6 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		}
 
 		if pktType == 0x40 {
-			// GSOF Burst Pagination (Explicit bytes)
 			if payloadLen >= 3 {
 				pageIdx := p.buf[5]
 				maxPageIdx := p.buf[6]
@@ -127,8 +214,6 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		}
 
 		if pktType == 0x57 {
-			// RAWDATA Burst Pagination (Nibble packed)
-			// p.buf[4] is Record Type, p.buf[5] is Paging Info
 			if payloadLen >= 2 {
 				pagingInfo := p.buf[5]
 				pageIdx := (pagingInfo >> 4) & 0x0F
@@ -160,6 +245,7 @@ func main() {
 	protocol := flag.String("protocol", "udp", "tcp or udp")
 	host := flag.String("host", "", "Optional host IP to connect to (implicitly forces tcp mode)")
 	port := flag.Int("port", 2101, "Port to listen on or connect to")
+	webPort := flag.Int("web-port", 8080, "Port for the live web dashboard")
 	rate := flag.Float64("rate", 1.0, "Expected update rate in Hz")
 	jitter := flag.Float64("jitter", 5.0, "Allowable jitter in ms")
 	timeoutExit := flag.Bool("timeout-exit", true, "Exit with error if no data in 100 epochs")
@@ -176,6 +262,7 @@ func main() {
 		Protocol:      *protocol,
 		Host:          *host,
 		Port:          *port,
+		WebPort:       *webPort,
 		RateHz:        *rate,
 		JitterMs:      *jitter,
 		TimeoutExit:   *timeoutExit,
@@ -184,12 +271,27 @@ func main() {
 		Decode:        *decode,
 	}
 
+	// Setup Telemetry Web Server
+	broker := NewSSEBroker()
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write(indexHTML)
+	})
+	http.Handle("/events", broker)
+	go func() {
+		slog.Info("Starting Web Dashboard", "url", fmt.Sprintf("http://localhost:%d", cfg.WebPort))
+		if err := http.ListenAndServe(fmt.Sprintf(":%d", cfg.WebPort), nil); err != nil {
+			slog.Error("Web server failed", "error", err)
+		}
+	}()
+
 	packetChan := make(chan PacketEvent, 1000)
 
 	go startListener(cfg, packetChan)
-	runTimingEngine(cfg, packetChan)
+	runTimingEngine(cfg, packetChan, broker) // Pass broker to the engine
 }
 
+// ... [startListener and handleTCPConn remain exactly the same as the previous version] ...
 func startListener(cfg Config, packetChan chan<- PacketEvent) {
 	switch cfg.Protocol {
 	case "tcp":
@@ -327,43 +429,32 @@ func handleTCPConn(conn net.Conn, cfg Config, packetChan chan<- PacketEvent) {
 	}
 }
 
+
 type TimingState struct {
 	LastPacketTime time.Time
 	PacketCount    uint64
 	PrevError      time.Duration
 }
 
-// Map the Display Keys to their human-readable Names
 func getNiceName(displayKey string) string {
 	switch displayKey {
-	case "0x93-0":
-		return "CMR GPS"
-	case "0x93-1":
-		return "CMR Base LLH"
-	case "0x93-2":
-		return "CMR Base Name"
-	case "0x93-3":
-		return "CMR GLN-STD"
-	case "0x93-4":
-		return "GPS Delta"
-	case "0x94":
-		return "CMR+ Base"
-	case "0x98-0":
-		return "CMR GLONASS"
-	case "0x98-1":
-		return "CMR Time"
-	case "0x98-4":
-		return "GLN Delta"
-	case "0x40":
-		return "GSOF"
-	case "0x57":
-		return "RAWDATA"
-	default:
-		return displayKey
+	case "0x93-0": return "CMR GPS"
+	case "0x93-1": return "CMR Base LLH"
+	case "0x93-2": return "CMR Base Name"
+	case "0x93-3": return "CMR GLN-STD"
+	case "0x93-4": return "GPS Delta"
+	case "0x94":   return "CMR+ Base"
+	case "0x98-0": return "CMR GLONASS"
+	case "0x98-1": return "CMR Time"
+	case "0x98-4": return "GLN Delta"
+	case "0x40":   return "GSOF"
+	case "0x57":   return "RAWDATA"
+	default:       return displayKey
 	}
 }
 
-func logAligned(level string, t time.Time, event string, displayKey string, count uint64, delta, expected int64, extra string) {
+// Emits payload to terminal AND web UI
+func logAndEmit(broker *SSEBroker, level string, t time.Time, event string, displayKey string, count uint64, delta, expected int64, extra string) {
 	timeStr := t.Format("15:04:05.000000")
 	niceName := getNiceName(displayKey)
 
@@ -376,29 +467,39 @@ func logAligned(level string, t time.Time, event string, displayKey string, coun
 		expStr = fmt.Sprintf("%4d", expected)
 	}
 
+	// Terminal Print
 	fmt.Printf("%s | %-5s | %-17s | Type: %-13s | Count: %-6d | Delta: %s ms | Exp: %s ms | %s\n",
 		timeStr, level, event, niceName, count, deltaStr, expStr, extra)
+
+	// Web UI Broadcast
+	statusStr := "info"
+	if level == "WARN" {
+		statusStr = "warn"
+	} else if level == "ERROR" {
+		statusStr = "error"
+	}
+
+	broker.Notifier <- TelemetryEvent{
+		Timestamp:     timeStr,
+		DisplayKey:    niceName,
+		Count:         count,
+		ActualDeltaMs: delta,
+		ExpectedMs:    expected,
+		Status:        statusStr,
+		Message:       extra,
+	}
 }
 
-func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
+func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroker) {
 	baseExpectedPeriod := time.Duration(float64(time.Second) / cfg.RateHz)
 	jitterDur := time.Duration(cfg.JitterMs * float64(time.Millisecond))
-
 	timeoutDur := baseExpectedPeriod * 100
 
-	slog.Info("Timing Engine Started",
-		"base_rate_hz", cfg.RateHz,
-		"base_expected_ms", baseExpectedPeriod.Milliseconds(),
-		"allowed_jitter_ms", cfg.JitterMs,
-		"decode_mode", cfg.Decode,
-		"warmup_packets", cfg.WarmupPackets)
-
-	fmt.Printf("\n%-15s | %-5s | %-17s | %-19s | %-13s | %-13s | %-13s | %s\n",
-		"TIME", "LEVEL", "EVENT", "PKT TYPE", "BURST COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
+	slog.Info("Timing Engine Started", "decode_mode", cfg.Decode, "warmup_packets", cfg.WarmupPackets)
+	fmt.Printf("\n%-15s | %-5s | %-17s | %-19s | %-13s | %-13s | %-13s | %s\n", "TIME", "LEVEL", "EVENT", "PKT TYPE", "BURST COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
 	fmt.Println("---------------------------------------------------------------------------------------------------------------------------------------")
 
 	states := make(map[string]*TimingState)
-
 	timeoutTimer := time.NewTimer(timeoutDur)
 	timeoutTimer.Stop()
 
@@ -427,7 +528,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				}
 			}
 
-			// We load the state based on the TIMING key so substituted packets share a history
 			state, exists := states[timingKey]
 			if !exists {
 				state = &TimingState{}
@@ -436,8 +536,8 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 
 			if !pkt.IsLastInBurst {
 				if cfg.Verbose >= 2 {
-					extra := fmt.Sprintf("IP: %s | Len: %d | Burst Part (Ignored for Timing)", pkt.RemoteAddr, pkt.Length)
-					logAligned("INFO", pkt.BestTime, "burst_part_rx", displayKey, state.PacketCount, -1, -1, extra)
+					extra := fmt.Sprintf("IP: %s | Len: %d | Burst Part", pkt.RemoteAddr, pkt.Length)
+					logAndEmit(broker, "INFO", pkt.BestTime, "burst_part_rx", displayKey, state.PacketCount, -1, -1, extra)
 				}
 				continue
 			}
@@ -461,9 +561,7 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				osDelayUs = 0
 			}
 
-			// --- Setup expected period mapping ---
 			currentExpectedPeriod := baseExpectedPeriod
-
 			if cfg.Decode == "dcol" {
 				if displayKey == "0x93-1" || displayKey == "0x93-2" {
 					currentExpectedPeriod = 10 * time.Second
@@ -478,14 +576,14 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 
 			if cfg.Verbose >= 2 {
 				extra := fmt.Sprintf("IP: %s | Len: %3d bytes | OS_Delay: %4dus", pkt.RemoteAddr, pkt.Length, osDelayUs)
-				if pkt.IsCMR && pkt.PacketType != 0x98 { // Only 0x93 carries Version/StationID
+				if pkt.IsCMR && pkt.PacketType != 0x98 {
 					extra += fmt.Sprintf(" | CMR Ver: %d, StaID: %d", pkt.Version, pkt.StationID)
 				}
 
 				if isFirstPacket {
-					logAligned("INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, -1, -1, extra+" (First Packet/Burst)")
+					logAndEmit(broker, "INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, -1, -1, extra+" (First Packet)")
 				} else {
-					logAligned("INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+					logAndEmit(broker, "INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 				}
 			}
 
@@ -506,9 +604,8 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					if estimatedMissed < 1 {
 						estimatedMissed = 1
 					}
-
 					extra := fmt.Sprintf("Missed roughly %d packets!", estimatedMissed)
-					logAligned("ERROR", pkt.BestTime, "missed_packet", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+					logAndEmit(broker, "ERROR", pkt.BestTime, "missed_packet", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 
 					expectedMultiPeriod := currentExpectedPeriod * time.Duration(estimatedMissed+1)
 					state.PrevError = delta - expectedMultiPeriod
@@ -517,12 +614,12 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					if adjustedDelta >= minExpected && adjustedDelta <= maxExpected {
 						if cfg.Verbose >= 1 {
 							extra := fmt.Sprintf("Adj Delta: %d ms (Compensated by previous offset)", adjustedDelta.Milliseconds())
-							logAligned("INFO", pkt.BestTime, "jitter_suppressed", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+							logAndEmit(broker, "INFO", pkt.BestTime, "jitter_suppressed", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 						}
 						state.PrevError = 0
 					} else {
 						extra := fmt.Sprintf("Adj Delta: %d ms | Allowed Jitter: ±%.0f ms", adjustedDelta.Milliseconds(), cfg.JitterMs)
-						logAligned("WARN", pkt.BestTime, "jitter_violation", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+						logAndEmit(broker, "WARN", pkt.BestTime, "jitter_violation", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
 						state.PrevError = currentError
 					}
 				} else {
@@ -530,7 +627,7 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 				}
 
 			} else if cfg.Verbose >= 1 && state.PacketCount > 1 {
-				logAligned("INFO", pkt.BestTime, "warmup_phase", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), "Ignoring jitter during warmup")
+				logAndEmit(broker, "INFO", pkt.BestTime, "warmup_phase", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), "Ignoring jitter during warmup")
 				state.PrevError = 0
 			}
 
