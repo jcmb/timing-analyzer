@@ -118,9 +118,21 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		}
 
 		if pktType == 0x40 {
+			// GSOF Burst Pagination (Explicit bytes)
 			if payloadLen >= 3 {
 				pageIdx := p.buf[5]
 				maxPageIdx := p.buf[6]
+				isLastInBurst = (pageIdx == maxPageIdx)
+			}
+		}
+
+		if pktType == 0x57 {
+			// RAWDATA Burst Pagination (Nibble packed)
+			// p.buf[4] is Record Type, p.buf[5] is Paging Info
+			if payloadLen >= 2 {
+				pagingInfo := p.buf[5]
+				pageIdx := (pagingInfo >> 4) & 0x0F
+				maxPageIdx := pagingInfo & 0x0F
 				isLastInBurst = (pageIdx == maxPageIdx)
 			}
 		}
@@ -344,6 +356,8 @@ func getNiceName(displayKey string) string {
 		return "GLN Delta"
 	case "0x40":
 		return "GSOF"
+	case "0x57":
+		return "RAWDATA"
 	default:
 		return displayKey
 	}
@@ -400,7 +414,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					displayKey = fmt.Sprintf("0x%02X-%d", pkt.PacketType, pkt.PacketSubType)
 					timingKey = displayKey
 
-					// Apply shared-slot substitution logic for mb-cmr mode
 					if cfg.Decode == "mb-cmr" {
 						if displayKey == "0x93-0" || displayKey == "0x93-4" {
 							timingKey = "0x93-MAIN"
@@ -424,7 +437,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 			if !pkt.IsLastInBurst {
 				if cfg.Verbose >= 2 {
 					extra := fmt.Sprintf("IP: %s | Len: %d | Burst Part (Ignored for Timing)", pkt.RemoteAddr, pkt.Length)
-					// We pass displayKey to the logger so you see exactly what type arrived
 					logAligned("INFO", pkt.BestTime, "burst_part_rx", displayKey, state.PacketCount, -1, -1, extra)
 				}
 				continue
@@ -457,8 +469,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent) {
 					currentExpectedPeriod = 10 * time.Second
 				}
 			} else if cfg.Decode == "mb-cmr" {
-				// mb-cmr independent overrrides
-				// Removed 0x93-1 from here so it correctly falls back to baseExpectedPeriod (at rate)
 				if displayKey == "0x93-2" {
 					currentExpectedPeriod = 10 * time.Second
 				} else if displayKey == "0x98-1" {
