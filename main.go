@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -18,16 +21,18 @@ import (
 var indexHTML []byte
 
 type Config struct {
-	Protocol      string
+	IP            string
 	Host          string
 	Port          int
 	WebPort       int
 	RateHz        float64
-	JitterMs      float64
+	JitterVal     float64
+	JitterPct     bool
 	TimeoutExit   bool
 	Verbose       int
 	WarmupPackets int
 	Decode        string
+	CSVFile       string
 }
 
 type PacketEvent struct {
@@ -45,18 +50,18 @@ type PacketEvent struct {
 	IsLastInBurst bool
 }
 
-// TelemetryEvent is the JSON payload sent to the Web Interface
 type TelemetryEvent struct {
 	Timestamp     string `json:"timestamp"`
 	DisplayKey    string `json:"display_key"`
 	Count         uint64 `json:"count"`
 	ActualDeltaMs int64  `json:"actual_delta_ms"`
 	ExpectedMs    int64  `json:"expected_ms"`
-	Status        string `json:"status"` // "info", "warn", "error"
+	OSDelayUs     int64  `json:"os_delay_us"`
+	IsUDP         bool   `json:"is_udp"`
+	Status        string `json:"status"`
 	Message       string `json:"message"`
 }
 
-// SSEBroker handles pushing real-time events to connected web browsers
 type SSEBroker struct {
 	Notifier       chan TelemetryEvent
 	newClients     chan chan TelemetryEvent
@@ -89,7 +94,6 @@ func (b *SSEBroker) listen() {
 				select {
 				case clientMessageChan <- event:
 				default:
-					// If client is stuck, don't block the timing engine
 				}
 			}
 		}
@@ -242,36 +246,63 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 }
 
 func main() {
-	protocol := flag.String("protocol", "udp", "tcp or udp")
+	ipFlag := flag.String("ip", "udp", "tcp or udp")
 	host := flag.String("host", "", "Optional host IP to connect to (implicitly forces tcp mode)")
 	port := flag.Int("port", 2101, "Port to listen on or connect to")
 	webPort := flag.Int("web-port", 8080, "Port for the live web dashboard")
 	rate := flag.Float64("rate", 1.0, "Expected update rate in Hz")
-	jitter := flag.Float64("jitter", 5.0, "Allowable jitter in ms")
+	jitterFlag := flag.String("jitter", "10%", "Allowable jitter (e.g. '5ms' or '10%')")
 	timeoutExit := flag.Bool("timeout-exit", true, "Exit with error if no data in 100 epochs")
 	verbose := flag.Int("verbose", 0, "Verbosity level (1=warmup, 2=all packets, 3=parser debug)")
 	warmup := flag.Int("warmup", 0, "Number of initial packets to ignore (0 to disable)")
 	decode := flag.String("decode", "none", "Protocol decoder: 'none', 'dcol', or 'mb-cmr'")
+	csvFile := flag.String("csv", "", "Output filename for CSV logging")
 	flag.Parse()
 
 	if *host != "" {
-		*protocol = "tcp"
+		*ipFlag = "tcp"
+	}
+
+	csvFilename := *csvFile
+	if csvFilename != "" && !strings.HasSuffix(strings.ToLower(csvFilename), ".csv") {
+		csvFilename += ".csv"
+	}
+
+	jitterStr := strings.TrimSpace(*jitterFlag)
+	var jitterVal float64
+	var jitterPct bool
+	if strings.HasSuffix(jitterStr, "%") {
+		jitterPct = true
+		val, err := strconv.ParseFloat(strings.TrimSuffix(jitterStr, "%"), 64)
+		if err != nil {
+			slog.Error("Invalid jitter percentage", "error", err)
+			os.Exit(1)
+		}
+		jitterVal = val
+	} else {
+		val, err := strconv.ParseFloat(strings.TrimSuffix(strings.ToLower(jitterStr), "ms"), 64)
+		if err != nil {
+			slog.Error("Invalid jitter value", "error", err)
+			os.Exit(1)
+		}
+		jitterVal = val
 	}
 
 	cfg := Config{
-		Protocol:      *protocol,
+		IP:            *ipFlag,
 		Host:          *host,
 		Port:          *port,
 		WebPort:       *webPort,
 		RateHz:        *rate,
-		JitterMs:      *jitter,
+		JitterVal:     jitterVal,
+		JitterPct:     jitterPct,
 		TimeoutExit:   *timeoutExit,
 		Verbose:       *verbose,
 		WarmupPackets: *warmup,
 		Decode:        *decode,
+		CSVFile:       csvFilename,
 	}
 
-	// Setup Telemetry Web Server
 	broker := NewSSEBroker()
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
@@ -288,12 +319,11 @@ func main() {
 	packetChan := make(chan PacketEvent, 1000)
 
 	go startListener(cfg, packetChan)
-	runTimingEngine(cfg, packetChan, broker) // Pass broker to the engine
+	runTimingEngine(cfg, packetChan, broker)
 }
 
-// ... [startListener and handleTCPConn remain exactly the same as the previous version] ...
 func startListener(cfg Config, packetChan chan<- PacketEvent) {
-	switch cfg.Protocol {
+	switch cfg.IP {
 	case "tcp":
 		if cfg.Host != "" {
 			address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
@@ -429,11 +459,35 @@ func handleTCPConn(conn net.Conn, cfg Config, packetChan chan<- PacketEvent) {
 	}
 }
 
-
 type TimingState struct {
 	LastPacketTime time.Time
 	PacketCount    uint64
 	PrevError      time.Duration
+}
+
+type LogEntry struct {
+	Level         string
+	Time          time.Time
+	Event         string
+	DisplayKey    string
+	Count         uint64
+	Delta         int64
+	Expected      int64
+	IP            string
+	Length        int
+	IsUDP         bool
+	HasKernelTime bool
+	OSDelayUs     int64
+	IsCMR         bool
+	PktType       int
+	CMRVer        int
+	StationID     int
+	HasAdj        bool
+	AdjDelta      int64
+	MissedPackets int
+	Message       string
+	PrintConsole  bool
+	WriteCSV      bool
 }
 
 func getNiceName(displayKey string) string {
@@ -453,55 +507,169 @@ func getNiceName(displayKey string) string {
 	}
 }
 
-// Emits payload to terminal AND web UI
-func logAndEmit(broker *SSEBroker, level string, t time.Time, event string, displayKey string, count uint64, delta, expected int64, extra string) {
-	timeStr := t.Format("15:04:05.000000")
-	niceName := getNiceName(displayKey)
+// Emits payload to terminal, web UI, and clean CSV columns
+func logAndEmit(broker *SSEBroker, csvWriter *csv.Writer, e LogEntry, allowedJitterMs float64) {
+	timeStr := e.Time.Format("15:04:05.000000")
+	niceName := getNiceName(e.DisplayKey)
 
-	var deltaStr, expStr string
-	if delta == -1 {
-		deltaStr = " ---"
-		expStr = " ---"
-	} else {
-		deltaStr = fmt.Sprintf("%4d", delta)
-		expStr = fmt.Sprintf("%4d", expected)
+	deltaCol := "---"
+	expCol := "---"
+	csvDelta := ""
+	csvExp := ""
+	if e.Delta != -1 {
+		deltaCol = fmt.Sprintf("%4d ms", e.Delta)
+		expCol = fmt.Sprintf("%4d ms", e.Expected)
+		csvDelta = fmt.Sprintf("%d", e.Delta)
+		csvExp = fmt.Sprintf("%d", e.Expected)
 	}
 
-	// Terminal Print
-	fmt.Printf("%s | %-5s | %-17s | Type: %-13s | Count: %-6d | Delta: %s ms | Exp: %s ms | %s\n",
-		timeStr, level, event, niceName, count, deltaStr, expStr, extra)
+	var extras []string
+	if e.IP != "" {
+		extras = append(extras, fmt.Sprintf("IP: %s", e.IP))
+	}
+	if e.Length > 0 {
+		extras = append(extras, fmt.Sprintf("Len: %3d bytes", e.Length))
+	}
 
-	// Web UI Broadcast
+	if e.IsUDP && e.Event != "burst_part_rx" {
+		if e.HasKernelTime {
+			extras = append(extras, fmt.Sprintf("OS_Delay: %4dus", e.OSDelayUs))
+		} else {
+			extras = append(extras, "OS_Delay:  N/A us")
+		}
+	}
+
+	if e.IsCMR && e.PktType != 0x98 {
+		extras = append(extras, fmt.Sprintf("CMR Ver: %d, StaID: %d", e.CMRVer, e.StationID))
+	}
+
+	csvAdj := ""
+	if e.HasAdj {
+		csvAdj = fmt.Sprintf("%d", e.AdjDelta)
+		if e.Event == "jitter_violation" {
+			extras = append(extras, fmt.Sprintf("Adj Delta: %4d ms", e.AdjDelta))
+			extras = append(extras, fmt.Sprintf("Allowed Jitter: ±%.0f ms", allowedJitterMs))
+		} else if e.Event == "jitter_suppressed" {
+			extras = append(extras, fmt.Sprintf("Adj Delta: %4d ms", e.AdjDelta))
+		}
+	}
+
+	if e.MissedPackets > 0 {
+		extras = append(extras, fmt.Sprintf("Missed: %d packets", e.MissedPackets))
+	}
+
+	if e.Message != "" {
+		extras = append(extras, e.Message)
+	}
+
+	extraStr := strings.Join(extras, " | ")
+
+	if e.PrintConsole {
+		fmt.Printf("%-15s | %-5s | %-17s | %-13s | %-6d | %-12s | %-12s | %s\n",
+			timeStr, e.Level, e.Event, niceName, e.Count, deltaCol, expCol, extraStr)
+	}
+
+	if csvWriter != nil && e.WriteCSV {
+		csvCMRVer := ""
+		csvStaID := ""
+		if e.IsCMR && e.PktType != 0x98 {
+			csvCMRVer = fmt.Sprintf("%d", e.CMRVer)
+			csvStaID = fmt.Sprintf("%d", e.StationID)
+		}
+
+		csvLen := ""
+		if e.Length > 0 {
+			csvLen = fmt.Sprintf("%d", e.Length)
+		}
+
+		csvOSDelay := ""
+		if e.IsUDP && e.Event != "burst_part_rx" && e.HasKernelTime {
+			csvOSDelay = fmt.Sprintf("%d", e.OSDelayUs)
+		}
+
+		csvMissed := ""
+		if e.MissedPackets > 0 {
+			csvMissed = fmt.Sprintf("%d", e.MissedPackets)
+		}
+
+		record := []string{
+			timeStr, e.Level, e.Event, niceName, fmt.Sprintf("%d", e.Count),
+			csvDelta, csvExp, csvAdj, csvMissed, e.IP, csvLen, csvOSDelay, csvCMRVer, csvStaID, e.Message,
+		}
+		csvWriter.Write(record)
+		csvWriter.Flush()
+	}
+
 	statusStr := "info"
-	if level == "WARN" {
+	if e.Level == "WARN" {
 		statusStr = "warn"
-	} else if level == "ERROR" {
+	} else if e.Level == "ERROR" {
 		statusStr = "error"
 	}
 
-	broker.Notifier <- TelemetryEvent{
-		Timestamp:     timeStr,
-		DisplayKey:    niceName,
-		Count:         count,
-		ActualDeltaMs: delta,
-		ExpectedMs:    expected,
-		Status:        statusStr,
-		Message:       extra,
+	if broker != nil {
+		broker.Notifier <- TelemetryEvent{
+			Timestamp:     timeStr,
+			DisplayKey:    niceName,
+			Count:         e.Count,
+			ActualDeltaMs: e.Delta,
+			ExpectedMs:    e.Expected,
+			OSDelayUs:     e.OSDelayUs,
+			IsUDP:         e.IsUDP,
+			Status:        statusStr,
+			Message:       extraStr,
+		}
 	}
 }
 
 func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroker) {
 	baseExpectedPeriod := time.Duration(float64(time.Second) / cfg.RateHz)
-	jitterDur := time.Duration(cfg.JitterMs * float64(time.Millisecond))
 	timeoutDur := baseExpectedPeriod * 100
 
-	slog.Info("Timing Engine Started", "decode_mode", cfg.Decode, "warmup_packets", cfg.WarmupPackets)
-	fmt.Printf("\n%-15s | %-5s | %-17s | %-19s | %-13s | %-13s | %-13s | %s\n", "TIME", "LEVEL", "EVENT", "PKT TYPE", "BURST COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
+	// Calculate and log the computed base jitter
+	var baseJitterMs float64
+	if cfg.JitterPct {
+		baseJitterMs = float64(baseExpectedPeriod.Milliseconds()) * (cfg.JitterVal / 100.0)
+	} else {
+		baseJitterMs = cfg.JitterVal
+	}
+
+	var csvWriter *csv.Writer
+	if cfg.CSVFile != "" {
+		f, err := os.OpenFile(cfg.CSVFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			slog.Error("Failed to open CSV file for logging", "error", err)
+		} else {
+			defer f.Close()
+			csvWriter = csv.NewWriter(f)
+			info, _ := f.Stat()
+			if info != nil && info.Size() == 0 {
+				csvWriter.Write([]string{
+					"TIME", "LEVEL", "EVENT", "PKT TYPE", "COUNT",
+					"ACTUAL DELTA (ms)", "EXPECTED (ms)", "ADJ DELTA (ms)", "MISSED PACKETS",
+					"IP", "LEN (bytes)", "OS DELAY (us)", "CMR VER", "STA ID", "MESSAGE",
+				})
+				csvWriter.Flush()
+			}
+			slog.Info("CSV logging enabled", "file", cfg.CSVFile)
+		}
+	}
+
+	slog.Info("Timing Engine Started",
+		"decode_mode", cfg.Decode,
+		"warmup_packets", cfg.WarmupPackets,
+		"base_rate_hz", cfg.RateHz,
+		"computed_base_jitter_ms", fmt.Sprintf("%.2f", baseJitterMs))
+
+	fmt.Printf("\n%-15s | %-5s | %-17s | %-13s | %-6s | %-12s | %-12s | %s\n",
+		"TIME", "LEVEL", "EVENT", "PKT TYPE", "COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
 	fmt.Println("---------------------------------------------------------------------------------------------------------------------------------------")
 
 	states := make(map[string]*TimingState)
 	timeoutTimer := time.NewTimer(timeoutDur)
 	timeoutTimer.Stop()
+
+	isUDP := cfg.IP == "udp"
 
 	for {
 		select {
@@ -534,31 +702,11 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroke
 				states[timingKey] = state
 			}
 
-			if !pkt.IsLastInBurst {
-				if cfg.Verbose >= 2 {
-					extra := fmt.Sprintf("IP: %s | Len: %d | Burst Part", pkt.RemoteAddr, pkt.Length)
-					logAndEmit(broker, "INFO", pkt.BestTime, "burst_part_rx", displayKey, state.PacketCount, -1, -1, extra)
-				}
-				continue
-			}
-
-			state.PacketCount++
-			isFirstPacket := state.LastPacketTime.IsZero()
-			var delta time.Duration
-
-			if !isFirstPacket {
-				delta = pkt.BestTime.Sub(state.LastPacketTime)
-			}
-
-			state.LastPacketTime = pkt.BestTime
-
-			if cfg.TimeoutExit {
-				timeoutTimer.Reset(timeoutDur)
-			}
-
-			osDelayUs := pkt.GoTime.Sub(pkt.KernelTime).Microseconds()
-			if pkt.KernelTime.IsZero() {
-				osDelayUs = 0
+			osDelayUs := int64(0)
+			hasKernelTime := false
+			if !pkt.KernelTime.IsZero() {
+				osDelayUs = pkt.GoTime.Sub(pkt.KernelTime).Microseconds()
+				hasKernelTime = true
 			}
 
 			currentExpectedPeriod := baseExpectedPeriod
@@ -574,18 +722,72 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroke
 				}
 			}
 
-			if cfg.Verbose >= 2 {
-				extra := fmt.Sprintf("IP: %s | Len: %3d bytes | OS_Delay: %4dus", pkt.RemoteAddr, pkt.Length, osDelayUs)
-				if pkt.IsCMR && pkt.PacketType != 0x98 {
-					extra += fmt.Sprintf(" | CMR Ver: %d, StaID: %d", pkt.Version, pkt.StationID)
-				}
-
-				if isFirstPacket {
-					logAndEmit(broker, "INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, -1, -1, extra+" (First Packet)")
-				} else {
-					logAndEmit(broker, "INFO", pkt.BestTime, "packet_received", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
-				}
+			var jitterDur time.Duration
+			var allowedJitterMs float64
+			if cfg.JitterPct {
+				jitterDur = time.Duration(float64(currentExpectedPeriod) * (cfg.JitterVal / 100.0))
+				allowedJitterMs = float64(jitterDur.Milliseconds())
+			} else {
+				jitterDur = time.Duration(cfg.JitterVal * float64(time.Millisecond))
+				allowedJitterMs = cfg.JitterVal
 			}
+
+			baseEntry := LogEntry{
+				Time:          pkt.BestTime,
+				DisplayKey:    displayKey,
+				Count:         state.PacketCount + 1,
+				Delta:         -1,
+				Expected:      currentExpectedPeriod.Milliseconds(),
+				IP:            pkt.RemoteAddr,
+				Length:        pkt.Length,
+				IsUDP:         isUDP,
+				HasKernelTime: hasKernelTime,
+				OSDelayUs:     osDelayUs,
+				IsCMR:         pkt.IsCMR,
+				PktType:       pkt.PacketType,
+				CMRVer:        pkt.Version,
+				StationID:     pkt.StationID,
+				PrintConsole:  true,
+				WriteCSV:      true,
+			}
+
+			if !pkt.IsLastInBurst {
+				if cfg.Verbose >= 2 {
+					e := baseEntry
+					e.Level = "INFO"
+					e.Event = "burst_part_rx"
+					e.Expected = -1
+					e.Count = state.PacketCount
+					logAndEmit(broker, csvWriter, e, allowedJitterMs)
+				}
+				continue
+			}
+
+			state.PacketCount++
+			isFirstPacket := state.LastPacketTime.IsZero()
+			var delta time.Duration
+
+			if !isFirstPacket {
+				delta = pkt.BestTime.Sub(state.LastPacketTime)
+				baseEntry.Delta = delta.Milliseconds()
+			}
+
+			state.LastPacketTime = pkt.BestTime
+
+			if cfg.TimeoutExit {
+				timeoutTimer.Reset(timeoutDur)
+			}
+
+			eRx := baseEntry
+			eRx.Level = "INFO"
+			eRx.Event = "packet_received"
+			if isFirstPacket {
+				eRx.Expected = -1
+				eRx.Message = "(First Packet)"
+			}
+			eRx.PrintConsole = cfg.Verbose >= 2
+			eRx.WriteCSV = cfg.Verbose >= 2
+			logAndEmit(broker, csvWriter, eRx, allowedJitterMs)
 
 			if isFirstPacket {
 				continue
@@ -604,22 +806,35 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroke
 					if estimatedMissed < 1 {
 						estimatedMissed = 1
 					}
-					extra := fmt.Sprintf("Missed roughly %d packets!", estimatedMissed)
-					logAndEmit(broker, "ERROR", pkt.BestTime, "missed_packet", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+
+					e := baseEntry
+					e.Level = "ERROR"
+					e.Event = "missed_packet"
+					e.MissedPackets = estimatedMissed
+					logAndEmit(broker, csvWriter, e, allowedJitterMs)
 
 					expectedMultiPeriod := currentExpectedPeriod * time.Duration(estimatedMissed+1)
 					state.PrevError = delta - expectedMultiPeriod
 
 				} else if delta < minExpected || delta > maxExpected {
 					if adjustedDelta >= minExpected && adjustedDelta <= maxExpected {
-						if cfg.Verbose >= 1 {
-							extra := fmt.Sprintf("Adj Delta: %d ms (Compensated by previous offset)", adjustedDelta.Milliseconds())
-							logAndEmit(broker, "INFO", pkt.BestTime, "jitter_suppressed", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+						if cfg.Verbose >= 2 {
+							e := baseEntry
+							e.Level = "INFO"
+							e.Event = "jitter_suppressed"
+							e.HasAdj = true
+							e.AdjDelta = adjustedDelta.Milliseconds()
+							e.Message = "(Compensated by previous offset)"
+							logAndEmit(broker, csvWriter, e, allowedJitterMs)
 						}
 						state.PrevError = 0
 					} else {
-						extra := fmt.Sprintf("Adj Delta: %d ms | Allowed Jitter: ±%.0f ms", adjustedDelta.Milliseconds(), cfg.JitterMs)
-						logAndEmit(broker, "WARN", pkt.BestTime, "jitter_violation", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), extra)
+						e := baseEntry
+						e.Level = "WARN"
+						e.Event = "jitter_violation"
+						e.HasAdj = true
+						e.AdjDelta = adjustedDelta.Milliseconds()
+						logAndEmit(broker, csvWriter, e, allowedJitterMs)
 						state.PrevError = currentError
 					}
 				} else {
@@ -627,7 +842,11 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroke
 				}
 
 			} else if cfg.Verbose >= 1 && state.PacketCount > 1 {
-				logAndEmit(broker, "INFO", pkt.BestTime, "warmup_phase", displayKey, state.PacketCount, delta.Milliseconds(), currentExpectedPeriod.Milliseconds(), "Ignoring jitter during warmup")
+				e := baseEntry
+				e.Level = "INFO"
+				e.Event = "warmup_phase"
+				e.Message = "Ignoring jitter during warmup"
+				logAndEmit(broker, csvWriter, e, allowedJitterMs)
 				state.PrevError = 0
 			}
 

@@ -7,17 +7,34 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .grid { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
-        h2 { margin-top: 0; color: #ffffff; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .full-width { grid-column: span 2; }
+        h2 { margin-top: 0; color: #ffffff; border-bottom: 1px solid #333; padding-bottom: 10px; font-size: 16px; }
+
+        /* Interactive Status Indicator */
+        #connection-status {
+            color: #FFC107;
+            font-weight: bold;
+            cursor: pointer;
+            user-select: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            background: #222;
+            transition: background 0.2s;
+        }
+        #connection-status:hover { background: #333; }
 
         /* Table Styles */
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        th, td { text-align: left; padding: 10px; border-bottom: 1px solid #333; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #333; }
         th { color: #888; text-transform: uppercase; font-size: 12px; }
+        .warn-text { color: #FFC107; font-weight: bold; }
+        .err-text { color: #F44336; font-weight: bold; }
 
         /* Log Styles */
-        #log-container { height: 300px; overflow-y: auto; font-family: monospace; font-size: 13px; background: #000; padding: 10px; border-radius: 4px; }
+        #log-container { height: 250px; overflow-y: auto; font-family: monospace; font-size: 13px; background: #000; padding: 10px; border-radius: 4px; }
         .log-row { padding: 4px 0; border-bottom: 1px solid #222; }
         .status-info { color: #4CAF50; }
         .status-warn { color: #FFC107; }
@@ -26,15 +43,20 @@
     </style>
 </head>
 <body>
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h1 style="margin: 0; color: #fff;">Network Jitter Telemetry</h1>
-        <div id="connection-status" style="color: #FFC107; font-weight: bold;">Connecting...</div>
+    <div class="header">
+        <h1 style="margin: 0; color: #fff; font-size: 24px;">Network Jitter Telemetry</h1>
+        <div id="connection-status" title="Click to Pause/Resume">Connecting...</div>
     </div>
 
     <div class="grid">
-        <div class="card" style="grid-column: span 2;">
+        <div class="card full-width">
             <h2>Live Jitter (Delta ms)</h2>
-            <canvas id="jitterChart" height="80"></canvas>
+            <canvas id="jitterChart" height="60"></canvas>
+        </div>
+
+        <div class="card full-width" id="os-chart-card" style="display: none;">
+            <h2>OS Wakeup Latency (µs)</h2>
+            <canvas id="osChart" height="40"></canvas>
         </div>
 
         <div class="card">
@@ -43,8 +65,11 @@
                 <thead>
                     <tr>
                         <th>Stream Type</th>
-                        <th>Total Packets</th>
-                        <th>Latest Delta</th>
+                        <th>Packets</th>
+                        <th>Violations</th>
+                        <th>Missed</th>
+                        <th>Latest Δ</th>
+                        <th>Min/Max Δ</th>
                         <th>Expected</th>
                     </tr>
                 </thead>
@@ -60,23 +85,30 @@
     </div>
 
     <script>
-        // Setup Chart.js
-        const ctx = document.getElementById('jitterChart').getContext('2d');
-        const chart = new Chart(ctx, {
+        const commonChartOptions = {
+            responsive: true,
+            animation: false,
+            scales: {
+                x: { display: false },
+                y: { grid: { color: '#333' } }
+            },
+            plugins: { legend: { labels: { color: '#e0e0e0' } } }
+        };
+
+        // Setup Jitter Chart
+        const ctxJitter = document.getElementById('jitterChart').getContext('2d');
+        const jitterChart = new Chart(ctxJitter, {
             type: 'line',
             data: { labels: [], datasets: [] },
-            options: {
-                responsive: true,
-                animation: false,
-                scales: {
-                    x: { display: false }, // Hide X axis labels for cleaner look
-                    y: {
-                        title: { display: true, text: 'Delta (ms)', color: '#888' },
-                        grid: { color: '#333' }
-                    }
-                },
-                plugins: { legend: { labels: { color: '#e0e0e0' } } }
-            }
+            options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { title: { display: true, text: 'Delta (ms)', color: '#888' }, grid: { color: '#333' } } } }
+        });
+
+        // Setup OS Delay Chart
+        const ctxOS = document.getElementById('osChart').getContext('2d');
+        const osChart = new Chart(ctxOS, {
+            type: 'line',
+            data: { labels: [], datasets: [] },
+            options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { title: { display: true, text: 'Delay (µs)', color: '#888' }, grid: { color: '#333' }, beginAtZero: true } } }
         });
 
         const colors = ['#4CAF50', '#2196F3', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4'];
@@ -84,68 +116,143 @@
         const maxDataPoints = 100;
         const statsMap = {};
 
-        // Setup Server-Sent Events (SSE) Connection
+        // Setup Server-Sent Events (SSE)
         const evtSource = new EventSource("/events");
         const statusDiv = document.getElementById('connection-status');
 
+        let isPaused = false;
+        let isConnected = false;
+
+        // Toggle pause state on click
+        statusDiv.addEventListener('click', () => {
+            if (!isConnected) return; // Don't allow toggling if server is down
+            isPaused = !isPaused;
+            if (isPaused) {
+                statusDiv.innerHTML = "Paused &#10074;&#10074;"; // Pause bars icon
+                statusDiv.style.color = "#FF9800";
+            } else {
+                statusDiv.textContent = "Live \u25CF"; // Circle icon
+                statusDiv.style.color = "#4CAF50";
+            }
+        });
+
         evtSource.onopen = () => {
-            statusDiv.textContent = "Live \u25CF";
-            statusDiv.style.color = "#4CAF50";
+            isConnected = true;
+            if (!isPaused) {
+                statusDiv.textContent = "Live \u25CF";
+                statusDiv.style.color = "#4CAF50";
+            }
         };
 
         evtSource.onerror = () => {
+            isConnected = false;
             statusDiv.textContent = "Disconnected \u25CF";
             statusDiv.style.color = "#F44336";
         };
 
+        function getOrCreateDataset(chartObj, labelName) {
+            let dataset = chartObj.data.datasets.find(d => d.label === labelName);
+            if (!dataset) {
+                dataset = {
+                    label: labelName,
+                    data: [],
+                    borderColor: colors[colorIdx % colors.length],
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1,
+                    pointRadius: 2
+                };
+                chartObj.data.datasets.push(dataset);
+                if(chartObj === jitterChart) colorIdx++;
+            }
+            return dataset;
+        }
+
         evtSource.onmessage = (event) => {
+            // If the user has paused the UI, drop the incoming data updates cleanly
+            if (isPaused) return;
+
             const data = JSON.parse(event.data);
 
-            // 1. Update Chart
+            // 1. Update State Map
+            if (!statsMap[data.display_key]) {
+                statsMap[data.display_key] = {
+                    count: 0, violations: 0, missed: 0, latest_delta: 0,
+                    min_delta: null, max_delta: null, expected_ms: data.expected_ms,
+                    last_plotted_count: 0
+                };
+            }
+            const s = statsMap[data.display_key];
+            s.count = data.count;
+
+            // Only update latest_delta if the packet has a delta (-1 means N/A)
             if (data.actual_delta_ms > 0) {
-                let dataset = chart.data.datasets.find(d => d.label === data.display_key);
-                if (!dataset) {
-                    dataset = {
-                        label: data.display_key,
-                        data: [],
-                        borderColor: colors[colorIdx % colors.length],
-                        borderWidth: 2,
-                        fill: false,
-                        tension: 0.1,
-                        pointRadius: 2
-                    };
-                    chart.data.datasets.push(dataset);
-                    colorIdx++;
-                }
-
-                // Add point and shift if too long
-                chart.data.labels.push(data.timestamp);
-                dataset.data.push(data.actual_delta_ms);
-
-                if (chart.data.labels.length > maxDataPoints) {
-                    chart.data.labels.shift();
-                    chart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
-                }
-                chart.update();
+                s.latest_delta = data.actual_delta_ms;
+                if (s.min_delta === null || data.actual_delta_ms < s.min_delta) s.min_delta = data.actual_delta_ms;
+                if (s.max_delta === null || data.actual_delta_ms > s.max_delta) s.max_delta = data.actual_delta_ms;
             }
 
-            // 2. Update Table
-            statsMap[data.display_key] = data;
+            if (data.status === 'warn') s.violations++;
+            if (data.status === 'error') s.missed++;
+
+            // 2. Update Charts (Deduplicate multiple events for the same packet count)
+            if (data.actual_delta_ms > 0 && s.last_plotted_count !== data.count) {
+                s.last_plotted_count = data.count;
+
+                const jDataset = getOrCreateDataset(jitterChart, data.display_key);
+                jitterChart.data.labels.push(data.timestamp);
+                jDataset.data.push(data.actual_delta_ms);
+
+                if (jitterChart.data.labels.length > maxDataPoints) {
+                    jitterChart.data.labels.shift();
+                    jitterChart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
+                }
+                jitterChart.update();
+
+                // Update OS Chart Display Logic
+                const osCard = document.getElementById('os-chart-card');
+                if (data.is_udp) {
+                    if (osCard.style.display === 'none') {
+                        osCard.style.display = 'block';
+                    }
+
+                    if (!data.message.includes('N/A')) {
+                        const osDataset = getOrCreateDataset(osChart, data.display_key);
+                        osChart.data.labels.push(data.timestamp);
+                        osDataset.data.push(data.os_delay_us);
+
+                        if (osChart.data.labels.length > maxDataPoints) {
+                            osChart.data.labels.shift();
+                            osChart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
+                        }
+                        osChart.update();
+                    }
+                } else {
+                    osCard.style.display = 'none';
+                }
+            }
+
+            // 3. Render Table
             const tbody = document.getElementById('stats-body');
             tbody.innerHTML = '';
             for (const key in statsMap) {
-                const s = statsMap[key];
-                const deltaStr = s.actual_delta_ms > 0 ? s.actual_delta_ms + ' ms' : '---';
+                const rowStats = statsMap[key];
+                const deltaStr = rowStats.latest_delta > 0 ? rowStats.latest_delta : '---';
+                const minMaxStr = rowStats.min_delta !== null ? `${rowStats.min_delta} / ${rowStats.max_delta}` : '---';
+
                 const row = `<tr>
-                    <td style="font-weight: bold; color: #fff;">${s.display_key}</td>
-                    <td>${s.count}</td>
+                    <td style="font-weight: bold; color: #fff;">${key}</td>
+                    <td>${rowStats.count}</td>
+                    <td class="${rowStats.violations > 0 ? 'warn-text' : ''}">${rowStats.violations}</td>
+                    <td class="${rowStats.missed > 0 ? 'err-text' : ''}">${rowStats.missed}</td>
                     <td>${deltaStr}</td>
-                    <td>${s.expected_ms > 0 ? s.expected_ms + ' ms' : '---'}</td>
+                    <td style="color: #aaa;">${minMaxStr}</td>
+                    <td>${rowStats.expected_ms}</td>
                 </tr>`;
                 tbody.innerHTML += row;
             }
 
-            // 3. Update Log
+            // 4. Update Log
             const logContainer = document.getElementById('log-container');
             const logRow = document.createElement('div');
             logRow.className = `log-row status-${data.status}`;
