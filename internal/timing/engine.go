@@ -1,6 +1,7 @@
 package timing
 
 import (
+	"context" // <--- ADD THIS
 	"encoding/csv"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"timing-analyzer/internal/core"
 )
 
+// ... (Keep TimingState struct and logAndEmit function exactly the same) ...
 type TimingState struct {
 	LastPacketTime time.Time
 	PacketCount    uint64
@@ -131,7 +133,8 @@ func logAndEmit(telemetryChan chan<- core.TelemetryEvent, csvWriter *csv.Writer,
 	}
 }
 
-func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan<- core.TelemetryEvent) {
+// Add ctx context.Context here
+func Run(ctx context.Context, cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan<- core.TelemetryEvent) {
 	baseExpectedPeriod := time.Duration(float64(time.Second) / cfg.RateHz)
 	timeoutDur := baseExpectedPeriod * 100
 
@@ -144,7 +147,8 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 
 	var csvWriter *csv.Writer
 	if cfg.CSVFile != "" {
-		f, err := os.OpenFile(cfg.CSVFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		// ... csv logic stays the same
+        f, err := os.OpenFile(cfg.CSVFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			slog.Error("Failed to open CSV file for logging", "error", err)
 		} else {
@@ -163,15 +167,22 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 		}
 	}
 
-	slog.Info("Timing Engine Started",
+	sessionStr := ""
+	if cfg.SessionID != "" {
+		sessionStr = fmt.Sprintf(" [Session: %s]", cfg.SessionID)
+	}
+
+	slog.Info(fmt.Sprintf("Timing Engine Started%s", sessionStr),
 		"decode_mode", cfg.Decode,
-		"warmup_packets", cfg.WarmupPackets,
 		"base_rate_hz", cfg.RateHz,
 		"computed_base_jitter_ms", fmt.Sprintf("%.2f", baseJitterMs))
 
-	fmt.Printf("\n%-15s | %-5s | %-17s | %-13s | %-6s | %-12s | %-12s | %s\n",
-		"TIME", "LEVEL", "EVENT", "PKT TYPE", "COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
-	fmt.Println("---------------------------------------------------------------------------------------------------------------------------------------")
+    // Only print table headers for CLI mode (no session ID)
+	if cfg.SessionID == "" {
+		fmt.Printf("\n%-15s | %-5s | %-17s | %-13s | %-6s | %-12s | %-12s | %s\n",
+			"TIME", "LEVEL", "EVENT", "PKT TYPE", "COUNT", "ACTUAL DELTA", "EXPECTED", "EXTRA DETAILS")
+		fmt.Println("---------------------------------------------------------------------------------------------------------------------------------------")
+	}
 
 	states := make(map[string]*TimingState)
 	timeoutTimer := time.NewTimer(timeoutDur)
@@ -181,9 +192,23 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 
 	for {
 		select {
-		case pkt := <-packetChan:
+		// ADD THIS CASE to gracefully exit when the web user disconnects
+		case <-ctx.Done():
+			slog.Info("Timing Engine shutting down", "session", cfg.SessionID)
+			return
 
-			displayKey := "RAW"
+		case <-timeoutTimer.C:
+			if cfg.TimeoutExit {
+				slog.Error("No data received for 100 epochs. Exiting.", "session", cfg.SessionID)
+				if cfg.SessionID == "" {
+					os.Exit(1) // Only kill the whole app if we are in CLI mode
+				}
+				return
+			}
+
+		case pkt := <-packetChan:
+            // ... (The entire rest of the parser and math logic remains exactly the same!) ...
+            displayKey := "RAW"
 			timingKey := "RAW"
 
 			if pkt.Decoded {
@@ -255,7 +280,7 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 				PktType:       pkt.PacketType,
 				CMRVer:        pkt.Version,
 				StationID:     pkt.StationID,
-				PrintConsole:  true,
+				PrintConsole:  cfg.SessionID == "", // Mute console if running in web server mode
 				WriteCSV:      true,
 			}
 
@@ -293,7 +318,7 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 				eRx.Expected = -1
 				eRx.Message = "(First Packet)"
 			}
-			eRx.PrintConsole = cfg.Verbose >= 2
+			eRx.PrintConsole = cfg.Verbose >= 2 && cfg.SessionID == ""
 			eRx.WriteCSV = cfg.Verbose >= 2
 			logAndEmit(telemetryChan, csvWriter, eRx, allowedJitterMs)
 
@@ -356,12 +381,6 @@ func Run(cfg core.Config, packetChan <-chan core.PacketEvent, telemetryChan chan
 				e.Message = "Ignoring jitter during warmup"
 				logAndEmit(telemetryChan, csvWriter, e, allowedJitterMs)
 				state.PrevError = 0
-			}
-
-		case <-timeoutTimer.C:
-			if cfg.TimeoutExit {
-				slog.Error("No data received for 100 epochs. Exiting.")
-				os.Exit(1)
 			}
 		}
 	}

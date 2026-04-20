@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -93,5 +94,6 @@ func main() {
 
 	// 3. Start the components
 	go stream.StartListener(cfg, packetChan)
-	timing.Run(cfg, packetChan, broker.Notifier)
+	timing.Run(context.Background(), cfg, packetChan, broker.Notifier)
 }
+

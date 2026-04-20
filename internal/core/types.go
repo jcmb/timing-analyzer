@@ -15,8 +15,15 @@ type Config struct {
 	WarmupPackets int
 	Decode        string
 	CSVFile       string
+
+	// New fields for NTRIP and Multi-Tenant Sessions
+	Mountpoint string
+	Username   string
+	Password   string
+	SessionID  string
 }
 
+// ... the rest of the file (PacketEvent, TelemetryEvent, LogEntry, GetNiceName) stays EXACTLY the same.
 type PacketEvent struct {
 	BestTime      time.Time
 	GoTime        time.Time
