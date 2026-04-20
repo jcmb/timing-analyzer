@@ -54,6 +54,12 @@ func (broker *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ALWAYS set these headers here so both the CLI and Web Server get the correct MIME type
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
 	// 1. Write the 200 OK header and flush IMMEDIATELY to trigger JS onopen
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
