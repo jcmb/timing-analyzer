@@ -163,10 +163,11 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	port := flag.Int("port", 8080, "HTTP port to run the web server on")
+	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
 	basePath := flag.String("base-path", "/", "Base URL path (e.g., '/jitter')")
 	flag.Parse()
 
-	// Ensure the base path always starts and ends with a slash for clean routing
+	// Ensure the base path always starts and ends with a slash
 	path := *basePath
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -175,9 +176,7 @@ func main() {
 		path = path + "/"
 	}
 
-	// 1. Serve the Setup / Dashboard UI
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
-		// Only serve the UI on the exact base path, otherwise return 404
 		if r.URL.Path != path && r.URL.Path != strings.TrimSuffix(path, "/") {
 			http.NotFound(w, r)
 			return
@@ -186,15 +185,13 @@ func main() {
 		w.Write(web.IndexServerHTML)
 	})
 
-	// 2. Serve the API Endpoint to start a stream
 	http.HandleFunc(path+"api/start", handleStart)
-
-	// 3. Serve the live Telemetry stream
 	http.HandleFunc(path+"events", handleEvents)
 
-	slog.Info("Starting TrimbleTools Multi-Tenant Server", "port", *port, "base_path", path)
-	if err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil); err != nil {
+	address := fmt.Sprintf("%s:%d", *bindIP, *port)
+	slog.Info("Starting TrimbleTools Server", "address", address, "base_path", path)
+
+	if err := http.ListenAndServe(address, nil); err != nil {
 		slog.Error("Server crashed", "error", err)
 	}
 }
-
