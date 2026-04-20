@@ -12,9 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
-	"unsafe"
 )
 
 //go:embed index.html
@@ -373,8 +371,8 @@ func startListener(cfg Config, packetChan chan<- PacketEvent) {
 		rawConn, err := conn.SyscallConn()
 		if err == nil {
 			rawConn.Control(func(fd uintptr) {
-				err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_TIMESTAMP, 1)
-				if err == nil {
+				// Use the OS-specific helper
+				if err := enableKernelTimestamps(fd); err == nil {
 					slog.Info("Hardware/Kernel timestamping enabled")
 				}
 			})
@@ -396,15 +394,10 @@ func startListener(cfg Config, packetChan chan<- PacketEvent) {
 			bestTime := goTime
 
 			if oobn > 0 {
-				cmsgs, err := syscall.ParseSocketControlMessage(oob[:oobn])
-				if err == nil {
-					for _, m := range cmsgs {
-						if m.Header.Level == syscall.SOL_SOCKET && (m.Header.Type == syscall.SCM_TIMESTAMP || m.Header.Type == syscall.SO_TIMESTAMP) {
-							tv := (*syscall.Timeval)(unsafe.Pointer(&m.Data[0]))
-							kernelTime = time.Unix(int64(tv.Sec), int64(tv.Usec)*1000)
-							bestTime = kernelTime
-						}
-					}
+				// Use the OS-specific helper
+				if kt, ok := extractKernelTimestamp(oob[:oobn]); ok {
+					kernelTime = kt
+					bestTime = kernelTime
 				}
 			}
 
@@ -626,7 +619,6 @@ func runTimingEngine(cfg Config, packetChan <-chan PacketEvent, broker *SSEBroke
 	baseExpectedPeriod := time.Duration(float64(time.Second) / cfg.RateHz)
 	timeoutDur := baseExpectedPeriod * 100
 
-	// Calculate and log the computed base jitter
 	var baseJitterMs float64
 	if cfg.JitterPct {
 		baseJitterMs = float64(baseExpectedPeriod.Milliseconds()) * (cfg.JitterVal / 100.0)
