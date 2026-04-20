@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package stream
 
 import (
 	"syscall"
@@ -8,12 +8,10 @@ import (
 	"unsafe"
 )
 
-// enableKernelTimestamps requests the OS kernel to attach timestamps to UDP packets
 func enableKernelTimestamps(fd uintptr) error {
 	return syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_TIMESTAMP, 1)
 }
 
-// extractKernelTimestamp parses the Out-Of-Band (OOB) data for the SCM_TIMESTAMP
 func extractKernelTimestamp(oob []byte) (time.Time, bool) {
 	cmsgs, err := syscall.ParseSocketControlMessage(oob)
 	if err == nil {
