@@ -20,6 +20,9 @@ import (
 	"timing-analyzer/web"
 )
 
+// Global Application Version
+const AppVersion = "v1.1.0"
+
 type Session struct {
 	ID     string
 	Cancel context.CancelFunc
@@ -41,7 +44,6 @@ func generateSessionID() string {
 	return hex.EncodeToString(bytes)
 }
 
-// JSON format matching the frontend Setup form
 type StartRequest struct {
 	Host       string  `json:"host"`
 	Port       int     `json:"port"`
@@ -65,7 +67,6 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse the jitter string (e.g. "10%" or "5ms")
 	jitterStr := strings.TrimSpace(req.Jitter)
 	var jitterVal float64
 	var jitterPct bool
@@ -89,7 +90,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	sessionID := generateSessionID()
 
 	cfg := core.Config{
-		IP:            "tcp", // Server is always an outgoing TCP/NTRIP client
+		IP:            "tcp",
 		Host:          req.Host,
 		Port:          req.Port,
 		Mountpoint:    req.Mountpoint,
@@ -101,10 +102,9 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		Decode:        req.Decode,
 		Verbose:       2,
 		SessionID:     sessionID,
-		TimeoutExit:   false, // Never crash the server on timeout, just log it and stop the session
+		TimeoutExit:   false,
 	}
 
-	// Create isolation sandbox for this specific web user
 	ctx, cancel := context.WithCancel(context.Background())
 	packetChan := make(chan core.PacketEvent, 1000)
 	broker := telemetry.NewSSEBroker()
@@ -121,12 +121,9 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Created new session", "session", sessionID, "target", req.Host)
 
-	// Spin up isolated workers for this specific user
-	// Note: We pass broker.Notifier into StartNTRIPClient so it can report 'fatal' connect errors
 	go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
 	go timing.Run(ctx, cfg, packetChan, broker.Notifier)
 
-	// Return the success payload to the browser so it can open the SSE socket
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
 }
@@ -147,27 +144,30 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// When ServeHTTP finishes (because the user closed the browser tab or clicked Stop),
-	// we MUST clean up the server resources!
+	// FORCE the browser to accept this as a live stream, bypassing Apache's defaults
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
 	defer func() {
 		slog.Info("User disconnected, cleaning up session", "session", sessionID)
-		session.Cancel() // This kills the network dialer and the timing engine goroutines
+		session.Cancel()
 		manager.mu.Lock()
-		delete(manager.sessions, sessionID) // Remove them from the active sessions map
+		delete(manager.sessions, sessionID)
 		manager.mu.Unlock()
 	}()
 
-	// Hold the connection open and stream events to the browser
 	session.Broker.ServeHTTP(w, r)
 }
 
 func main() {
-	port := flag.Int("port", 8080, "HTTP port to run the web server on")
+	// Changed default port to 2102 to match the new configuration
+	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
 	basePath := flag.String("base-path", "/", "Base URL path (e.g., '/jitter')")
 	flag.Parse()
 
-	// Ensure the base path always starts and ends with a slash
 	path := *basePath
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -181,15 +181,24 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
+
+		// Dynamically inject the version into the HTML
+		html := strings.ReplaceAll(string(web.IndexServerHTML), "{{VERSION}}", AppVersion)
+
+		// FORCE the browser to fetch the fresh HTML (fixes the missing version issue)
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
 		w.Header().Set("Content-Type", "text/html")
-		w.Write(web.IndexServerHTML)
+
+		w.Write([]byte(html))
 	})
 
 	http.HandleFunc(path+"api/start", handleStart)
 	http.HandleFunc(path+"events", handleEvents)
 
 	address := fmt.Sprintf("%s:%d", *bindIP, *port)
-	slog.Info("Starting TrimbleTools Server", "address", address, "base_path", path)
+	slog.Info(fmt.Sprintf("Starting Timing Analyzer Web Server %s", AppVersion), "address", address, "base_path", path)
 
 	if err := http.ListenAndServe(address, nil); err != nil {
 		slog.Error("Server crashed", "error", err)

@@ -17,6 +17,9 @@ import (
 	"timing-analyzer/web"
 )
 
+
+const AppVersion = "v1.1.0"
+
 func main() {
 	ipFlag := flag.String("ip", "udp", "tcp or udp")
 	host := flag.String("host", "", "Optional host IP to connect to (implicitly forces tcp mode)")
@@ -30,6 +33,8 @@ func main() {
 	decode := flag.String("decode", "none", "Protocol decoder: 'none', 'dcol', or 'mb-cmr'")
 	csvFile := flag.String("csv", "", "Output filename for CSV logging")
 	flag.Parse()
+
+    fmt.Printf("Starting Timing Analyzer CLI %s\n", AppVersion)
 
 	if *host != "" {
 		*ipFlag = "tcp"

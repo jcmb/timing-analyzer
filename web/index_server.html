@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrimbleTools Jitter Analyzer</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
-        .header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px;}
+        .header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; position: relative;}
         h1 { margin: 0; color: #fff; font-size: 24px; display: inline-block; vertical-align: middle; }
 
         /* Setup Form Styles */
@@ -25,7 +25,7 @@
 
         /* Dashboard Styles */
         #dashboard-view { display: none; }
-        .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .dash-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; position: relative; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card { background: #1e1e1e; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .full-width { grid-column: span 2; }
@@ -51,6 +51,7 @@
 
     <div id="setup-view">
         <div class="header" style="text-align: center;">
+            <div style="position: absolute; top: 0; right: 0; color: #555; font-size: 12px; font-family: monospace;">{{VERSION}}</div>
             <h1 style="display: block;">GNSS Stream Setup</h1>
             <p style="color:#aaa; font-size:14px; margin-top: 5px;">Connect to a Stream or Caster</p>
         </div>
@@ -127,6 +128,7 @@
                 <div id="target-label" style="color:#aaa; font-size:14px; margin-top:8px;"></div>
             </div>
             <div id="connection-status" title="Click to Pause/Resume">Connecting...</div>
+            <div style="position: absolute; top: 0; right: 0; color: #555; font-size: 12px; font-family: monospace;">{{VERSION}}</div>
         </div>
 
         <div class="grid">
@@ -162,7 +164,6 @@
 
     <script>
         // --- Form Interaction Logic ---
-
         window.onload = () => toggleFields();
 
         function toggleFields() {
@@ -218,10 +219,10 @@
         }
 
         // --- Session Connection Logic ---
-
         let evtSource = null;
         let isPaused = false;
         let isConnected = false;
+        let proxyCheckTimer = null;
 
         async function startSession() {
             const mode = document.getElementById('connType').value;
@@ -279,7 +280,6 @@
 
             document.getElementById('setup-error').style.display = 'none';
 
-            // Dynamically get the base path (e.g., "/jitter/") for deployments on sub-routes
             let basePath = window.location.pathname;
             if (!basePath.endsWith('/')) basePath += '/';
 
@@ -295,7 +295,8 @@
 
                 document.getElementById('setup-view').style.display = 'none';
                 document.getElementById('dashboard-view').style.display = 'block';
-                document.getElementById('target-label').textContent = `Target: ${payload.host}:${payload.port} ${payload.mountpoint ? '/'+payload.mountpoint : ''}`;
+
+                document.getElementById('target-label').textContent = `Target: ${payload.host}:${payload.port}${payload.mountpoint ? '/'+payload.mountpoint : ''}`;
 
                 connectSSE(result.session_id);
 
@@ -305,6 +306,11 @@
         }
 
         function stopSession() {
+            if (proxyCheckTimer) {
+                clearTimeout(proxyCheckTimer);
+                proxyCheckTimer = null;
+            }
+
             if (evtSource) {
                 evtSource.close();
                 evtSource = null;
@@ -328,12 +334,11 @@
 
         function showError(msg) {
             const errDiv = document.getElementById('setup-error');
-            errDiv.textContent = msg;
+            errDiv.innerHTML = msg;
             errDiv.style.display = 'block';
         }
 
         // --- Live Charting & Telemetry Logic ---
-
         const commonChartOptions = {
             responsive: true,
             animation: false,
@@ -377,9 +382,16 @@
         });
 
         function connectSSE(sessionId) {
-            // Dynamically construct path for SSE to match sub-route deployment
             let basePath = window.location.pathname;
             if (!basePath.endsWith('/')) basePath += '/';
+
+            // NETSKOPE DETECTION: Start the countdown IMMEDIATELY.
+            proxyCheckTimer = setTimeout(() => {
+                // FORCE plain HTTP for the direct Go Server bypass since it does not have SSL configured
+                const altUrl = "http://" + window.location.hostname + ":2102/jitter";
+                showError(`⚠️ Stream blocked! A corporate proxy (like Netskope) is intercepting the live stream. Please disable it or access the tool directly via: <br><a href="${altUrl}" style="color:#4CAF50; text-decoration:underline;">${altUrl}</a>`);
+                stopSession();
+            }, 6000);
 
             evtSource = new EventSource(`${basePath}events?session_id=${sessionId}`);
 
@@ -392,6 +404,11 @@
             };
 
             evtSource.onerror = () => {
+                if (proxyCheckTimer) {
+                    clearTimeout(proxyCheckTimer);
+                    proxyCheckTimer = null;
+                }
+
                 isConnected = false;
                 statusDiv.textContent = "Disconnected \u25CF";
                 statusDiv.style.color = "#F44336";
@@ -400,9 +417,15 @@
             evtSource.onmessage = (event) => {
                 if (isPaused) return;
 
-                const data = JSON.parse(event.data);
+                // If data arrives, kill the Netskope warning timer
+                if (proxyCheckTimer) {
+                    clearTimeout(proxyCheckTimer);
+                    proxyCheckTimer = null;
+                }
 
-                // Catch Fatal Errors pushed from the backend dialer
+                const data = JSON.parse(event.data);
+                console.log("Received data:", data);
+
                 if (data.status === 'fatal') {
                     showError(data.message);
                     stopSession();

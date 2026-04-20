@@ -3,77 +3,86 @@ package telemetry
 import (
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"timing-analyzer/internal/core"
 )
 
 type SSEBroker struct {
+	// Notifier receives events from the Timing Engine
 	Notifier       chan core.TelemetryEvent
-	newClients     chan chan core.TelemetryEvent
-	closingClients chan chan core.TelemetryEvent
-	clients        map[chan core.TelemetryEvent]bool
+	newClients     chan chan []byte
+	closingClients chan chan []byte
+	clients        map[chan []byte]bool
 }
 
 func NewSSEBroker() *SSEBroker {
 	broker := &SSEBroker{
-		Notifier:       make(chan core.TelemetryEvent, 10),
-		newClients:     make(chan chan core.TelemetryEvent),
-		closingClients: make(chan chan core.TelemetryEvent),
-		clients:        make(map[chan core.TelemetryEvent]bool),
+		Notifier:       make(chan core.TelemetryEvent, 100),
+		newClients:     make(chan chan []byte),
+		closingClients: make(chan chan []byte),
+		clients:        make(map[chan []byte]bool),
 	}
 	go broker.listen()
 	return broker
 }
 
-func (b *SSEBroker) listen() {
+func (broker *SSEBroker) listen() {
 	for {
 		select {
-		case s := <-b.newClients:
-			b.clients[s] = true
-			slog.Info("Web UI Client Connected", "active_clients", len(b.clients))
-		case s := <-b.closingClients:
-			delete(b.clients, s)
-			slog.Info("Web UI Client Disconnected", "active_clients", len(b.clients))
-		case event := <-b.Notifier:
-			for clientMessageChan := range b.clients {
+		case s := <-broker.newClients:
+			broker.clients[s] = true
+		case s := <-broker.closingClients:
+			delete(broker.clients, s)
+		case event := <-broker.Notifier:
+			data, _ := json.Marshal(event)
+			for clientMessageChan := range broker.clients {
 				select {
-				case clientMessageChan <- event:
-				default:
+				case clientMessageChan <- data:
+				default: // Drop message if the client's network is too slow, keeps server healthy
 				}
 			}
 		}
 	}
 }
 
-func (b *SSEBroker) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	rw.Header().Set("Content-Type", "text/event-stream")
-	rw.Header().Set("Cache-Control", "no-cache")
-	rw.Header().Set("Connection", "keep-alive")
-	rw.Header().Set("Access-Control-Allow-Origin", "*")
-
-	flusher, ok := rw.(http.Flusher)
+func (broker *SSEBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Ensure the web server supports flushing
+	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(rw, "Streaming unsupported!", http.StatusInternalServerError)
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
-	messageChan := make(chan core.TelemetryEvent)
-	b.newClients <- messageChan
+	// 1. Write the 200 OK header and flush IMMEDIATELY to trigger JS onopen
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
+	// 2. The Safari/WebKit Fix: Send a 2KB comment padding.
+	// SSE ignores any line starting with a colon (it's treated as a comment).
+	// This instantly fills the browser's MIME-sniffing buffer so it processes live data immediately.
+	padding := make([]byte, 2048)
+	for i := range padding {
+		padding[i] = ' '
+	}
+	fmt.Fprintf(w, ":%s\n\n", string(padding))
+	flusher.Flush()
+
+	messageChan := make(chan []byte)
+	broker.newClients <- messageChan
 
 	defer func() {
-		b.closingClients <- messageChan
+		broker.closingClients <- messageChan
 	}()
 
-	notify := req.Context().Done()
 	for {
 		select {
-		case <-notify:
-			return
-		case event := <-messageChan:
-			jsonData, _ := json.Marshal(event)
-			fmt.Fprintf(rw, "data: %s\n\n", jsonData)
+		case <-r.Context().Done():
+			return // Client closed the browser tab
+		case msg := <-messageChan:
+			// 3. Format as SSE data and ALWAYS include the double newline \n\n
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			// 4. Force Go to push the bytes down the TCP socket immediately
 			flusher.Flush()
 		}
 	}
