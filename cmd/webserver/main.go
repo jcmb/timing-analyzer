@@ -21,7 +21,7 @@ import (
 )
 
 // Global Application Version
-const AppVersion = "v1.3.0"
+const AppVersion = "v1.3.1"
 
 type Session struct {
 	ID     string
@@ -129,13 +129,9 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("Created new session", "session", sessionID, "mode", req.Mode, "target", req.Host)
 
-	// FIX: Route pure TCP streams to the raw listener using its correct 2-argument signature
-	if req.Mode == "tcp" {
-		go stream.StartListener(cfg, packetChan)
-	} else {
-		go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
-	}
-
+	// Use StartNTRIPClient for all web-based TCP/NTRIP/IBSS connections.
+	// It handles raw TCP automatically if Mountpoint is empty and supports Context cancellation.
+	go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
 	go timing.Run(ctx, cfg, packetChan, broker.Notifier)
 
 	w.Header().Set("Content-Type", "application/json")
