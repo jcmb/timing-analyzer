@@ -1,7 +1,20 @@
 #!/bin/bash
 
-# Create a bin directory for the compiled outputs
+# Ensure the bin directory exists for the compiled outputs
 mkdir -p bin
+
+# Ensure the web directory exists (just in case)
+mkdir -p web
+
+echo "Downloading Chart.js for offline embedding..."
+curl -s -o web/chart.umd.min.js https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js
+
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to download Chart.js. Check your internet connection."
+    exit 1
+fi
+echo "Chart.js downloaded successfully."
+echo "------------------------------------------------"
 
 echo "Building CLI and Server for Linux (Intel/AMD 64-bit)..."
 env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer-cli-linux-amd64 ./cmd/cli

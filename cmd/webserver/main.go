@@ -21,7 +21,7 @@ import (
 )
 
 // Global Application Version
-const AppVersion = "v1.1.0"
+const AppVersion = "v1.3.0"
 
 type Session struct {
 	ID     string
@@ -45,6 +45,7 @@ func generateSessionID() string {
 }
 
 type StartRequest struct {
+	Mode       string  `json:"mode"`
 	Host       string  `json:"host"`
 	Port       int     `json:"port"`
 	Mountpoint string  `json:"mountpoint"`
@@ -53,6 +54,7 @@ type StartRequest struct {
 	Rate       float64 `json:"rate"`
 	Jitter     string  `json:"jitter"`
 	Decode     string  `json:"decode"`
+	Verbose    bool    `json:"verbose"`
 }
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +91,12 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := generateSessionID()
 
+	// Map the UI Verbose toggle to the Core Config level
+	verboseLevel := 0
+	if req.Verbose {
+		verboseLevel = 2
+	}
+
 	cfg := core.Config{
 		IP:            "tcp",
 		Host:          req.Host,
@@ -100,7 +108,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		JitterVal:     jitterVal,
 		JitterPct:     jitterPct,
 		Decode:        req.Decode,
-		Verbose:       2,
+		Verbose:       verboseLevel,
 		SessionID:     sessionID,
 		TimeoutExit:   false,
 	}
@@ -119,9 +127,15 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	manager.sessions[sessionID] = session
 	manager.mu.Unlock()
 
-	slog.Info("Created new session", "session", sessionID, "target", req.Host)
+	slog.Info("Created new session", "session", sessionID, "mode", req.Mode, "target", req.Host)
 
-	go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
+	// FIX: Route pure TCP streams to the raw listener using its correct 2-argument signature
+	if req.Mode == "tcp" {
+		go stream.StartListener(cfg, packetChan)
+	} else {
+		go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
+	}
+
 	go timing.Run(ctx, cfg, packetChan, broker.Notifier)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -144,7 +158,6 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// FORCE the browser to accept this as a live stream, bypassing Apache's defaults
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -162,7 +175,6 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	// Changed default port to 2102 to match the new configuration
 	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
 	basePath := flag.String("base-path", "/", "Base URL path (e.g., '/jitter')")
@@ -182,16 +194,20 @@ func main() {
 			return
 		}
 
-		// Dynamically inject the version into the HTML
 		html := strings.ReplaceAll(string(web.IndexServerHTML), "{{VERSION}}", AppVersion)
 
-		// FORCE the browser to fetch the fresh HTML (fixes the missing version issue)
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 		w.Header().Set("Content-Type", "text/html")
 
 		w.Write([]byte(html))
+	})
+
+	http.HandleFunc(path+"chart.js", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(web.ChartJS)
 	})
 
 	http.HandleFunc(path+"api/start", handleStart)

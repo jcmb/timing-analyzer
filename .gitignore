@@ -26,3 +26,4 @@ go.work.sum
 .DS_Store
 .DS_Store
 /bin
+web/chart.umd.min.js

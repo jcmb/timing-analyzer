@@ -108,3 +108,4 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		p.buf = p.buf[totalExpectedLen:]
 	}
 }
+

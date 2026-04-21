@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrimbleTools Jitter Analyzer</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="chart.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #121212; color: #e0e0e0; margin: 0; padding: 20px; }
         .header { border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; position: relative;}
@@ -114,6 +114,13 @@
                 <option value="dcol" selected>Trimble DCOL</option>
                 <option value="mb-cmr">Moving Baseline (MB-CMR)</option>
             </select>
+        </div>
+
+        <div class="form-group" style="margin-top: 15px;">
+            <label style="display: flex; align-items: center; cursor: pointer; color: #fff;">
+                <input type="checkbox" id="verbose" style="width: auto; margin-right: 10px;">
+                Enable Verbose Telemetry (Detailed Event Log)
+            </label>
         </div>
 
         <button onclick="startSession()">Connect & Analyze</button>
@@ -228,9 +235,11 @@
             const mode = document.getElementById('connType').value;
 
             const payload = {
+                mode: mode,
                 rate: parseFloat(document.getElementById('rate').value),
                 jitter: document.getElementById('jitter').value,
-                decode: document.getElementById('decode').value
+                decode: document.getElementById('decode').value,
+                verbose: document.getElementById('verbose').checked
             };
 
             if (mode === 'ibss') {
@@ -387,7 +396,6 @@
 
             // NETSKOPE DETECTION: Start the countdown IMMEDIATELY.
             proxyCheckTimer = setTimeout(() => {
-                // FORCE plain HTTP for the direct Go Server bypass since it does not have SSL configured
                 const altUrl = "http://" + window.location.hostname + ":2102/jitter";
                 showError(`⚠️ Stream blocked! A corporate proxy (like Netskope) is intercepting the live stream. Please disable it or access the tool directly via: <br><a href="${altUrl}" style="color:#4CAF50; text-decoration:underline;">${altUrl}</a>`);
                 stopSession();
@@ -424,7 +432,6 @@
                 }
 
                 const data = JSON.parse(event.data);
-                console.log("Received data:", data);
 
                 if (data.status === 'fatal') {
                     showError(data.message);
