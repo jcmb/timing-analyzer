@@ -14,8 +14,8 @@ import (
 
 // ... (Keep TimingState struct and logAndEmit function exactly the same) ...
 type TimingState struct {
+	PacketCount    uint64 // Moved to the top for 8-byte alignment on ARM32/32-bit systems
 	LastPacketTime time.Time
-	PacketCount    uint64
 	PrevError      time.Duration
 }
 
