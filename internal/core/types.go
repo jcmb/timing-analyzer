@@ -37,6 +37,8 @@ type PacketEvent struct {
 	Version       int
 	StationID     int
 	IsLastInBurst bool
+	GSOFBuffer    []byte // The reassembled multi-page payload
+	SequenceNumber uint8  // Byte 4 of the GSOF packet
 }
 
 type TelemetryEvent struct {
