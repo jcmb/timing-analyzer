@@ -1455,7 +1455,7 @@
     var padL = 68;
     var padR = 52;
     var padT = 32;
-    var padB = 44;
+    var padB = 78;
     var gw = cssW - padL - padR;
     var gh = cssH - padT - padB;
     var xs = pts.map(function (p) {
@@ -1524,8 +1524,6 @@
     });
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "top";
     xt.forEach(function (tk) {
       var px = xSc(tk);
       var lab =
@@ -1536,7 +1534,13 @@
             : Math.abs(tk) >= 1000
               ? tk.toFixed(1) + " s"
               : tk.toFixed(2) + " s";
-      ctx.fillText(lab, px, padT + gh + 4);
+      ctx.save();
+      ctx.translate(px, padT + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
     });
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
@@ -1661,9 +1665,12 @@
       const html = tangentGraphStandaloneDoc(init);
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "noopener,noreferrer,width=980,height=760");
+      const w = window.open(url, "_blank", "width=980,height=760");
       if (w) {
         window.__gsofTangentPlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-tangent-update", payload: init }, "*");
+        } catch (e) {}
         setTimeout(function () {
           URL.revokeObjectURL(url);
         }, 120000);
