@@ -37,7 +37,7 @@ func TestDecode01(t *testing.T) {
 			flags2 = f
 		}
 	}
-	if tow != "1.000000 s" || week != "2271" || svs != "5" {
+	if tow != "1.00 s" || week != "2271" || svs != "5" {
 		t.Fatalf("decode mismatch tow=%q week=%q svs=%q\n%s", tow, week, svs, fieldText(fields))
 	}
 	// Reserved bits at expected values are omitted by default (bit 6 clear);
@@ -208,8 +208,8 @@ func TestDecode08VelocityFieldOrderAndUnits(t *testing.T) {
 		}
 	}
 	wantLabels := []string{
-		"Velocity", "Velocity (km/h)",
-		"Vertical velocity", "Vertical velocity (km/h)",
+		"Velocity", "Vertical velocity",
+		"Velocity (km/h)", "Vertical velocity (km/h)",
 		"Heading", "Local heading",
 	}
 	if len(labels) != len(wantLabels) {

@@ -191,6 +191,25 @@
       align-items: stretch;
       width: 100%;
     }
+    /* Hex / binary value first, “Flag bit meanings” beside it; expanded grid uses full width below. */
+    .field-flags-top {
+      display: flex;
+      flex-flow: row wrap;
+      align-items: baseline;
+      gap: 0.5rem 0.75rem;
+      width: 100%;
+    }
+    .field-flags-top .field-value {
+      flex: 0 0 auto;
+      width: auto;
+    }
+    .field-flags-top > details.field-expand {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .field-flags-top > details.field-expand[open] {
+      flex-basis: 100%;
+    }
     .field-value {
       display: block;
       width: 100%;
@@ -423,19 +442,17 @@
       const valEl = document.createElement("span");
       valEl.className = "field-value";
       valEl.textContent = f.value;
-      inner.appendChild(valEl);
 
       if (f.detail && f.detail.length > 0) {
         const det = document.createElement("details");
         det.className = "field-expand";
         const sum = document.createElement("summary");
-        sum.textContent =
+        const isFlagField =
           f.label === "Flags 1" ||
           f.label === "Flags 2" ||
           f.label === "Velocity flags" ||
-          f.label === "Clock flags"
-            ? "Flag bit meanings"
-            : "Details";
+          f.label === "Clock flags";
+        sum.textContent = isFlagField ? "Flag bit meanings" : "Details";
         const nested = document.createElement("dl");
         nested.className = "field-nested";
         f.detail.forEach((child, j) => {
@@ -443,7 +460,18 @@
         });
         det.appendChild(sum);
         det.appendChild(nested);
-        inner.appendChild(det);
+        if (isFlagField) {
+          const top = document.createElement("div");
+          top.className = "field-flags-top";
+          top.appendChild(valEl);
+          top.appendChild(det);
+          inner.appendChild(top);
+        } else {
+          inner.appendChild(valEl);
+          inner.appendChild(det);
+        }
+      } else {
+        inner.appendChild(valEl);
       }
 
       dd.appendChild(inner);

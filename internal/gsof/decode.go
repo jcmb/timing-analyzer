@@ -180,7 +180,7 @@ func decode01(payload []byte) []Field {
 	towSec := float64(gpsTime) / 1000
 	return []Field{
 		kv("Summary", Lookup(1).Function),
-		kv("GPS time of week", fmt.Sprintf("%.6f s", towSec)),
+		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
 		kv("GPS week", fmt.Sprintf("%d", week)),
 		kv("SVs used", fmt.Sprintf("%d", sv)),
 		{
@@ -432,16 +432,17 @@ func decodeLocalZone(payload []byte) []Field {
 	}
 }
 
-// velocitySpeedPair adds m/s and km/h (m/s × 3.6) rows for one speed component.
-func velocitySpeedPair(label string, mps float32) []Field {
-	return []Field{
-		kv(label, fmt.Sprintf("%g m/s", mps)),
-		kv(label+" (km/h)", fmt.Sprintf("%g km/h", float64(mps)*3.6)),
-	}
-}
-
 func decodeVelocity(payload []byte) []Field {
 	br := beReader{b: payload}
+	appendSpeedRows := func(out []Field, vel, vvel float32) []Field {
+		out = append(out,
+			kv("Velocity", fmt.Sprintf("%g m/s", vel)),
+			kv("Vertical velocity", fmt.Sprintf("%g m/s", vvel)),
+			kv("Velocity (km/h)", fmt.Sprintf("%g km/h", float64(vel)*3.6)),
+			kv("Vertical velocity (km/h)", fmt.Sprintf("%g km/h", float64(vvel)*3.6)),
+		)
+		return out
+	}
 	if len(payload) >= 0x11 {
 		if !br.ok(1 + 4*4) {
 			return shortFields(Lookup(8).Function, payload, 17)
@@ -452,8 +453,7 @@ func decodeVelocity(payload []byte) []Field {
 		vvel := br.f32()
 		localHeading := br.f32()
 		out := []Field{velocityFlagsField(fl)}
-		out = append(out, velocitySpeedPair("Velocity", vel)...)
-		out = append(out, velocitySpeedPair("Vertical velocity", vvel)...)
+		out = appendSpeedRows(out, vel, vvel)
 		out = append(out,
 			kv("Heading", fmt.Sprintf("%g", heading)),
 			kv("Local heading", fmt.Sprintf("%g", localHeading)),
@@ -468,8 +468,7 @@ func decodeVelocity(payload []byte) []Field {
 	heading := br.f32()
 	vvel := br.f32()
 	out := []Field{velocityFlagsField(fl)}
-	out = append(out, velocitySpeedPair("Velocity", vel)...)
-	out = append(out, velocitySpeedPair("Vertical velocity", vvel)...)
+	out = appendSpeedRows(out, vel, vvel)
 	out = append(out,
 		kv("Heading", fmt.Sprintf("%g", heading)),
 		kv("Local heading", "(not present; payload length < 17 bytes)"),
