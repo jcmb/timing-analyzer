@@ -133,27 +133,35 @@
     details.card-more {
       border-top: none;
     }
-    details.card-more > summary {
+    details.card-more > summary.card-more-summary {
       cursor: pointer;
-      padding: 0.45rem 0.85rem;
-      font-size: 0.78rem;
-      color: var(--muted);
       list-style: none;
       user-select: none;
+      padding: 0;
       display: flex;
-      align-items: center;
+      flex-direction: row;
+      align-items: flex-start;
       gap: 0.35rem;
     }
-    details.card-more > summary::-webkit-details-marker { display: none; }
-    details.card-more > summary::before {
-      content: "▸";
-      display: inline-block;
+    details.card-more > summary.card-more-summary::-webkit-details-marker {
+      display: none;
+    }
+    .card-more-chevron {
+      flex: 0 0 0.85rem;
       width: 0.85rem;
+      text-align: center;
+      margin-top: 0.78rem;
       color: var(--muted);
+      font-size: 0.72rem;
+      line-height: 1;
       transition: transform 0.15s;
     }
-    details.card-more[open] > summary::before {
+    details.card-more[open] > summary.card-more-summary .card-more-chevron {
       transform: rotate(90deg);
+    }
+    .card-more-header-wrap {
+      flex: 1;
+      min-width: 0;
     }
     .card-body {
       padding: 0 0.85rem 0.75rem;
@@ -250,6 +258,34 @@
       grid-template-columns: 22rem 1fr;
       gap: 0.3rem 0.65rem;
       font-size: 0.8rem;
+    }
+    details.field-expand .field-nested.field-nested-flags {
+      display: flex;
+      flex-direction: column;
+      gap: 0.22rem;
+    }
+    .field-flag-bit-line {
+      display: flex;
+      flex-flow: row wrap;
+      align-items: baseline;
+      gap: 0.35rem 0.65rem;
+    }
+    .field-flag-bit-label {
+      color: var(--muted);
+      font-family: var(--sans);
+      flex: 0 1 22rem;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .field-flag-bit-value {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--text);
+      flex: 1 1 auto;
+      min-width: 0;
+      white-space: pre-wrap;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
     }
     details.field-expand .field-nested dt { color: var(--muted); font-family: var(--sans); }
     details.field-expand .field-nested dd {
@@ -429,6 +465,22 @@
       return "f" + i;
     }
 
+    /** One flag bit row: label and value on the same line (saves vertical space). */
+    function appendFlagBitLine(container, f, lineKey) {
+      const row = document.createElement("div");
+      row.className = "field-flag-bit-line";
+      row.dataset.field = lineKey;
+      const lab = document.createElement("span");
+      lab.className = "field-flag-bit-label";
+      lab.textContent = f.label;
+      const val = document.createElement("span");
+      val.className = "field-flag-bit-value";
+      val.textContent = f.value;
+      row.appendChild(lab);
+      row.appendChild(val);
+      container.appendChild(row);
+    }
+
     function appendFieldToDL(dl, f, fieldKey) {
       const dt = document.createElement("dt");
       dt.textContent = f.label;
@@ -453,10 +505,14 @@
           f.label === "Velocity flags" ||
           f.label === "Clock flags";
         sum.textContent = isFlagField ? "Flag bit meanings" : "Details";
-        const nested = document.createElement("dl");
-        nested.className = "field-nested";
+        const nested = document.createElement(isFlagField ? "div" : "dl");
+        nested.className = isFlagField ? "field-nested field-nested-flags" : "field-nested";
         f.detail.forEach((child, j) => {
-          appendFieldToDL(nested, child, fieldKey + "-d" + j);
+          if (isFlagField) {
+            appendFlagBitLine(nested, child, fieldKey + "-b" + j);
+          } else {
+            appendFieldToDL(nested, child, fieldKey + "-d" + j);
+          }
         });
         det.appendChild(sum);
         det.appendChild(nested);
@@ -512,6 +568,19 @@
       art.className = "card";
       art.dataset.subtype = key;
 
+      const det = document.createElement("details");
+      det.className = "card-more";
+
+      const sum = document.createElement("summary");
+      sum.className = "card-more-summary";
+      const chev = document.createElement("span");
+      chev.className = "card-more-chevron";
+      chev.setAttribute("aria-hidden", "true");
+      chev.textContent = "▸";
+
+      const headWrap = document.createElement("div");
+      headWrap.className = "card-more-header-wrap";
+
       const head = document.createElement("header");
       head.className = "card-head";
 
@@ -543,10 +612,10 @@
       head.appendChild(headTop);
       head.appendChild(stats);
 
-      const det = document.createElement("details");
-      det.className = "card-more";
-      const sum = document.createElement("summary");
-      sum.textContent = "Details";
+      headWrap.appendChild(head);
+      sum.appendChild(chev);
+      sum.appendChild(headWrap);
+
       const body = document.createElement("div");
       body.className = "card-body";
       const dl = document.createElement("dl");
@@ -563,7 +632,6 @@
       det.appendChild(sum);
       det.appendChild(body);
 
-      art.appendChild(head);
       art.appendChild(det);
       return art;
     }
@@ -580,7 +648,9 @@
       art.querySelector(".card-rate").textContent = r.rate;
 
       const copyAllBtn = art.querySelector(".card-copy-all");
-      copyAllBtn.onclick = () => {
+      copyAllBtn.onclick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
         void copyText(spreadsheetTSVFromRecord(r));
       };
 

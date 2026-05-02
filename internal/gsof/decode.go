@@ -543,19 +543,53 @@ func decodeClockFlags(flags byte) []Field {
 	return out
 }
 
+// formatFloat32_5 formats a scalar with five fractional digits (dimensionless values).
+func formatFloat32_5(v float32) string {
+	return fmt.Sprintf("%.5f", float64(v))
+}
+
+// formatMeters5F formats a length in metres to five decimals; positive values get a NBSP prefix for alignment.
+func formatMeters5F(v float32) string {
+	x := float64(v)
+	s := fmt.Sprintf("%.5f m", x)
+	if x > 0 {
+		return "\u00a0" + s
+	}
+	return s
+}
+
+// formatM2_5 formats a value in square metres to five decimals; positive values get a NBSP prefix.
+func formatM2_5(v float32) string {
+	x := float64(v)
+	s := fmt.Sprintf("%.5f m²", x)
+	if x > 0 {
+		return "\u00a0" + s
+	}
+	return s
+}
+
+func formatOrientationDMS(deg float64) string {
+	deg = math.Mod(deg, 360)
+	if deg < 0 {
+		deg += 360
+	}
+	d, m, s := splitDMS(deg)
+	return fmt.Sprintf("%d° %d′ %.5f″", d, m, s)
+}
+
 func decodeVCV(payload []byte) []Field {
 	br := beReader{b: payload}
 	if !br.ok(8*4 + 2) {
 		return shortFields(Lookup(11).Function, payload, 34)
 	}
-	labels := []string{
-		"POSITION_RMS", "VCV_xx", "VCV_xy", "VCV_xz", "VCV_yy", "VCV_yz", "VCV_zz", "UNIT_VARIANCE",
-	}
+	vcv := []string{"VCV_xx", "VCV_xy", "VCV_xz", "VCV_yy", "VCV_yz", "VCV_zz"}
 	var out []Field
 	out = append(out, kv("Summary", Lookup(11).Function))
-	for _, l := range labels {
-		out = append(out, kv(l, fmt.Sprintf("%g", br.f32())))
+	out = append(out, kv("POSITION_RMS (m)", formatMeters5F(br.f32())))
+	for _, l := range vcv {
+		out = append(out, kv(l+" (m²)", formatM2_5(br.f32())))
 	}
+	out = append(out, kv("UNIT_VARIANCE", formatFloat32_5(br.f32())))
 	out = append(out, kv("NUMBER_OF_EPOCHS", fmt.Sprintf("%d", br.u16())))
 	return out
 }
@@ -565,16 +599,31 @@ func decodeSigma(payload []byte) []Field {
 	if !br.ok(9*4 + 2) {
 		return shortFields(Lookup(12).Function, payload, 38)
 	}
-	labels := []string{
-		"POSITION_RMS", "SIGMA_EAST", "SIGMA_NORTH", "COVAR_EAST_NORTH", "SIGMA_UP",
-		"SEMI_MAJOR_AXIS", "SEMI_MINOR_AXIS", "ORIENTATION", "UNIT_VARIANCE",
-	}
+	prms := br.f32()
+	se := br.f32()
+	sn := br.f32()
+	cov := br.f32()
+	su := br.f32()
+	maj := br.f32()
+	minor := br.f32()
+	orient := br.f32()
+	uv := br.f32()
+	epochs := br.u16()
+
 	var out []Field
 	out = append(out, kv("Summary", Lookup(12).Function))
-	for _, l := range labels {
-		out = append(out, kv(l, fmt.Sprintf("%g", br.f32())))
-	}
-	out = append(out, kv("NUMBER_EPOCHS", fmt.Sprintf("%d", br.u16())))
+	out = append(out, kv("POSITION_RMS (m)", formatMeters5F(prms)))
+	out = append(out, kv("SIGMA_EAST (m)", formatMeters5F(se)))
+	out = append(out, kv("SIGMA_NORTH (m)", formatMeters5F(sn)))
+	out = append(out, kv("COVAR_EAST_NORTH (m²)", formatM2_5(cov)))
+	out = append(out, kv("SIGMA_UP (m)", formatMeters5F(su)))
+	out = append(out, kv("SEMI_MAJOR_AXIS (m)", formatMeters5F(maj)))
+	out = append(out, kv("SEMI_MINOR_AXIS (m)", formatMeters5F(minor)))
+	odeg := float64(orient)
+	out = append(out, kv("ORIENTATION (decimal °)", fmt.Sprintf("%.8f", odeg)))
+	out = append(out, kv("ORIENTATION (DMS)", formatOrientationDMS(odeg)))
+	out = append(out, kv("UNIT_VARIANCE", formatFloat32_5(uv)))
+	out = append(out, kv("NUMBER_EPOCHS", fmt.Sprintf("%d", epochs)))
 	return out
 }
 

@@ -93,6 +93,12 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(10).DocURL() != base+"gsof-messages-clock-info.html" {
 		t.Fatalf("type 10 doc: %s", Lookup(10).DocURL())
 	}
+	if Lookup(11).DocURL() != base+"gsof-messages-position-vcv.html" {
+		t.Fatalf("type 11 doc: %s", Lookup(11).DocURL())
+	}
+	if Lookup(12).DocURL() != base+"gsof-messages-sigma.html" {
+		t.Fatalf("type 12 doc: %s", Lookup(12).DocURL())
+	}
 }
 
 func TestDecode02LatLonRad(t *testing.T) {
@@ -130,6 +136,67 @@ func TestDecode02LatLonRad(t *testing.T) {
 	}
 	if height != "\u00a0123.457" {
 		t.Fatalf("height: %q", height)
+	}
+}
+
+func TestDecode11VCVUnitsAndDecimals(t *testing.T) {
+	payload := make([]byte, 34)
+	binary.BigEndian.PutUint32(payload[0:], math.Float32bits(1.25))
+	for i := 1; i < 8; i++ {
+		binary.BigEndian.PutUint32(payload[i*4:], math.Float32bits(-0.5))
+	}
+	binary.BigEndian.PutUint16(payload[32:], 42)
+	fields := Decode(11, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["POSITION_RMS (m)"] != "\u00a01.25000 m" {
+		t.Fatalf("POSITION_RMS: %q", got["POSITION_RMS (m)"])
+	}
+	if got["VCV_xx (m²)"] != "-0.50000 m²" {
+		t.Fatalf("VCV_xx: %q", got["VCV_xx (m²)"])
+	}
+	if got["NUMBER_OF_EPOCHS"] != "42" {
+		t.Fatalf("epochs: %q", got["NUMBER_OF_EPOCHS"])
+	}
+}
+
+func TestDecode12SigmaUnitsAndOrientation(t *testing.T) {
+	payload := make([]byte, 38)
+	binary.BigEndian.PutUint32(payload[0:], math.Float32bits(2))
+	binary.BigEndian.PutUint32(payload[4:], math.Float32bits(3))
+	binary.BigEndian.PutUint32(payload[8:], math.Float32bits(4))
+	binary.BigEndian.PutUint32(payload[12:], math.Float32bits(-1))
+	binary.BigEndian.PutUint32(payload[16:], math.Float32bits(5))
+	binary.BigEndian.PutUint32(payload[20:], math.Float32bits(6))
+	binary.BigEndian.PutUint32(payload[24:], math.Float32bits(7))
+	binary.BigEndian.PutUint32(payload[28:], math.Float32bits(45)) // °
+	binary.BigEndian.PutUint32(payload[32:], math.Float32bits(1))
+	binary.BigEndian.PutUint16(payload[36:], 3088)
+
+	fields := Decode(12, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["POSITION_RMS (m)"] != "\u00a02.00000 m" {
+		t.Fatalf("POSITION_RMS: %q", got["POSITION_RMS (m)"])
+	}
+	if got["COVAR_EAST_NORTH (m²)"] != "-1.00000 m²" {
+		t.Fatalf("COVAR: %q", got["COVAR_EAST_NORTH (m²)"])
+	}
+	if got["ORIENTATION (decimal °)"] != "45.00000000" {
+		t.Fatalf("orient dec: %q", got["ORIENTATION (decimal °)"])
+	}
+	if got["ORIENTATION (DMS)"] != "45° 0′ 0.00000″" {
+		t.Fatalf("orient DMS: %q", got["ORIENTATION (DMS)"])
+	}
+	if got["UNIT_VARIANCE"] != "1.00000" {
+		t.Fatalf("unit var: %q", got["UNIT_VARIANCE"])
+	}
+	if got["NUMBER_EPOCHS"] != "3088" {
+		t.Fatalf("epochs: %q", got["NUMBER_EPOCHS"])
 	}
 }
 
