@@ -1382,13 +1382,16 @@
     .dE::before { background: #3d8bfd; }
     .dN::before { background: #5bd48a; }
     .dU::before { background: #e6a23a; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
   </style>
 </head>
 <body>
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg"><span class="dE">dE (m)</span><span class="dN">dN (m)</span><span class="dU">dU (m)</span></div>
+    <div class="leg" title="Click a series name to show or hide it"><span class="dE">dE (m)</span><span class="dN">dN (m)</span><span class="dU">dU (m)</span></div>
   </div>
 ` +
       "\n  " +
@@ -1403,6 +1406,51 @@
   var INIT = JSON.parse(document.getElementById("gsof-tg-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
+  var seriesVis = { E: true, N: true, U: true };
+  function yAxisLabel() {
+    var parts = [];
+    if (seriesVis.E) {
+      parts.push("dE");
+    }
+    if (seriesVis.N) {
+      parts.push("dN");
+    }
+    if (seriesVis.U) {
+      parts.push("dU");
+    }
+    if (!parts.length) {
+      return "Metres (none visible)";
+    }
+    return "Metres (" + parts.join(", ") + ")";
+  }
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") {
+      return;
+    }
+    leg.dataset.bound = "1";
+    function syncLegendClasses() {
+      leg.querySelector(".dE").classList.toggle("off", !seriesVis.E);
+      leg.querySelector(".dN").classList.toggle("off", !seriesVis.N);
+      leg.querySelector(".dU").classList.toggle("off", !seriesVis.U);
+    }
+    leg.querySelector(".dE").addEventListener("click", function () {
+      seriesVis.E = !seriesVis.E;
+      syncLegendClasses();
+      draw();
+    });
+    leg.querySelector(".dN").addEventListener("click", function () {
+      seriesVis.N = !seriesVis.N;
+      syncLegendClasses();
+      draw();
+    });
+    leg.querySelector(".dU").addEventListener("click", function () {
+      seriesVis.U = !seriesVis.U;
+      syncLegendClasses();
+      draw();
+    });
+    syncLegendClasses();
+  }
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
@@ -1470,8 +1518,22 @@
     });
     var allY = [];
     pts.forEach(function (p) {
-      allY.push(p.de_m, p.dn_m, p.du_m);
+      if (seriesVis.E) {
+        allY.push(p.de_m);
+      }
+      if (seriesVis.N) {
+        allY.push(p.dn_m);
+      }
+      if (seriesVis.U) {
+        allY.push(p.du_m);
+      }
     });
+    if (!allY.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — click the legend to show dE, dN, or dU.", 24, cssH / 2);
+      return;
+    }
     var ymin = Math.min.apply(null, allY);
     var ymax = Math.max.apply(null, allY);
     if (!isFinite(ymin) || !isFinite(ymax)) {
@@ -1568,7 +1630,7 @@
     ctx.textAlign = "center";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText("Metres (dE, dN, dU)", 0, 0);
+    ctx.fillText(yAxisLabel(), 0, 0);
     ctx.restore();
     function stroke(getter, col) {
       ctx.strokeStyle = col;
@@ -1594,15 +1656,21 @@
         ctx.fill();
       }
     }
-    stroke(function (p) {
-      return p.de_m;
-    }, "#3d8bfd");
-    stroke(function (p) {
-      return p.dn_m;
-    }, "#5bd48a");
-    stroke(function (p) {
-      return p.du_m;
-    }, "#e6a23a");
+    if (seriesVis.E) {
+      stroke(function (p) {
+        return p.de_m;
+      }, "#3d8bfd");
+    }
+    if (seriesVis.N) {
+      stroke(function (p) {
+        return p.dn_m;
+      }, "#5bd48a");
+    }
+    if (seriesVis.U) {
+      stroke(function (p) {
+        return p.du_m;
+      }, "#e6a23a");
+    }
   }
   btn.addEventListener("click", function () {
     xUnit = xUnit === "h" ? "s" : "h";
@@ -1622,6 +1690,7 @@
   window.addEventListener("resize", function () {
     requestAnimationFrame(draw);
   });
+  bindLegend();
   draw();
 })();
 ` +
