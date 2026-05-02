@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -21,7 +22,15 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-const AppVersion = "v1.0.0"
+var dashboardHTMLLive = func() []byte {
+	return bytes.ReplaceAll(dashboardHTML, []byte("__GSOF_DASHBOARD_VERSION__"), []byte(Version))
+}()
+
+func setNoCacheHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+}
 
 func main() {
 	ipFlag := flag.String("ip", "udp", "tcp or udp")
@@ -74,16 +83,20 @@ func main() {
 			http.NotFound(w, r)
 			return
 		}
+		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(dashboardHTML)
+		_, _ = w.Write(dashboardHTMLLive)
 	})
 	mux.Handle("/events", broker)
 
 	addr := fmt.Sprintf("127.0.0.1:%d", *webPort)
 	srv := &http.Server{Addr: addr, Handler: mux}
 
+	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s port %d\n",
+		Version, addr, cfg.IP, cfg.Port)
+
 	go func() {
-		slog.Info("GSOF dashboard", "version", AppVersion, "url", "http://"+addr, "stream", fmt.Sprintf("%s:%d", cfg.IP, cfg.Port))
+		slog.Info("GSOF dashboard listening", "version", Version, "url", "http://"+addr, "stream", fmt.Sprintf("%s:%d", cfg.IP, cfg.Port))
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server", "error", err)
 			os.Exit(1)

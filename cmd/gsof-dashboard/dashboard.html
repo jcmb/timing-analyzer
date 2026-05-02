@@ -3,7 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>GSOF dashboard</title>
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <title>Trimble GSOF · __GSOF_DASHBOARD_VERSION__</title>
   <style>
     :root {
       --bg: #0f1419;
@@ -35,6 +37,16 @@
       align-items: center;
       gap: 0.75rem 1.5rem;
     }
+    .build-banner {
+      margin: 0 0 0.5rem;
+      padding: 0;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.02em;
+    }
+    .build-banner span { opacity: 0.85; font-weight: 500; color: var(--muted); }
     header h1 {
       margin: 0;
       font-size: 1.1rem;
@@ -57,56 +69,96 @@
     .pill.bad { background: rgba(248, 81, 73, 0.15); color: var(--bad); }
     .pill.wait { background: rgba(210, 153, 34, 0.15); color: var(--warn); }
     #status { font-size: 0.8rem; color: var(--muted); }
+    a.doc-top-link {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    a.doc-top-link:hover { text-decoration: underline; }
     main { padding: 1rem 1.25rem 2rem; max-width: 56rem; margin: 0 auto; }
     #cards {
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
     }
-    details.card {
+    article.card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 8px;
       overflow: hidden;
-    }
-    details.card summary {
-      cursor: pointer;
-      padding: 0.65rem 0.85rem;
-      font-family: var(--mono);
-      font-size: 0.85rem;
-      list-style: none;
       display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      user-select: none;
+      flex-direction: column;
     }
-    details.card summary::-webkit-details-marker { display: none; }
-    details.card summary::before {
-      content: "▸";
-      display: inline-block;
-      width: 1rem;
+    .card-head {
+      padding: 0.75rem 0.9rem 0.65rem;
+      border-bottom: 1px solid var(--border);
+    }
+    /* GSOF human-readable message name — always first / top of card */
+    h2.card-title {
+      margin: 0 0 0.45rem;
+      padding: 0;
+      font-size: 1.05rem;
+      font-weight: 650;
+      color: var(--text);
+      line-height: 1.3;
+    }
+    .card-stats {
+      font-family: var(--mono);
+      font-size: 0.8rem;
       color: var(--muted);
-      transition: transform 0.15s;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 0.65rem;
     }
-    details.card[open] summary::before {
-      transform: rotate(90deg);
-    }
-    details.card summary .rate { color: var(--accent); margin-left: auto; }
-    details.card summary .stale {
-      font-size: 0.7rem;
+    .card-stats .card-rate { color: var(--accent); margin-left: auto; }
+    .card-stats .card-stale {
+      font-size: 0.65rem;
       text-transform: uppercase;
       color: var(--warn);
       border: 1px solid var(--warn);
-      padding: 0.1rem 0.35rem;
+      padding: 0.08rem 0.3rem;
       border-radius: 4px;
     }
+    .card-stats .card-stale[hidden] { display: none !important; }
+    details.card-more {
+      border-top: none;
+    }
+    details.card-more > summary {
+      cursor: pointer;
+      padding: 0.45rem 0.85rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      list-style: none;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    details.card-more > summary::-webkit-details-marker { display: none; }
+    details.card-more > summary::before {
+      content: "▸";
+      display: inline-block;
+      width: 0.85rem;
+      color: var(--muted);
+      transition: transform 0.15s;
+    }
+    details.card-more[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .card-function {
+      margin: 0 0 0.5rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
     .card-body {
-      padding: 0 0.85rem 0.85rem;
+      padding: 0 0.85rem 0.75rem;
       font-size: 0.85rem;
       color: var(--muted);
       border-top: 1px solid var(--border);
-      margin-top: 0;
-      padding-top: 0.65rem;
+      padding-top: 0.55rem;
     }
     .card-body dl {
       margin: 0;
@@ -115,7 +167,18 @@
       gap: 0.35rem 0.75rem;
     }
     .card-body dt { color: var(--muted); }
-    .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); }
+    .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); word-break: break-word; }
+    .doc-link-wrap {
+      margin: 0.5rem 0 0;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .doc-link {
+      color: var(--accent);
+      font-size: 0.8rem;
+      text-decoration: none;
+    }
+    .doc-link:hover { text-decoration: underline; }
     #warnings {
       margin-top: 1.5rem;
       padding: 0.75rem 1rem;
@@ -137,7 +200,9 @@
 </head>
 <body>
   <header>
+    <p class="build-banner" title="Increment cmd/gsof-dashboard/version.go when you change this app">Build <strong>__GSOF_DASHBOARD_VERSION__</strong> <span>— match the version printed at process startup</span></p>
     <h1>Trimble GSOF</h1>
+    <a class="doc-top-link" href="https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html" target="_blank" rel="noopener noreferrer">Trimble GSOF overview (docs) ↗</a>
     <span id="streamPill" class="pill wait">connecting…</span>
     <div class="meta" id="meta"></div>
     <span id="status"></span>
@@ -162,6 +227,114 @@
       streamPill.textContent = label;
     }
 
+    function subtypeKey(r) {
+      return String(r.type);
+    }
+
+    /** Attribute value for [data-subtype="…"] (types are numeric; escape " and \\). */
+    function attrSel(s) {
+      return String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+
+    function cardSelector(key) {
+      return 'article.card[data-subtype="' + attrSel(key) + '"]';
+    }
+
+    function dlRow(dl, label, fieldKey, value) {
+      const dt = document.createElement("dt");
+      dt.textContent = label;
+      const dd = document.createElement("dd");
+      dd.dataset.field = fieldKey;
+      dd.textContent = value;
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+
+    function fillFields(dl, fields) {
+      dl.replaceChildren();
+      if (!fields || !fields.length) {
+        dlRow(dl, "Decoded fields", "none", "—");
+        return;
+      }
+      fields.forEach((f, i) => {
+        dlRow(dl, f.label, "f" + i, f.value);
+      });
+    }
+
+    /** Create card once; same <details> node is kept across SSE updates. */
+    function createCard(key) {
+      const art = document.createElement("article");
+      art.className = "card";
+      art.dataset.subtype = key;
+
+      const head = document.createElement("header");
+      head.className = "card-head";
+
+      const title = document.createElement("h2");
+      title.className = "card-title";
+
+      const stats = document.createElement("div");
+      stats.className = "card-stats";
+      const line = document.createElement("span");
+      line.className = "card-line";
+      const stale = document.createElement("span");
+      stale.className = "card-stale";
+      stale.hidden = true;
+      const rate = document.createElement("span");
+      rate.className = "card-rate";
+      stats.appendChild(line);
+      stats.appendChild(stale);
+      stats.appendChild(rate);
+
+      head.appendChild(title);
+      head.appendChild(stats);
+
+      const det = document.createElement("details");
+      det.className = "card-more";
+      const sum = document.createElement("summary");
+      sum.textContent = "Technical details";
+      const body = document.createElement("div");
+      body.className = "card-body";
+      const fn = document.createElement("p");
+      fn.className = "card-function";
+      const dl = document.createElement("dl");
+      const docWrap = document.createElement("p");
+      docWrap.className = "doc-link-wrap";
+      const docA = document.createElement("a");
+      docA.className = "doc-link";
+      docA.target = "_blank";
+      docA.rel = "noopener noreferrer";
+      docA.textContent = "Open Trimble documentation for this message ↗";
+      docWrap.appendChild(docA);
+      body.appendChild(fn);
+      body.appendChild(dl);
+      body.appendChild(docWrap);
+      det.appendChild(sum);
+      det.appendChild(body);
+
+      art.appendChild(head);
+      art.appendChild(det);
+      return art;
+    }
+
+    function updateCard(art, r) {
+      art.querySelector("h2.card-title").textContent = r.name;
+      art.querySelector(".card-line").textContent =
+        "Type " + r.type_hex + " (" + String(r.type) + ")  |  " + String(r.count);
+      const stale = art.querySelector(".card-stale");
+      stale.hidden = !r.stale;
+      if (!stale.hidden) {
+        stale.textContent = "stale";
+      }
+      art.querySelector(".card-rate").textContent = r.rate;
+
+      const body = art.querySelector(".card-body");
+      body.querySelector(".card-function").textContent = r.function || "";
+      fillFields(body.querySelector("dl"), r.fields);
+      const docA = body.querySelector(".doc-link");
+      docA.href = r.doc_url || "https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html";
+    }
+
     function render(data) {
       metaEl.textContent =
         "mode " + data.mode + " · port " + data.port +
@@ -173,47 +346,32 @@
         setStreamPill(false, "heartbeat timeout");
       }
 
-      cardsEl.replaceChildren();
+      const wanted = new Set();
       for (const r of data.records) {
-        const det = document.createElement("details");
-        det.className = "card";
-        const sum = document.createElement("summary");
-        const left = document.createElement("span");
-        left.textContent = "Type " + r.type_hex + " (" + String(r.type) + ")  |  " + String(r.count);
-        const rate = document.createElement("span");
-        rate.className = "rate";
-        rate.textContent = r.rate;
-        sum.appendChild(left);
-        if (r.stale) {
-          const st = document.createElement("span");
-          st.className = "stale";
-          st.textContent = "stale";
-          sum.appendChild(st);
-        }
-        sum.appendChild(rate);
+        wanted.add(subtypeKey(r));
+      }
 
-        const body = document.createElement("div");
-        body.className = "card-body";
-        const dl = document.createElement("dl");
-        function row(label, val) {
-          const dt = document.createElement("dt");
-          dt.textContent = label;
-          const dd = document.createElement("dd");
-          dd.textContent = val;
-          dl.appendChild(dt);
-          dl.appendChild(dd);
+      for (const r of data.records) {
+        const key = subtypeKey(r);
+        let art = cardsEl.querySelector(cardSelector(key));
+        if (!art) {
+          art = createCard(key);
+          cardsEl.appendChild(art);
         }
-        row("Title", r.name);
-        row("Type (hex)", r.type_hex);
-        row("Type (dec)", String(r.type));
-        row("Count", String(r.count));
-        row("Rate", r.rate);
-        row("Stale", r.stale ? "yes" : "no");
-        body.appendChild(dl);
+        updateCard(art, r);
+      }
 
-        det.appendChild(sum);
-        det.appendChild(body);
-        cardsEl.appendChild(det);
+      cardsEl.querySelectorAll("article.card").forEach((art) => {
+        if (!wanted.has(art.dataset.subtype)) {
+          art.remove();
+        }
+      });
+
+      for (const r of data.records) {
+        const art = cardsEl.querySelector(cardSelector(subtypeKey(r)));
+        if (art) {
+          cardsEl.appendChild(art);
+        }
       }
 
       if (data.warnings && data.warnings.length) {
