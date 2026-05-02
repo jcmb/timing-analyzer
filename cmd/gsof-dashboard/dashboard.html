@@ -999,13 +999,8 @@
       const note = document.createElement("p");
       note.className = "sv-brief-legend-note";
       if (kind === "sv33") {
-        if (showF2Cols) {
-          note.textContent =
-            "Detailed view shows Flags 2 bits 0–7 as columns when -show-expected-reserved-bits is enabled. Match each row’s SV system to the Flags 2 section above. Full bytes: Basic view.";
-        } else {
-          note.textContent =
-            "Enable gsof-dashboard with -show-expected-reserved-bits to add Flags 2 bit columns (0–7) in Detailed view.";
-        }
+        note.textContent =
+          "Detailed view shows Flags 2 bits 0–7 as columns. Match each row’s SV system to the Flags 2 section above. Basic view lists full 8-bit Flags 1 and Flags 2.";
       } else if (showF2Cols) {
         note.textContent =
           "Flags 2 bits 2–7 are carried on the wire but are not shown as columns (reserved / not documented in the OEM excerpt used for this UI). See Basic view for the full 8-bit Flags 2 binary.";
@@ -1277,9 +1272,9 @@
         const thead = document.createElement("thead");
         const trh = document.createElement("tr");
         const heads = is33
-          ? ["SV system", "PRN", "Flags 1 (binary)"]
+          ? ["SV system", "PRN", "Flags 1 (binary)", "Flags 2 (binary)"]
           : ["PRN", "Flags 1 (binary)"];
-        if (gsofShowExpectedReservedBits) {
+        if (!is33 && gsofShowExpectedReservedBits) {
           heads.push("Flags 2 (binary)");
         }
         heads.forEach((h) => {
@@ -1304,7 +1299,7 @@
           td1.textContent = svBriefFmtU8Binary(row.flags1);
           tr.appendChild(td0);
           tr.appendChild(td1);
-          if (gsofShowExpectedReservedBits) {
+          if (is33 || gsofShowExpectedReservedBits) {
             const td2 = document.createElement("td");
             td2.className = "mono";
             td2.textContent = svBriefFmtU8Binary(row.flags2);
@@ -1322,14 +1317,14 @@
           rows,
           "SV system",
           "system_name",
-          gsofShowExpectedReservedBits,
+          true,
           null,
           false,
           "PRN",
           "prn",
-          gsofShowExpectedReservedBits ? 8 : 0
+          8
         );
-        satFlagsAppendLegend(root, gsofShowExpectedReservedBits, "sv33");
+        satFlagsAppendLegend(root, true, "sv33");
       } else {
         satFlagsRenderDetailedGrid(
           root,
