@@ -132,7 +132,7 @@ func TestStats_LLHHistoryFromType1And2(t *testing.T) {
 		t.Fatalf("llh_history len %d", len(row.LLHHistory))
 	}
 	p := row.LLHHistory[0]
-	if p.GPSTOWSec != 5.0 || math.Abs(p.LatDeg-90) > 1e-9 || p.LonDeg != 0 {
+	if p.GPSTOWSec != 5.0 || math.Abs(p.LatDeg-90) > 1e-9 || p.LonDeg != 0 || math.Abs(p.HeightM-100) > 1e-9 {
 		t.Fatalf("point %+v", p)
 	}
 }

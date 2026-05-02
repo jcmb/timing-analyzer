@@ -140,11 +140,12 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 			}
 		}
 		if recType == 2 {
-			if lat, lon, ok := gsof.ParseLatLonDeg(pld); ok {
+			if lat, lon, h, ok := gsof.ParseLLHDeg(pld); ok {
 				s.appendLLHPoint(gsof.LLHPoint{
 					GPSTOWSec: s.lastGPSTOWSec,
 					LatDeg:    lat,
 					LonDeg:    lon,
+					HeightM:   h,
 				})
 			}
 		}

@@ -102,6 +102,9 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(13).DocURL() != base+"gsof-messages-sv-brief.html" {
 		t.Fatalf("type 13 doc: %s", Lookup(13).DocURL())
 	}
+	if Lookup(33).DocURL() != base+"gsof-messages-all-sv-brief.html" {
+		t.Fatalf("type 33 doc: %s", Lookup(33).DocURL())
+	}
 	if Lookup(15).DocURL() != base+"gsof-messages-receiver-serial-no.html" {
 		t.Fatalf("type 15 doc: %s", Lookup(15).DocURL())
 	}
@@ -233,6 +236,28 @@ func TestDecode09PDOPOneDecimal(t *testing.T) {
 	}
 }
 
+func TestDecode33AllSVBriefFields(t *testing.T) {
+	// One SV: GPS (0), PRN 7, flags1=0xAA, flags2=0xBB
+	payload := []byte{0x01, 0x00, 0x07, 0xaa, 0xbb}
+	fields := Decode(33, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["Summary"] != Lookup(33).Function {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if got["SV count"] != "1" {
+		t.Fatalf("count: %q", got["SV count"])
+	}
+	if got["SV 0 SV system"] != "GPS" || got["SV 0 PRN"] != "7" {
+		t.Fatalf("row0: %#v", got)
+	}
+	if got["SV 0 Flags 1 (binary)"] != "10101010" || got["SV 0 Flags 2 (binary)"] != "10111011" {
+		t.Fatalf("flags: %#v", got)
+	}
+}
+
 func TestDecode28ReceiverDiagnostics(t *testing.T) {
 	m := Lookup(28)
 	if m.Title != "Receiver diagnostics" {
@@ -268,7 +293,7 @@ func TestDecode28ReceiverDiagnostics(t *testing.T) {
 	if got["Common L1 SVs"] != "11" || got["Common L2 SVs"] != "12" || got["Diff SVs in use"] != "8" {
 		t.Fatalf("counts: %#v", got)
 	}
-	if got["Datalink latency"] != "\u00a02.5 s" {
+	if got["Datalink latency"] != "2.5 s" {
 		t.Fatalf("latency: %q", got["Datalink latency"])
 	}
 	if base == nil || len(base.Detail) != 1 {

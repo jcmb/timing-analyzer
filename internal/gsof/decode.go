@@ -910,7 +910,7 @@ func decodeReceiverDiagnostics(payload []byte) []Field {
 		kv("Link integrity (last 100 s)", formatSignedDecimalNBSP(linkPct, 1)+" %"),
 		kv("Common L1 SVs", fmt.Sprintf("%d", commonL1)),
 		kv("Common L2 SVs", fmt.Sprintf("%d", commonL2)),
-		kv("Datalink latency", formatSignedDecimalNBSP(latencySec, 1)+" s"),
+		kv("Datalink latency", fmt.Sprintf("%.1f", latencySec)+" s"),
 		kv("Diff SVs in use", fmt.Sprintf("%d", diffSVs)),
 	)
 	return out
@@ -930,17 +930,18 @@ func decodeAllSVBrief(payload []byte) []Field {
 	if len(payload) < 1 {
 		return shortFields(Lookup(33).Function, payload, 1)
 	}
-	br := beReader{b: payload}
-	n := int(br.u8())
+	n, rows := ParseAllSVBriefEntries(payload)
 	var out []Field
+	out = append(out, kv("Summary", Lookup(33).Function))
 	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
-	for i := 0; i < n; i++ {
-		if !br.ok(4) {
-			out = append(out, kv("Parse", "truncated"))
-			break
-		}
-		out = append(out, kv(fmt.Sprintf("SV %d", i),
-			fmt.Sprintf("%d %d %d %d", br.u8(), br.u8(), br.u8(), br.u8())))
+	if len(rows) < n {
+		out = append(out, kv("Parse", "truncated all-SV brief list"))
+	}
+	for i, e := range rows {
+		out = append(out, kv(fmt.Sprintf("SV %d SV system", i), e.SystemName))
+		out = append(out, kv(fmt.Sprintf("SV %d PRN", i), fmt.Sprintf("%d", e.PRN)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 1 (binary)", i), fmt.Sprintf("%08b", e.Flags1)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 2 (binary)", i), fmt.Sprintf("%08b", e.Flags2)))
 	}
 	return out
 }

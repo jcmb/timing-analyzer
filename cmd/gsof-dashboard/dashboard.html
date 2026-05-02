@@ -1891,7 +1891,7 @@
       return JSON.stringify(initObj).replace(/</g, "\\u003c");
     }
 
-    /** Full HTML document for type-2 graph window: lat/lon decimal degrees vs GPS TOW (dual Y-axis). */
+    /** Full HTML document for type-2 graph window: lat/lon (°), height (m) vs GPS TOW (multi Y-axis). */
     function llhGraphStandaloneDoc(initObj) {
       const j = llhGraphJsonForScript(initObj);
       const so = "<scr" + "ipt";
@@ -1900,7 +1900,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>GSOF · latitude / longitude</title>
+  <title>GSOF · position (lat / lon / height)</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -1913,6 +1913,7 @@
     .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
     .latY::before { background: #5bd48a; }
     .lonY::before { background: #3d8bfd; }
+    .hM::before { background: #e6a23a; }
     .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
     .leg span:hover { color: #e8eef4; }
     .leg span.off { opacity: 0.38; text-decoration: line-through; }
@@ -1922,7 +1923,7 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Click a trace name to show or hide it"><span class="latY">Latitude (°)</span><span class="lonY">Longitude (°)</span></div>
+    <div class="leg" title="Click a trace name to show or hide it"><span class="latY">Latitude (°)</span><span class="lonY">Longitude (°)</span><span class="hM">Height (m)</span></div>
   </div>
 ` +
         "\n  " +
@@ -1937,7 +1938,7 @@
   var INIT = JSON.parse(document.getElementById("gsof-llh-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
-  var seriesVis = { lat: true, lon: true };
+  var seriesVis = { lat: false, lon: false, hm: true };
   function bindLegend() {
     var leg = document.querySelector(".leg");
     if (!leg || leg.dataset.bound === "1") {
@@ -1947,6 +1948,7 @@
     function syncLegendClasses() {
       leg.querySelector(".latY").classList.toggle("off", !seriesVis.lat);
       leg.querySelector(".lonY").classList.toggle("off", !seriesVis.lon);
+      leg.querySelector(".hM").classList.toggle("off", !seriesVis.hm);
     }
     leg.querySelector(".latY").addEventListener("click", function () {
       seriesVis.lat = !seriesVis.lat;
@@ -1955,6 +1957,11 @@
     });
     leg.querySelector(".lonY").addEventListener("click", function () {
       seriesVis.lon = !seriesVis.lon;
+      syncLegendClasses();
+      draw();
+    });
+    leg.querySelector(".hM").addEventListener("click", function () {
+      seriesVis.hm = !seriesVis.hm;
       syncLegendClasses();
       draw();
     });
@@ -2028,12 +2035,8 @@
       ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
       return;
     }
-    var padL = 72;
-    var padR = 72;
     var padT = 32;
     var padB = 78;
-    var gw = cssW - padL - padR;
-    var gh = cssH - padT - padB;
     var xs = pts.map(function (p) {
       if (xUnit === "h") {
         var sec = p.gps_tow_s % 86400;
@@ -2046,6 +2049,7 @@
     });
     var latVals = [];
     var lonVals = [];
+    var hVals = [];
     pts.forEach(function (p) {
       if (seriesVis.lat) {
         latVals.push(p.lat_deg);
@@ -2053,11 +2057,17 @@
       if (seriesVis.lon) {
         lonVals.push(p.lon_deg);
       }
+      if (seriesVis.hm) {
+        var hm = p.height_m;
+        if (typeof hm === "number" && isFinite(hm)) {
+          hVals.push(hm);
+        }
+      }
     });
-    if (!latVals.length && !lonVals.length) {
+    if (!latVals.length && !lonVals.length && !hVals.length) {
       ctx.fillStyle = "#e8eef4";
       ctx.font = "14px system-ui, sans-serif";
-      ctx.fillText("Both traces hidden — click the legend to show latitude or longitude.", 24, cssH / 2);
+      ctx.fillText("All traces hidden — click the legend to show latitude, longitude, or height.", 24, cssH / 2);
       return;
     }
     var latR = { lo: 0, hi: 1 };
@@ -2068,15 +2078,26 @@
     if (seriesVis.lon && lonVals.length) {
       lonR = yPadRange(Math.min.apply(null, lonVals), Math.max.apply(null, lonVals));
     }
+    var hR = { lo: 0, hi: 1 };
+    if (seriesVis.hm && hVals.length) {
+      hR = yPadRange(Math.min.apply(null, hVals), Math.max.apply(null, hVals));
+    }
     var yminL = latR.lo;
     var ymaxL = latR.hi;
     var yminN = lonR.lo;
     var ymaxN = lonR.hi;
+    var yminH = hR.lo;
+    var ymaxH = hR.hi;
     var xmin = Math.min.apply(null, xs);
     var xmax = Math.max.apply(null, xs);
     var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
     var x0 = xmin - xPad;
     var x1 = xmax + xPad;
+    var needWideLeft = seriesVis.hm && hVals.length && seriesVis.lat && latVals.length;
+    var padL = needWideLeft ? 92 : 72;
+    var padR = 72;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
     function xSc(v) {
       return padL + ((v - x0) / (x1 - x0)) * gw;
     }
@@ -2086,6 +2107,9 @@
     function yScN(v) {
       return padT + (1 - (v - yminN) / (ymaxN - yminN)) * gh;
     }
+    function yScH(v) {
+      return padT + (1 - (v - yminH) / (ymaxH - yminH)) * gh;
+    }
     ctx.strokeStyle = "#2a333d";
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -2094,7 +2118,14 @@
     ctx.lineTo(padL + gw, padT + gh);
     ctx.stroke();
     var xt = niceTicks(x0, x1, 10);
-    var gridYTicks = seriesVis.lat && latVals.length ? niceTicks(yminL, ymaxL, 9) : niceTicks(yminN, ymaxN, 9);
+    var gridYTicks;
+    if (seriesVis.hm && hVals.length) {
+      gridYTicks = niceTicks(yminH, ymaxH, 9);
+    } else if (seriesVis.lat && latVals.length) {
+      gridYTicks = niceTicks(yminL, ymaxL, 9);
+    } else {
+      gridYTicks = niceTicks(yminN, ymaxN, 9);
+    }
     ctx.strokeStyle = "#1a2430";
     ctx.lineWidth = 0.5;
     xt.forEach(function (tk) {
@@ -2105,7 +2136,8 @@
       ctx.stroke();
     });
     gridYTicks.forEach(function (tk) {
-      var py = seriesVis.lat && latVals.length ? yScL(tk) : yScN(tk);
+      var py =
+        seriesVis.hm && hVals.length ? yScH(tk) : seriesVis.lat && latVals.length ? yScL(tk) : yScN(tk);
       ctx.beginPath();
       ctx.moveTo(padL, py);
       ctx.lineTo(padL + gw, py);
@@ -2133,10 +2165,22 @@
     });
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
+    var hLabX = padL - 6;
+    var latLabX = padL - 6;
+    if (seriesVis.hm && hVals.length && seriesVis.lat && latVals.length) {
+      hLabX = padL - 54;
+      latLabX = padL - 6;
+    }
+    if (seriesVis.hm && hVals.length) {
+      niceTicks(yminH, ymaxH, 9).forEach(function (tk) {
+        var py = yScH(tk);
+        ctx.fillText(tk.toFixed(2) + " m", hLabX, py);
+      });
+    }
     if (seriesVis.lat && latVals.length) {
       niceTicks(yminL, ymaxL, 9).forEach(function (tk) {
         var py = yScL(tk);
-        ctx.fillText(tk.toFixed(6) + "°", padL - 6, py);
+        ctx.fillText(tk.toFixed(6) + "°", latLabX, py);
       });
     }
     ctx.textAlign = "left";
@@ -2166,9 +2210,17 @@
     ctx.textAlign = "center";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    var ycap = "Decimal degrees";
-    if (seriesVis.lat && seriesVis.lon && latVals.length && lonVals.length) {
+    var ycap = "Position";
+    if (seriesVis.hm && hVals.length && seriesVis.lat && latVals.length && seriesVis.lon && lonVals.length) {
+      ycap = "Height (m) & lat (°) left · Longitude (°) right";
+    } else if (seriesVis.hm && hVals.length && seriesVis.lat && latVals.length) {
+      ycap = "Height (m) outer · Latitude (°) left";
+    } else if (seriesVis.hm && hVals.length && seriesVis.lon && lonVals.length) {
+      ycap = "Height (m) left · Longitude (°) right";
+    } else if (seriesVis.lat && latVals.length && seriesVis.lon && lonVals.length) {
       ycap = "Latitude (°) left · Longitude (°) right";
+    } else if (seriesVis.hm && hVals.length) {
+      ycap = "Height (m)";
     } else if (seriesVis.lat && latVals.length) {
       ycap = "Latitude (°)";
     } else if (seriesVis.lon && lonVals.length) {
@@ -2183,8 +2235,17 @@
       var mv = false;
       var i;
       for (i = 0; i < pts.length; i++) {
+        var yv = getter(pts[i]);
+        if (!isFinite(yv)) {
+          mv = false;
+          continue;
+        }
         var px = xSc(xs[i]);
-        var py = yScFn(getter(pts[i]));
+        var py = yScFn(yv);
+        if (!isFinite(py)) {
+          mv = false;
+          continue;
+        }
         if (!mv) {
           ctx.moveTo(px, py);
           mv = true;
@@ -2194,10 +2255,13 @@
       }
       ctx.stroke();
       if (pts.length === 1) {
-        ctx.fillStyle = col;
-        ctx.beginPath();
-        ctx.arc(xSc(xs[0]), yScFn(getter(pts[0])), 3.5, 0, Math.PI * 2);
-        ctx.fill();
+        var yv0 = getter(pts[0]);
+        if (isFinite(yv0) && isFinite(yScFn(yv0))) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(xSc(xs[0]), yScFn(yv0), 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
     }
     if (seriesVis.lat && latVals.length) {
@@ -2216,6 +2280,15 @@
         },
         yScN,
         "#3d8bfd"
+      );
+    }
+    if (seriesVis.hm && hVals.length) {
+      stroke(
+        function (p) {
+          return typeof p.height_m === "number" && isFinite(p.height_m) ? p.height_m : NaN;
+        },
+        yScH,
+        "#e6a23a"
       );
     }
   }
@@ -2372,7 +2445,7 @@
       btn.className = "llh-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open latitude / longitude (decimal °) vs GPS TOW in a new window (seconds or time-of-day on X)";
+        "Open latitude / longitude (°) and height (m) vs GPS TOW in a new window (seconds or time-of-day on X)";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();

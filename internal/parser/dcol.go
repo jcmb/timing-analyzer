@@ -2,9 +2,50 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 	"time"
 	"timing-analyzer/internal/core"
 )
+
+// hexBytesSpaced returns each byte as two uppercase hex digits, separated by spaces (e.g. "1A 2B FF").
+func hexBytesSpaced(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.Grow(len(b)*3 - 1)
+	for i, v := range b {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(fmt.Sprintf("%02X", v))
+	}
+	return sb.String()
+}
+
+// printGSOFSubRecordsVerbose2 logs each sub-record in a reassembled GSOF buffer: type, length byte, and full record bytes as spaced hex.
+func printGSOFSubRecordsVerbose2(gsofBuffer []byte) {
+	ptr := 0
+	for ptr < len(gsofBuffer) {
+		if ptr+2 > len(gsofBuffer) {
+			fmt.Printf("[VERBOSE2] GSOF sub-record truncated at offset %d (remainder %d bytes): %s\n",
+				ptr, len(gsofBuffer)-ptr, hexBytesSpaced(gsofBuffer[ptr:]))
+			return
+		}
+		recType := gsofBuffer[ptr]
+		recLen := int(gsofBuffer[ptr+1])
+		endIdx := ptr + 2 + recLen
+		if endIdx > len(gsofBuffer) {
+			fmt.Printf("[VERBOSE2] GSOF sub-record type=0x%02X len=%d incomplete (need %d bytes, %d remain): %s\n",
+				recType, recLen, endIdx-ptr, len(gsofBuffer)-ptr, hexBytesSpaced(gsofBuffer[ptr:]))
+			return
+		}
+		recBytes := gsofBuffer[ptr:endIdx]
+		fmt.Printf("[VERBOSE2] GSOF sub-record type=0x%02X len=%d packet_hex=%s\n",
+			recType, recLen, hexBytesSpaced(recBytes))
+		ptr = endIdx
+	}
+}
 
 // GSOFSession maintains the state of a multi-page GSOF message reassembly.
 type GSOFSession struct {
@@ -123,6 +164,9 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			// Reassembly is complete only when the page index reaches maxPages
 			if pageIndex == session.TotalPages {
 				gsofBuffer = session.Data
+				if verbose >= 2 {
+					printGSOFSubRecordsVerbose2(gsofBuffer)
+				}
 				if verbose >= 3 {
 					fmt.Printf("[DEBUG] GSOF FULL BUFFER: %X\n", gsofBuffer)
 					ptr := 0
