@@ -17,6 +17,16 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	if d.Records[0].Type != 1 || d.Records[0].Count != 1 {
 		t.Fatalf("row %+v", d.Records[0])
 	}
+	if d.Records[0].PayloadHex != "" {
+		t.Fatalf("empty payload should yield empty payload_hex, got %q", d.Records[0].PayloadHex)
+	}
+	s2 := NewStats(false)
+	// GSOF sub-record: type 1, 3-byte body 0xAA 0xBB 0xCC
+	s2.Update(1, []byte{0x01, 0x03, 0xAA, 0xBB, 0xCC})
+	d2 := s2.BuildDashboard("udp", 2101, "test")
+	if len(d2.Records) != 1 || d2.Records[0].PayloadHex != "AA BB CC" {
+		t.Fatalf("payload_hex %q", d2.Records[0].PayloadHex)
+	}
 }
 
 func TestStats_Type34AllSVDetailedJSON(t *testing.T) {

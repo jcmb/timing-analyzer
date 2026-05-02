@@ -132,6 +132,31 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(41).DocURL() != base+"gsof-messages-base-position-quality-indicator.html" {
 		t.Fatalf("type 41 doc: %s", Lookup(41).DocURL())
 	}
+	if Lookup(70).DocURL() != base+"gsof-messages-llmsl.html" {
+		t.Fatalf("type 70 doc: %s", Lookup(70).DocURL())
+	}
+}
+
+func TestDecode70LLMSL(t *testing.T) {
+	payload := make([]byte, 24+5)
+	binary.BigEndian.PutUint64(payload[0:], math.Float64bits(math.Pi/2))
+	binary.BigEndian.PutUint64(payload[8:], math.Float64bits(-math.Pi/6))
+	binary.BigEndian.PutUint64(payload[16:], math.Float64bits(1647.384))
+	copy(payload[24:], []byte("EGM96"))
+	fields := Decode(70, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["Geoid model"] != "EGM96" {
+		t.Fatalf("model: %q", got["Geoid model"])
+	}
+	if !strings.Contains(got["MSL height (m)"], "1647.384") {
+		t.Fatalf("height: %q", got["MSL height (m)"])
+	}
+	if !strings.Contains(got["Latitude (decimal °)"], "90.00000000") {
+		t.Fatalf("lat: %q", got["Latitude (decimal °)"])
+	}
 }
 
 func TestDecode02LatLonRad(t *testing.T) {
@@ -800,8 +825,10 @@ func TestDecode41BasePositionQuality(t *testing.T) {
 	payload := make([]byte, 31)
 	binary.BigEndian.PutUint32(payload[0:], 1234500) // 1234.50 s
 	binary.BigEndian.PutUint16(payload[4:], 2300)
-	binary.BigEndian.PutUint64(payload[6:], math.Float64bits(37.7749))
-	binary.BigEndian.PutUint64(payload[14:], math.Float64bits(-122.4194))
+	latDeg := 37.7749
+	lonDeg := -122.4194
+	binary.BigEndian.PutUint64(payload[6:], math.Float64bits(latDeg*math.Pi/180))
+	binary.BigEndian.PutUint64(payload[14:], math.Float64bits(lonDeg*math.Pi/180))
 	binary.BigEndian.PutUint64(payload[22:], math.Float64bits(12.34))
 	payload[30] = 5
 	fields := Decode(41, payload)

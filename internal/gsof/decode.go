@@ -98,6 +98,8 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeBasePositionQuality(payload)
 	case 48:
 		return decodeMultiPageAllSV(payload)
+	case 70:
+		return decodeLLMSL(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}
@@ -1040,10 +1042,37 @@ func decodeReceivedBase(payload []byte) []Field {
 		kv("Base name", name),
 		kv("Base ID", fmt.Sprintf("%d", id)),
 		kv("Base latitude (DMS)", formatDMS(latDeg, true)),
-		kv("Base latitude (decimal °)", formatDecimalDegrees(latDeg)),
 		kv("Base longitude (DMS)", formatDMS(lonDeg, false)),
+		kv("Base latitude (decimal °)", formatDecimalDegrees(latDeg)),
 		kv("Base longitude (decimal °)", formatDecimalDegrees(lonDeg)),
 		kv("Base height (m)", formatMeters3(h)),
+	}
+}
+
+// decodeLLMSL decodes GSOF type 70 (latitude, longitude, MSL height; WGS-84 rad + geoid name).
+// https://receiverhelp.trimble.com/oem-gnss/gsof-messages-llmsl.html
+func decodeLLMSL(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(24) {
+		return shortFields(Lookup(70).Function, payload, 24)
+	}
+	latRad := br.f64()
+	lonRad := br.f64()
+	h := br.f64()
+	latDeg := latRad * 180 / math.Pi
+	lonDeg := lonRad * 180 / math.Pi
+	model := strings.TrimRight(strings.TrimSpace(string(br.b[br.i:])), "\x00")
+	if model == "" {
+		model = "—"
+	}
+	return []Field{
+		kv("Summary", Lookup(70).Function),
+		kv("Latitude (DMS)", formatDMS(latDeg, true)),
+		kv("Longitude (DMS)", formatDMS(lonDeg, false)),
+		kv("Latitude (decimal °)", formatDecimalDegrees(latDeg)),
+		kv("Longitude (decimal °)", formatDecimalDegrees(lonDeg)),
+		kv("MSL height (m)", formatMeters3(h)),
+		kv("Geoid model", model),
 	}
 }
 
@@ -1076,6 +1105,7 @@ func decodeBatteryMemory(payload []byte) []Field {
 	}
 }
 
+// decodeBasePositionQuality decodes GSOF type 41. Base latitude and longitude are radians on the wire (Trimble OEM); height is metres.
 func decodeBasePositionQuality(payload []byte) []Field {
 	br := beReader{b: payload}
 	if !br.ok(4 + 2 + 8 + 8 + 8 + 1) {
@@ -1083,19 +1113,21 @@ func decodeBasePositionQuality(payload []byte) []Field {
 	}
 	gpsMS := br.u32()
 	week := br.u16()
-	lat := br.f64()
-	lon := br.f64()
+	latRad := br.f64()
+	lonRad := br.f64()
 	h := br.f64()
 	qual := br.u8()
 	towSec := float64(gpsMS) / 1000.0
+	latDeg := latRad * 180 / math.Pi
+	lonDeg := lonRad * 180 / math.Pi
 	return []Field{
 		kv("Summary", Lookup(41).Function),
 		kv("GPS week", fmt.Sprintf("%d", week)),
 		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
-		kv("Base latitude (DMS)", formatDMS(lat, true)),
-		kv("Base latitude (decimal °)", formatDecimalDegrees(lat)),
-		kv("Base longitude (DMS)", formatDMS(lon, false)),
-		kv("Base longitude (decimal °)", formatDecimalDegrees(lon)),
+		kv("Base latitude (DMS)", formatDMS(latDeg, true)),
+		kv("Base longitude (DMS)", formatDMS(lonDeg, false)),
+		kv("Base latitude (decimal °)", formatDecimalDegrees(latDeg)),
+		kv("Base longitude (decimal °)", formatDecimalDegrees(lonDeg)),
 		kv("Base height (m)", formatMeters3(h)),
 		kv("Quality", formatBasePositionQuality(qual)),
 	}

@@ -611,7 +611,7 @@
     <span id="streamPill" class="pill wait">connecting…</span>
     <div class="meta" id="meta"></div>
     <span id="status"></span>
-    <button type="button" id="copyAllRecords" class="header-copy-all" title="Copy every visible GSOF record (tab-separated, includes fields not shown in Details)">Copy all records</button>
+    <button type="button" id="copyAllRecords" class="header-copy-all" title="Copy every visible GSOF record (tab-separated; each block includes decoded sub-record payload as spaced hex)">Copy all records</button>
   </header>
   <main>
     <div id="cards"></div>
@@ -713,6 +713,10 @@
       lines.push(["Rate", r.rate || ""].join("\t"));
       lines.push(["Stale", r.stale ? "yes" : "no"].join("\t"));
       lines.push(["Doc URL", r.doc_url || ""].join("\t"));
+      {
+        const ph = typeof r.payload_hex === "string" ? r.payload_hex : "";
+        lines.push(["Payload (decoded sub-record)", ph.length ? ph : "(empty)"].join("\t"));
+      }
       lines.push(["", ""].join("\t"));
       lines.push(["Field", "Value"].join("\t"));
       if (r.fields && r.fields.length) {
@@ -934,7 +938,7 @@
         top.style.borderTop = "none";
         top.textContent =
           kind === "sv34"
-            ? "Type 34 (all SV detailed): same SV-system / PRN as type 33; Detailed view puts elevation, azimuth, and L1/L2/L5 SNR first, then per-bit Flags 1 / Flags 2 columns. Basic view unchanged. Flags 2 bits 5–7 are reserved unless -show-expected-reserved-bits."
+            ? "Type 34 (all SV detailed): same SV-system / PRN as type 33. Basic view: Elev / Azimuth / SNR first, then Flags 1 and 2 (8-bit binary) as the last two columns. Detailed view: same numeric columns first, then per-bit Flags 1 / Flags 2. Flags 2 bits 5–7 are reserved unless -show-expected-reserved-bits."
             : "Type 33: SV system is the first column; rows are sorted by SV system then PRN. Flags 2 meanings depend on SV system (sections below). Bits 5–7 of Flags 2 are reserved: hidden in Basic/Detailed unless -show-expected-reserved-bits.";
         box.appendChild(top);
       }
@@ -1308,13 +1312,13 @@
           heads = [
             "SV system",
             "PRN",
-            "Flags 1 (binary)",
-            "Flags 2 (binary)",
             "Elev (°)",
             "Azimuth (°)",
             "L1 SNR",
             "L2 SNR",
             "L5 SNR",
+            "Flags 1 (binary)",
+            "Flags 2 (binary)",
           ];
         } else if (is33) {
           heads = ["SV system", "PRN", "Flags 1 (binary)", "Flags 2 (binary)"];
@@ -1341,20 +1345,7 @@
           }
           const td0 = document.createElement("td");
           td0.textContent = String(row.prn);
-          const td1 = document.createElement("td");
-          td1.className = "mono";
-          td1.textContent = svBriefFmtU8Binary(row.flags1);
           tr.appendChild(td0);
-          tr.appendChild(td1);
-          if (is33 || is34 || gsofShowExpectedReservedBits) {
-            const td2 = document.createElement("td");
-            td2.className = "mono";
-            td2.textContent =
-              is33 || is34
-                ? svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits)
-                : svBriefFmtU8Binary(row.flags2);
-            tr.appendChild(td2);
-          }
           if (is34) {
             const addNum = (v) => {
               const td = document.createElement("td");
@@ -1377,6 +1368,28 @@
             tS5.className = "mono";
             tS5.textContent = sn(row.snr_l5);
             tr.appendChild(tS5);
+            const tdF1 = document.createElement("td");
+            tdF1.className = "mono";
+            tdF1.textContent = svBriefFmtU8Binary(row.flags1);
+            tr.appendChild(tdF1);
+            const tdF2 = document.createElement("td");
+            tdF2.className = "mono";
+            tdF2.textContent = svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits);
+            tr.appendChild(tdF2);
+          } else {
+            const td1 = document.createElement("td");
+            td1.className = "mono";
+            td1.textContent = svBriefFmtU8Binary(row.flags1);
+            tr.appendChild(td1);
+            if (is33 || gsofShowExpectedReservedBits) {
+              const td2 = document.createElement("td");
+              td2.className = "mono";
+              td2.textContent =
+                is33
+                  ? svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits)
+                  : svBriefFmtU8Binary(row.flags2);
+              tr.appendChild(td2);
+            }
           }
           tb.appendChild(tr);
         }
@@ -3246,7 +3259,8 @@
       copyAll.type = "button";
       copyAll.className = "card-copy-all";
       copyAll.textContent = "Copy";
-      copyAll.title = "Copy this GSOF record (tab-separated; includes fields hidden in Details)";
+      copyAll.title =
+        "Copy this GSOF record (tab-separated; includes decoded sub-record payload as spaced hex and fields hidden in Details)";
       headTop.appendChild(title);
       headTop.appendChild(copyAll);
       head.appendChild(headTop);

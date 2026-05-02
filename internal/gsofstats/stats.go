@@ -13,6 +13,22 @@ import (
 
 const historySamplesMax = 2000
 
+// payloadBytesToSpacedHex renders raw GSOF record body bytes as uppercase hex pairs separated by spaces.
+func payloadBytesToSpacedHex(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.Grow(len(b)*3 - 1)
+	for i, c := range b {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(fmt.Sprintf("%02X", c))
+	}
+	return sb.String()
+}
+
 // Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
 type Stats struct {
 	mu             sync.Mutex
@@ -216,6 +232,8 @@ type RecordRow struct {
 	Count    int          `json:"count"`
 	Rate     string       `json:"rate"`
 	Stale    bool         `json:"stale"`
+	// PayloadHex is the GSOF sub-record body passed to Decode, as spaced hex (UI copy / export).
+	PayloadHex string `json:"payload_hex"`
 	// SVBrief is populated for GSOF type 13 (GPS SV brief) for structured dashboard views.
 	SVBrief []gsof.SVBriefEntry `json:"sv_brief,omitempty"`
 	// AllSVBrief is populated for GSOF type 33 (all systems SV brief) for structured dashboard views.
@@ -277,15 +295,16 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		payload := s.lastPayload[subType]
 		fields := gsof.Decode(subType, payload)
 		row := RecordRow{
-			Type:     subType,
-			TypeHex:  fmt.Sprintf("0x%02X", subType),
-			Name:     meta.Title,
-			Function: meta.Function,
-			DocURL:   meta.DocURL(),
-			Fields:   fields,
-			Count:    s.counts[subType],
-			Rate:     rateStr,
-			Stale:    stale,
+			Type:       subType,
+			TypeHex:    fmt.Sprintf("0x%02X", subType),
+			Name:       meta.Title,
+			Function:   meta.Function,
+			DocURL:     meta.DocURL(),
+			Fields:     fields,
+			Count:      s.counts[subType],
+			Rate:       rateStr,
+			Stale:      stale,
+			PayloadHex: payloadBytesToSpacedHex(payload),
 		}
 		if subType == 13 {
 			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)
