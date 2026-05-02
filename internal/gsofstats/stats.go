@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"timing-analyzer/internal/gsof"
 )
 
 // Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
@@ -21,6 +23,7 @@ type Stats struct {
 	hasSeenType01  bool
 	warnings       []string
 	suppressSingle bool
+	lastPayload    map[int][]byte // last GSOF record payload per type (for dashboard decode)
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -29,6 +32,7 @@ func NewStats(suppressSingle bool) *Stats {
 		hz:             make(map[int]float64),
 		displayHz:      make(map[int]string),
 		lastSeen:       make(map[int]time.Time),
+		lastPayload:    make(map[int][]byte),
 		suppressSingle: suppressSingle,
 	}
 }
@@ -105,6 +109,13 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 			seenInThisPacket[recType] = true
 		}
 
+		if ptr+2+recLen > len(buffer) {
+			break
+		}
+		pld := make([]byte, recLen)
+		copy(pld, buffer[ptr+2:ptr+2+recLen])
+		s.lastPayload[recType] = pld
+
 		ptr += 2 + recLen
 	}
 
@@ -118,12 +129,15 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
-	Type    int    `json:"type"`
-	TypeHex string `json:"type_hex"`
-	Name    string `json:"name"`
-	Count   int    `json:"count"`
-	Rate    string `json:"rate"`
-	Stale   bool   `json:"stale"`
+	Type     int          `json:"type"`
+	TypeHex  string       `json:"type_hex"`
+	Name     string       `json:"name"`
+	Function string       `json:"function"`
+	DocURL   string       `json:"doc_url"`
+	Fields   []gsof.Field `json:"fields"`
+	Count    int          `json:"count"`
+	Rate     string       `json:"rate"`
+	Stale    bool         `json:"stale"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -162,13 +176,19 @@ func (s *Stats) BuildDashboard(mode string, port int) *DashboardPayload {
 			rateStr = "stale"
 			stale = true
 		}
+		meta := gsof.Lookup(subType)
+		payload := s.lastPayload[subType]
+		fields := gsof.Decode(subType, payload)
 		rows = append(rows, RecordRow{
-			Type:    subType,
-			TypeHex: fmt.Sprintf("0x%02X", subType),
-			Name:    RecordName(subType),
-			Count:   s.counts[subType],
-			Rate:    rateStr,
-			Stale:   stale,
+			Type:     subType,
+			TypeHex:  fmt.Sprintf("0x%02X", subType),
+			Name:     meta.Title,
+			Function: meta.Function,
+			DocURL:   meta.DocURL(),
+			Fields:   fields,
+			Count:    s.counts[subType],
+			Rate:     rateStr,
+			Stale:    stale,
 		})
 	}
 
