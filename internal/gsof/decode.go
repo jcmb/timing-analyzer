@@ -47,7 +47,7 @@ func Decode(msgType int, payload []byte) []Field {
 	case 1:
 		return decode01(payload)
 	case 2:
-		return decode3xF64(2, "Latitude (deg)", "Longitude (deg)", "Height (m)", payload)
+		return decodeLatLonHeight(payload)
 	case 3:
 		return decode3xF64(3, "X (m)", "Y (m)", "Z (m)", payload)
 	case 4:
@@ -278,6 +278,66 @@ func decode3xF64(msgType int, a, b, c string, payload []byte) []Field {
 		kv(b, fmt.Sprintf("%.9g", y)),
 		kv(c, fmt.Sprintf("%.9g", z)),
 	}
+}
+
+// decodeLatLonHeight decodes GSOF type 2: '>d d d' — latitude and longitude in radians
+// (antenna phase center), height in metres (Trimble OEM / jcmb GSOF.py).
+func decodeLatLonHeight(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(24) {
+		return shortFields(Lookup(2).Function, payload, 24)
+	}
+	latRad := br.f64()
+	lonRad := br.f64()
+	h := br.f64()
+	latDeg := latRad * 180 / math.Pi
+	lonDeg := lonRad * 180 / math.Pi
+	return []Field{
+		kv("Latitude (decimal °)", formatDecimalDegrees(latDeg)),
+		kv("Latitude (DMS)", formatDMS(latDeg, true)),
+		kv("Longitude (decimal °)", formatDecimalDegrees(lonDeg)),
+		kv("Longitude (DMS)", formatDMS(lonDeg, false)),
+		kv("Height (m)", fmt.Sprintf("%.6f", h)),
+	}
+}
+
+func formatDecimalDegrees(deg float64) string {
+	return fmt.Sprintf("%.8f", deg)
+}
+
+// splitDMS breaks a non-negative degrees magnitude into ° ′ ″ (seconds with 5 dp).
+func splitDMS(absDeg float64) (d, m int, sec float64) {
+	const eps = 1e-11
+	d = int(math.Floor(absDeg + eps))
+	arcSec := (absDeg - float64(d)) * 3600
+	m = int(math.Floor(arcSec/60 + eps))
+	sec = arcSec - float64(m)*60
+	if sec < 0 {
+		sec = 0
+	}
+	return d, m, sec
+}
+
+// formatDMS renders signed decimal degrees as hemisphere + degrees° minutes′ seconds″.
+func formatDMS(deg float64, isLat bool) string {
+	var hemi string
+	var abs float64
+	if isLat {
+		if deg >= 0 {
+			hemi, abs = "N", deg
+		} else {
+			hemi, abs = "S", -deg
+		}
+	} else {
+		if deg >= 0 {
+			hemi, abs = "E", deg
+		} else {
+			hemi, abs = "W", -deg
+		}
+	}
+	d, m, s := splitDMS(abs)
+	// U+2032 prime (minutes), U+2033 double prime (seconds)
+	return fmt.Sprintf("%s %d° %d′ %.5f″", hemi, d, m, s)
 }
 
 func decodePDOP(payload []byte) []Field {

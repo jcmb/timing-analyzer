@@ -94,6 +94,14 @@
       padding: 0.75rem 0.9rem 0.65rem;
       border-bottom: 1px solid var(--border);
     }
+    .card-head-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.65rem;
+      margin-bottom: 0.35rem;
+    }
+    .card-head-top h2.card-title { margin-bottom: 0; flex: 1; min-width: 0; }
     /* GSOF human-readable message name — always first / top of card */
     h2.card-title {
       margin: 0 0 0.45rem;
@@ -147,12 +155,6 @@
     details.card-more[open] > summary::before {
       transform: rotate(90deg);
     }
-    .card-function {
-      margin: 0 0 0.5rem;
-      font-size: 0.82rem;
-      color: var(--muted);
-      line-height: 1.35;
-    }
     .card-body {
       padding: 0 0.85rem 0.75rem;
       font-size: 0.85rem;
@@ -163,10 +165,21 @@
     .card-body dl {
       margin: 0;
       display: grid;
-      grid-template-columns: 8rem 1fr;
+      grid-template-columns: minmax(20rem, 42%) 1fr;
       gap: 0.35rem 0.75rem;
+      align-items: start;
     }
-    .card-body dt { color: var(--muted); }
+    dt.field-dt {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.45rem;
+      min-width: 0;
+    }
+    dt.field-dt .field-label { flex: 1; min-width: 0; word-break: break-word; }
+    .card-body dt.field-dt { color: var(--muted); }
+    details.field-expand .field-nested dt.field-dt { color: var(--muted); }
+    .card-body dt:not(.field-dt) { color: var(--muted); }
     .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); word-break: break-word; }
     .field-dd-inner { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
     .field-value { display: block; }
@@ -201,7 +214,7 @@
       padding: 0.4rem 0 0;
       border-top: 1px solid var(--border);
       display: grid;
-      grid-template-columns: minmax(0, 13rem) 1fr;
+      grid-template-columns: minmax(16rem, 46%) 1fr;
       gap: 0.3rem 0.65rem;
       font-size: 0.8rem;
     }
@@ -218,6 +231,26 @@
       text-decoration: none;
     }
     .doc-link:hover { text-decoration: underline; }
+    button.copy-row,
+    button.card-copy-all {
+      flex-shrink: 0;
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 0.15rem 0.45rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: rgba(15, 20, 25, 0.65);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    button.copy-row:hover,
+    button.card-copy-all:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    button.copy-row { margin-top: 0.05rem; }
     #warnings {
       margin-top: 1.5rem;
       padding: 0.75rem 1rem;
@@ -279,6 +312,62 @@
       return 'article.card[data-subtype="' + attrSel(key) + '"]';
     }
 
+    function copyText(text) {
+      const t = String(text);
+      const legacy = () => {
+        const ta = document.createElement("textarea");
+        ta.value = t;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try {
+          document.execCommand("copy");
+        } catch (e) {}
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(t).catch(legacy);
+      }
+      legacy();
+      return Promise.resolve();
+    }
+
+    function appendFieldLinesTSV(prefix, f, lines) {
+      lines.push(prefix + f.label + "\t" + f.value);
+      if (f.detail && f.detail.length) {
+        for (const c of f.detail) {
+          appendFieldLinesTSV(prefix + "\t", c, lines);
+        }
+      }
+    }
+
+    function fieldRowCopyText(f) {
+      const lines = [];
+      appendFieldLinesTSV("", f, lines);
+      return lines.join("\n");
+    }
+
+    function spreadsheetTSVFromRecord(r) {
+      const lines = [];
+      lines.push(["Message", r.name || ""].join("\t"));
+      lines.push(["GSOF type", String(r.type)].join("\t"));
+      lines.push(["Type (hex)", r.type_hex || ""].join("\t"));
+      lines.push(["Count", String(r.count != null ? r.count : "")].join("\t"));
+      lines.push(["Rate", r.rate || ""].join("\t"));
+      lines.push(["Stale", r.stale ? "yes" : "no"].join("\t"));
+      lines.push(["Doc URL", r.doc_url || ""].join("\t"));
+      lines.push(["", ""].join("\t"));
+      lines.push(["Field", "Value"].join("\t"));
+      if (r.fields && r.fields.length) {
+        for (const f of r.fields) {
+          appendFieldLinesTSV("", f, lines);
+        }
+      }
+      return lines.join("\n");
+    }
+
     function dlRow(dl, label, fieldKey, value) {
       const dt = document.createElement("dt");
       dt.textContent = label;
@@ -302,7 +391,23 @@
 
     function appendFieldToDL(dl, f, fieldKey) {
       const dt = document.createElement("dt");
-      dt.textContent = f.label;
+      dt.className = "field-dt";
+      const lab = document.createElement("span");
+      lab.className = "field-label";
+      lab.textContent = f.label;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-row";
+      btn.textContent = "Copy";
+      btn.title = "Copy this field (includes nested rows if any)";
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void copyText(fieldRowCopyText(f));
+      });
+      dt.appendChild(lab);
+      dt.appendChild(btn);
+
       const dd = document.createElement("dd");
       dd.dataset.field = fieldKey;
 
@@ -389,17 +494,24 @@
       stats.appendChild(stale);
       stats.appendChild(rate);
 
-      head.appendChild(title);
+      const headTop = document.createElement("div");
+      headTop.className = "card-head-top";
+      const copyAll = document.createElement("button");
+      copyAll.type = "button";
+      copyAll.className = "card-copy-all";
+      copyAll.textContent = "Copy all";
+      copyAll.title = "Copy all fields (including hidden nested rows) as tab-separated text";
+      headTop.appendChild(title);
+      headTop.appendChild(copyAll);
+      head.appendChild(headTop);
       head.appendChild(stats);
 
       const det = document.createElement("details");
       det.className = "card-more";
       const sum = document.createElement("summary");
-      sum.textContent = "Technical details";
+      sum.textContent = "Details";
       const body = document.createElement("div");
       body.className = "card-body";
-      const fn = document.createElement("p");
-      fn.className = "card-function";
       const dl = document.createElement("dl");
       const docWrap = document.createElement("p");
       docWrap.className = "doc-link-wrap";
@@ -409,7 +521,6 @@
       docA.rel = "noopener noreferrer";
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
-      body.appendChild(fn);
       body.appendChild(dl);
       body.appendChild(docWrap);
       det.appendChild(sum);
@@ -431,8 +542,12 @@
       }
       art.querySelector(".card-rate").textContent = r.rate;
 
+      const copyAllBtn = art.querySelector(".card-copy-all");
+      copyAllBtn.onclick = () => {
+        void copyText(spreadsheetTSVFromRecord(r));
+      };
+
       const body = art.querySelector(".card-body");
-      body.querySelector(".card-function").textContent = r.function || "";
       fillFields(body.querySelector("dl"), r.fields);
       const docA = body.querySelector(".doc-link");
       docA.href = r.doc_url || "https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html";

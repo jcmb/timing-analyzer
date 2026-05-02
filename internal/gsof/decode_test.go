@@ -1,6 +1,8 @@
 package gsof
 
 import (
+	"encoding/binary"
+	"math"
 	"strings"
 	"testing"
 )
@@ -60,5 +62,43 @@ func fieldText(fields []Field) string {
 func TestCatalogOverviewURL(t *testing.T) {
 	if Lookup(99).DocURL() != OverviewURL {
 		t.Fatal("unknown should link to overview")
+	}
+}
+
+func TestDecode02LatLonRad(t *testing.T) {
+	payload := make([]byte, 24)
+	binary.BigEndian.PutUint64(payload[0:], math.Float64bits(math.Pi/2))
+	binary.BigEndian.PutUint64(payload[8:], math.Float64bits(-math.Pi/6))
+	binary.BigEndian.PutUint64(payload[16:], math.Float64bits(123.456789))
+	fields := Decode(2, payload)
+	var latDec, latDMS, lonDec, lonDMS, height string
+	for _, f := range fields {
+		switch f.Label {
+		case "Latitude (decimal °)":
+			latDec = f.Value
+		case "Latitude (DMS)":
+			latDMS = f.Value
+		case "Longitude (decimal °)":
+			lonDec = f.Value
+		case "Longitude (DMS)":
+			lonDMS = f.Value
+		case "Height (m)":
+			height = f.Value
+		}
+	}
+	if latDec != "90.00000000" {
+		t.Fatalf("lat decimal: %q", latDec)
+	}
+	if !strings.HasPrefix(latDMS, "N 90°") || !strings.Contains(latDMS, "0.00000") {
+		t.Fatalf("lat DMS: %q", latDMS)
+	}
+	if lonDec != "-30.00000000" {
+		t.Fatalf("lon decimal: %q", lonDec)
+	}
+	if !strings.HasPrefix(lonDMS, "W 30°") {
+		t.Fatalf("lon DMS: %q", lonDMS)
+	}
+	if height != "123.456789" {
+		t.Fatalf("height: %q", height)
 	}
 }
