@@ -403,6 +403,90 @@
       font-family: var(--mono);
       font-variant-numeric: tabular-nums;
     }
+    .sv-brief-detail-wide-wrap {
+      overflow-x: auto;
+      margin: 0 0 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .sv-brief-detail-wide-table {
+      width: 100%;
+      min-width: 36rem;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .sv-brief-detail-wide-table th,
+    .sv-brief-detail-wide-table td {
+      border: 1px solid var(--border);
+      padding: 0.28rem 0.38rem;
+      vertical-align: middle;
+    }
+    .sv-brief-detail-wide-table thead th {
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--muted);
+      font-weight: 650;
+      font-family: var(--sans);
+      text-align: center;
+    }
+    .sv-brief-detail-wide-table thead th.sv-brief-bit-col {
+      font-family: var(--mono);
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--accent);
+      width: 2.35rem;
+    }
+    .sv-brief-detail-wide-table tbody td {
+      text-align: center;
+    }
+    .sv-brief-detail-wide-table tbody td.sv-brief-prn-col {
+      text-align: left;
+      font-weight: 600;
+    }
+    .sv-brief-detail-wide-table tbody td.mono {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .sv-brief-legend {
+      margin: 0.25rem 0 0;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: rgba(0, 0, 0, 0.14);
+      font-size: 0.78rem;
+      color: var(--text);
+    }
+    .sv-brief-legend h4 {
+      margin: 0 0 0.5rem;
+      font-size: 0.82rem;
+      font-weight: 650;
+      color: var(--muted);
+    }
+    .sv-brief-legend h5 {
+      margin: 0.75rem 0 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .sv-brief-legend h5:first-of-type {
+      margin-top: 0.15rem;
+    }
+    .sv-brief-legend p {
+      margin: 0.25rem 0 0.15rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+    .sv-brief-legend p strong {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.76rem;
+    }
+    .sv-brief-legend-note {
+      margin-top: 0.65rem !important;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted) !important;
+      font-size: 0.74rem !important;
+    }
     .sv-brief-sv-block {
       margin: 0 0 1rem;
       padding-bottom: 0.5rem;
@@ -707,42 +791,121 @@
       return (Number(flagsByte) >> Number(bit)) & 1 ? "Yes" : "No";
     }
 
-    function svBriefMkFlagSection(title, flagsByte, meanings) {
-      const wrap = document.createElement("div");
-      const h4 = document.createElement("h4");
-      h4.textContent = title;
-      wrap.appendChild(h4);
-      const tbl = document.createElement("table");
-      tbl.className = "sv-brief-detail-table";
-      const thead = document.createElement("thead");
-      const trh = document.createElement("tr");
-      ["Bit", "Meaning", "Value"].forEach((h) => {
-        const th = document.createElement("th");
-        th.textContent = h;
-        trh.appendChild(th);
+    function svBriefAppendLegendDetailed(container) {
+      const box = document.createElement("div");
+      box.className = "sv-brief-legend";
+      const h = document.createElement("h4");
+      h.textContent = "Bit field meanings";
+      box.appendChild(h);
+
+      function addBitsHeading(title) {
+        const h5 = document.createElement("h5");
+        h5.textContent = title;
+        box.appendChild(h5);
+      }
+      function addBitParagraph(bit, text) {
+        const p = document.createElement("p");
+        const strong = document.createElement("strong");
+        strong.textContent = "Bit " + String(bit) + ". ";
+        p.appendChild(strong);
+        p.appendChild(document.createTextNode(text));
+        box.appendChild(p);
+      }
+
+      addBitsHeading("Flags 1");
+      SV_BRIEF_F1_MEANINGS.forEach((t, i) => {
+        addBitParagraph(i, t);
       });
-      thead.appendChild(trh);
+
+      addBitsHeading("Flags 2");
+      addBitParagraph(0, SV_BRIEF_F2_MEANINGS[0]);
+      addBitParagraph(1, SV_BRIEF_F2_MEANINGS[1]);
+
+      const note = document.createElement("p");
+      note.className = "sv-brief-legend-note";
+      note.textContent =
+        "Flags 2 bits 2–7 are carried on the wire but are not shown as columns here (reserved / not documented in the OEM excerpt used for this UI). See Basic view for the full 8-bit Flags 2 binary string per SV.";
+      box.appendChild(note);
+      container.appendChild(box);
+    }
+
+    function svBriefRenderDetailedWideTable(container, rows) {
+      const wrap = document.createElement("div");
+      wrap.className = "sv-brief-detail-wide-wrap";
+      const tbl = document.createElement("table");
+      tbl.className = "sv-brief-detail-wide-table";
+
+      const cap = document.createElement("caption");
+      cap.style.captionSide = "top";
+      cap.style.textAlign = "left";
+      cap.style.padding = "0 0 0.45rem";
+      cap.style.fontSize = "0.74rem";
+      cap.style.color = "var(--muted)";
+      cap.style.lineHeight = "1.4";
+      cap.textContent =
+        "One row per SV. Under Flags 1 and Flags 2 the column titles are bit numbers only (0–7 and 0–1). Each cell is Yes if that bit is set, No if clear. Full 8-bit flag bytes: Basic view.";
+      tbl.appendChild(cap);
+
+      const thead = document.createElement("thead");
+      const tr1 = document.createElement("tr");
+      const thPrn = document.createElement("th");
+      thPrn.rowSpan = 2;
+      thPrn.textContent = "PRN";
+      tr1.appendChild(thPrn);
+
+      const thF1 = document.createElement("th");
+      thF1.colSpan = 8;
+      thF1.textContent = "Flags 1";
+      tr1.appendChild(thF1);
+
+      const thF2 = document.createElement("th");
+      thF2.colSpan = 2;
+      thF2.textContent = "Flags 2";
+      tr1.appendChild(thF2);
+
+      const tr2 = document.createElement("tr");
+      for (let b = 0; b < 8; b++) {
+        const th = document.createElement("th");
+        th.className = "mono sv-brief-bit-col";
+        th.textContent = String(b);
+        th.title = "Flags 1 — bit " + String(b);
+        tr2.appendChild(th);
+      }
+      for (let b = 0; b < 2; b++) {
+        const th = document.createElement("th");
+        th.className = "mono sv-brief-bit-col";
+        th.textContent = String(b);
+        th.title = "Flags 2 — bit " + String(b);
+        tr2.appendChild(th);
+      }
+      thead.appendChild(tr1);
+      thead.appendChild(tr2);
       tbl.appendChild(thead);
+
       const tb = document.createElement("tbody");
-      for (let bit = 0; bit < 8; bit++) {
+      for (const row of rows) {
         const tr = document.createElement("tr");
-        const tdb = document.createElement("td");
-        tdb.className = "mono";
-        tdb.textContent = String(bit);
-        const tdm = document.createElement("td");
-        tdm.className = "sv-brief-detail-meaning";
-        tdm.textContent = meanings[bit] || "Bit " + bit + " — reserved / unspecified.";
-        const tdv = document.createElement("td");
-        tdv.className = "mono";
-        tdv.textContent = svBriefBitYesNo(flagsByte, bit);
-        tr.appendChild(tdb);
-        tr.appendChild(tdm);
-        tr.appendChild(tdv);
+        const tdPrn = document.createElement("td");
+        tdPrn.className = "sv-brief-prn-col mono";
+        tdPrn.textContent = String(row.prn);
+        tr.appendChild(tdPrn);
+        for (let b = 0; b < 8; b++) {
+          const td = document.createElement("td");
+          td.className = "mono";
+          td.textContent = svBriefBitYesNo(row.flags1, b);
+          tr.appendChild(td);
+        }
+        for (let b = 0; b < 2; b++) {
+          const td = document.createElement("td");
+          td.className = "mono";
+          td.textContent = svBriefBitYesNo(row.flags2, b);
+          tr.appendChild(td);
+        }
         tb.appendChild(tr);
       }
       tbl.appendChild(tb);
       wrap.appendChild(tbl);
-      return wrap;
+      container.appendChild(wrap);
     }
 
     function renderSVBriefBody(art, r) {
@@ -792,17 +955,8 @@
         root.appendChild(tbl);
         return;
       }
-      for (const row of rows) {
-        const block = document.createElement("div");
-        block.className = "sv-brief-sv-block";
-        const hp = document.createElement("h3");
-        hp.className = "sv-brief-prn";
-        hp.textContent = "PRN " + String(row.prn);
-        block.appendChild(hp);
-        block.appendChild(svBriefMkFlagSection("Flags 1", row.flags1, SV_BRIEF_F1_MEANINGS));
-        block.appendChild(svBriefMkFlagSection("Flags 2", row.flags2, SV_BRIEF_F2_MEANINGS));
-        root.appendChild(block);
-      }
+      svBriefRenderDetailedWideTable(root, rows);
+      svBriefAppendLegendDetailed(root);
     }
 
     function syncSVBriefTogglePressed(art) {
