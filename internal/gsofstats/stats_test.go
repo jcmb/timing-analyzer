@@ -19,6 +19,43 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	}
 }
 
+func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 (TOW 5 s) then type 34: count=1, PRN=6, GPS, flags 0x0A/0x0B, elev=10, az=270, SNR bytes 4,8,12 → 1,2,3
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x22, 0x0B,
+		0x01, 0x06, 0x00, 0x0a, 0x0b, 10, 0x01, 0x0e, 4, 8, 12,
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 34 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 34 row")
+	}
+	if len(row.AllSVDetailed) != 1 {
+		t.Fatalf("all_sv_detailed len %d", len(row.AllSVDetailed))
+	}
+	e := row.AllSVDetailed[0]
+	if e.System != 0 || e.PRN != 6 || e.Elev != 10 || e.Azimuth != 270 {
+		t.Fatalf("entry %+v", e)
+	}
+	if e.Flags1 != 0x0a || e.Flags2 != 0x0b {
+		t.Fatalf("flags %+v", e)
+	}
+	if e.SNRL1 != 1 || e.SNRL2 != 2 || e.SNRL5 != 3 {
+		t.Fatalf("snr %+v", e)
+	}
+}
+
 func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 33: count=1, PRN=4, system=0 (GPS), flags1=0x0F, flags2=0x30
@@ -69,6 +106,12 @@ func TestStats_Type13SVBriefJSON(t *testing.T) {
 func f64be(v float64) []byte {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, math.Float64bits(v))
+	return b
+}
+
+func f32be(v float32) []byte {
+	b := make([]byte, 4)
+	binary.BigEndian.PutUint32(b, math.Float32bits(v))
 	return b
 }
 
@@ -134,5 +177,60 @@ func TestStats_LLHHistoryFromType1And2(t *testing.T) {
 	p := row.LLHHistory[0]
 	if p.GPSTOWSec != 5.0 || math.Abs(p.LatDeg-90) > 1e-9 || p.LonDeg != 0 || math.Abs(p.HeightM-100) > 1e-9 {
 		t.Fatalf("point %+v", p)
+	}
+}
+
+func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 9 DOP 1..4, type 12 sigma (E=3 N=4 → σ_H=5)
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x09, 0x10,
+	}
+	buf = append(buf, f32be(1)...)
+	buf = append(buf, f32be(2)...)
+	buf = append(buf, f32be(3)...)
+	buf = append(buf, f32be(4)...)
+	buf = append(buf, 0x0C, 0x26)
+	buf = append(buf, f32be(0.1)...)
+	buf = append(buf, f32be(3)...)
+	buf = append(buf, f32be(4)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0.05)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, 0x00, 0x01)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row9, row12 *RecordRow
+	for i := range d.Records {
+		switch d.Records[i].Type {
+		case 9:
+			row9 = &d.Records[i]
+		case 12:
+			row12 = &d.Records[i]
+		}
+	}
+	if row9 == nil || len(row9.DOPHistory) != 1 {
+		t.Fatalf("dop row/history: %+v", row9)
+	}
+	d0 := row9.DOPHistory[0]
+	if d0.GPSTOWSec != 5 || d0.PDOP != 1 || d0.HDOP != 2 || d0.TDOP != 3 || d0.VDOP != 4 {
+		t.Fatalf("dop point %+v", d0)
+	}
+	if row12 == nil || len(row12.SigmaHistory) != 1 {
+		t.Fatalf("sigma row/history: %+v", row12)
+	}
+	s0 := row12.SigmaHistory[0]
+	if s0.GPSTOWSec != 5 || math.Abs(s0.SigmaH-5) > 1e-6 {
+		t.Fatalf("sigma point %+v", s0)
+	}
+	wantH := math.Sqrt(float64(s0.SigmaEast)*float64(s0.SigmaEast) + float64(s0.SigmaNorth)*float64(s0.SigmaNorth))
+	if math.Abs(s0.SigmaH-wantH) > 1e-9 {
+		t.Fatalf("sigma_h inconsistent %+v", s0)
 	}
 }

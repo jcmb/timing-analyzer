@@ -387,7 +387,10 @@
       color: var(--text);
       border-color: var(--muted);
     }
-    button.tangent-graph-open-btn {
+    button.tangent-graph-open-btn,
+    button.llh-graph-open-btn,
+    button.dop-graph-open-btn,
+    button.sigma-graph-open-btn {
       font-family: var(--sans);
       font-size: 0.72rem;
       font-weight: 600;
@@ -399,23 +402,10 @@
       cursor: pointer;
       line-height: 1.2;
     }
-    button.tangent-graph-open-btn:hover {
-      color: var(--accent);
-      border-color: var(--accent);
-    }
-    button.llh-graph-open-btn {
-      font-family: var(--sans);
-      font-size: 0.72rem;
-      font-weight: 600;
-      padding: 0.2rem 0.55rem;
-      border-radius: 5px;
-      border: 1px solid var(--border);
-      background: rgba(15, 20, 25, 0.55);
-      color: var(--muted);
-      cursor: pointer;
-      line-height: 1.2;
-    }
-    button.llh-graph-open-btn:hover {
+    button.tangent-graph-open-btn:hover,
+    button.llh-graph-open-btn:hover,
+    button.dop-graph-open-btn:hover,
+    button.sigma-graph-open-btn:hover {
       color: var(--accent);
       border-color: var(--accent);
     }
@@ -615,7 +605,7 @@
 </head>
 <body>
   <header>
-    <p class="build-banner" title="Increment cmd/gsof-dashboard/version.go when you change this app">Build <strong>__GSOF_DASHBOARD_VERSION__</strong> <span>— match the version printed at process startup</span></p>
+    <p class="build-banner" title="Increment cmd/gsof-dashboard/version.go when you change this app">Build <strong>__GSOF_DASHBOARD_VERSION__</strong></p>
     <h1>Trimble GSOF</h1>
     <a class="doc-top-link" href="https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html" target="_blank" rel="noopener noreferrer">Trimble GSOF overview (docs) ↗</a>
     <span id="streamPill" class="pill wait">connecting…</span>
@@ -760,6 +750,21 @@
       if (f.label === "Current time flags") {
         return "timeFlags16";
       }
+      if (f.label === "Base flags") {
+        return "baseFlags35";
+      }
+      if (f.label === "Solution flags") {
+        return "solutionFlags38";
+      }
+      if (f.label === "Network flags") {
+        return "networkFlags38";
+      }
+      if (f.label === "Network flags 2") {
+        return "networkFlags2_38";
+      }
+      if (f.label === "Frame flag") {
+        return "frameFlag38";
+      }
       return "f" + i;
     }
 
@@ -802,7 +807,12 @@
           f.label === "Flags 2" ||
           f.label === "Velocity flags" ||
           f.label === "Clock flags" ||
-          f.label === "Current time flags";
+          f.label === "Current time flags" ||
+          f.label === "Base flags" ||
+          f.label === "Solution flags" ||
+          f.label === "Network flags" ||
+          f.label === "Network flags 2" ||
+          f.label === "Frame flag";
         sum.textContent = isFlagField ? "Flag bit meanings" : "Details";
         const nested = document.createElement(isFlagField ? "div" : "dl");
         nested.className = isFlagField ? "field-nested field-nested-flags" : "field-nested";
@@ -870,6 +880,15 @@
       return s;
     }
 
+    /** Type 33 Flags 2: bits 5–7 (MSB-left string indices 0–2) shown as · unless reserved-bits mode. */
+    function svBriefFmtU8BinaryF2Type33(v, showBits567) {
+      const s = svBriefFmtU8Binary(v);
+      if (showBits567) {
+        return s;
+      }
+      return "···" + s.slice(3);
+    }
+
     function svBriefBitYesNo(flagsByte, bit) {
       return (Number(flagsByte) >> Number(bit)) & 1 ? "Yes" : "No";
     }
@@ -914,7 +933,9 @@
         top.style.paddingTop = "0";
         top.style.borderTop = "none";
         top.textContent =
-          "Type 33: SV system is the first column; rows are sorted by SV system then PRN. Flags 2 meanings depend on SV system (sections below).";
+          kind === "sv34"
+            ? "Type 34 (all SV detailed): same SV-system / PRN as type 33; Detailed view puts elevation, azimuth, and L1/L2/L5 SNR first, then per-bit Flags 1 / Flags 2 columns. Basic view unchanged. Flags 2 bits 5–7 are reserved unless -show-expected-reserved-bits."
+            : "Type 33: SV system is the first column; rows are sorted by SV system then PRN. Flags 2 meanings depend on SV system (sections below). Bits 5–7 of Flags 2 are reserved: hidden in Basic/Detailed unless -show-expected-reserved-bits.";
         box.appendChild(top);
       }
 
@@ -923,12 +944,13 @@
         addBitParagraph(i, t);
       });
 
-      if (kind === "sv33") {
+      if (kind === "sv33" || kind === "sv34") {
         function addF2Block(title, lines) {
           addBitsHeading(title);
-          lines.forEach((line, bit) => {
-            addBitParagraph(bit, line);
-          });
+          const lim = showF2Cols ? lines.length : Math.min(5, lines.length);
+          for (let bit = 0; bit < lim; bit++) {
+            addBitParagraph(bit, lines[bit]);
+          }
         }
         addF2Block("Flags 2 — GPS (SV system 0)", [
           "Tracking P Code on L1: 0 = No, 1 = Yes.",
@@ -998,9 +1020,10 @@
 
       const note = document.createElement("p");
       note.className = "sv-brief-legend-note";
-      if (kind === "sv33") {
-        note.textContent =
-          "Detailed view shows Flags 2 bits 0–7 as columns. Match each row’s SV system to the Flags 2 section above. Basic view lists full 8-bit Flags 1 and Flags 2.";
+      if (kind === "sv33" || kind === "sv34") {
+        note.textContent = showF2Cols
+          ? "Detailed view shows Flags 2 bits 0–7 as columns. Match each row’s SV system to the Flags 2 section above. Basic view shows full 8-bit Flags 2."
+          : "Detailed view shows Flags 2 bits 0–4 only (bits 5–7 reserved). Basic view masks bits 5–7 as ···. Enable -show-expected-reserved-bits for bits 5–7 in the table, legend, and basic Flags 2.";
       } else if (showF2Cols) {
         note.textContent =
           "Flags 2 bits 2–7 are carried on the wire but are not shown as columns (reserved / not documented in the OEM excerpt used for this UI). See Basic view for the full 8-bit Flags 2 binary.";
@@ -1035,6 +1058,11 @@
       const showF2Grid = f2Cols > 0;
       const hasSecondCol = Boolean(secondColLabel && secondFieldKey);
       const isType33F2 = hasSecondCol && f2Cols === 8;
+      const isType33F2Lite =
+        hasSecondCol &&
+        f2Cols === 5 &&
+        firstFieldKey === "system_name" &&
+        secondFieldKey === "prn";
       const metricsFirst =
         extrasBeforeFlags === true && extraColumns && extraColumns.length > 0;
       const wrap = document.createElement("div");
@@ -1063,6 +1091,9 @@
         if (isType33F2) {
           capText +=
             " Flags 2 shows bits 0–7; meanings depend on SV system (see legend). Full 8-bit bytes: Basic view.";
+        } else if (isType33F2Lite) {
+          capText +=
+            " Flags 2 shows bits 0–4 only (bits 5–7 reserved). Use -show-expected-reserved-bits for columns 5–7. Basic view masks bits 5–7 in Flags 2.";
         } else {
           capText +=
             " Flags 2 uses columns 0–1 only; bits 2–7 are not columns. Full 8-bit bytes: Basic view.";
@@ -1257,7 +1288,8 @@
       }
       root.replaceChildren();
       const is33 = r.type === 33;
-      const rows = is33 ? r.all_sv_brief || [] : r.sv_brief || [];
+      const is34 = r.type === 34;
+      const rows = is34 ? r.all_sv_detailed || [] : is33 ? r.all_sv_brief || [] : r.sv_brief || [];
       const view = art.dataset.svBriefView || "basic";
       if (!rows.length) {
         const p = document.createElement("p");
@@ -1271,11 +1303,26 @@
         tbl.className = "sv-brief-basic-table";
         const thead = document.createElement("thead");
         const trh = document.createElement("tr");
-        const heads = is33
-          ? ["SV system", "PRN", "Flags 1 (binary)", "Flags 2 (binary)"]
-          : ["PRN", "Flags 1 (binary)"];
-        if (!is33 && gsofShowExpectedReservedBits) {
-          heads.push("Flags 2 (binary)");
+        let heads;
+        if (is34) {
+          heads = [
+            "SV system",
+            "PRN",
+            "Flags 1 (binary)",
+            "Flags 2 (binary)",
+            "Elev (°)",
+            "Azimuth (°)",
+            "L1 SNR",
+            "L2 SNR",
+            "L5 SNR",
+          ];
+        } else if (is33) {
+          heads = ["SV system", "PRN", "Flags 1 (binary)", "Flags 2 (binary)"];
+        } else {
+          heads = ["PRN", "Flags 1 (binary)"];
+          if (gsofShowExpectedReservedBits) {
+            heads.push("Flags 2 (binary)");
+          }
         }
         heads.forEach((h) => {
           const th = document.createElement("th");
@@ -1287,7 +1334,7 @@
         const tb = document.createElement("tbody");
         for (const row of rows) {
           const tr = document.createElement("tr");
-          if (is33) {
+          if (is33 || is34) {
             const tSys = document.createElement("td");
             tSys.textContent = String(row.system_name || "");
             tr.appendChild(tSys);
@@ -1299,11 +1346,37 @@
           td1.textContent = svBriefFmtU8Binary(row.flags1);
           tr.appendChild(td0);
           tr.appendChild(td1);
-          if (is33 || gsofShowExpectedReservedBits) {
+          if (is33 || is34 || gsofShowExpectedReservedBits) {
             const td2 = document.createElement("td");
             td2.className = "mono";
-            td2.textContent = svBriefFmtU8Binary(row.flags2);
+            td2.textContent =
+              is33 || is34
+                ? svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits)
+                : svBriefFmtU8Binary(row.flags2);
             tr.appendChild(td2);
+          }
+          if (is34) {
+            const addNum = (v) => {
+              const td = document.createElement("td");
+              td.className = "mono";
+              td.textContent = String(v);
+              tr.appendChild(td);
+            };
+            addNum(row.elev);
+            addNum(row.azimuth);
+            const sn = (x) => (Number(x).toFixed(2));
+            const tS = document.createElement("td");
+            tS.className = "mono";
+            tS.textContent = sn(row.snr_l1);
+            tr.appendChild(tS);
+            const tS2 = document.createElement("td");
+            tS2.className = "mono";
+            tS2.textContent = sn(row.snr_l2);
+            tr.appendChild(tS2);
+            const tS5 = document.createElement("td");
+            tS5.className = "mono";
+            tS5.textContent = sn(row.snr_l5);
+            tr.appendChild(tS5);
           }
           tb.appendChild(tr);
         }
@@ -1311,20 +1384,29 @@
         root.appendChild(tbl);
         return;
       }
-      if (is33) {
+      if (is33 || is34) {
+        const sv34Extras = is34
+          ? [
+              { label: "Elev (°)", value: (row) => String(row.elev) },
+              { label: "Azimuth (°)", value: (row) => String(row.azimuth) },
+              { label: "L1 SNR", value: (row) => Number(row.snr_l1).toFixed(2) },
+              { label: "L2 SNR", value: (row) => Number(row.snr_l2).toFixed(2) },
+              { label: "L5 SNR", value: (row) => Number(row.snr_l5).toFixed(2) },
+            ]
+          : null;
         satFlagsRenderDetailedGrid(
           root,
           rows,
           "SV system",
           "system_name",
-          true,
-          null,
           false,
+          sv34Extras,
+          is34,
           "PRN",
           "prn",
-          8
+          gsofShowExpectedReservedBits ? 8 : 5
         );
-        satFlagsAppendLegend(root, true, "sv33");
+        satFlagsAppendLegend(root, gsofShowExpectedReservedBits, is34 ? "sv34" : "sv33");
       } else {
         satFlagsRenderDetailedGrid(
           root,
@@ -1877,6 +1959,542 @@
 ` +
       sc +
       `
+</body>
+</html>`;
+    }
+
+    /** Full HTML document for type-9 DOP graph (PDOP, HDOP, TDOP, VDOP vs GPS TOW). */
+    function dopGraphStandaloneDoc(initObj) {
+      const j = tangentGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · DOP (type 9)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 1rem; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .sP::before { background: #3d8bfd; }
+    .sH::before { background: #5bd48a; }
+    .sT::before { background: #e6a23a; }
+    .sV::before { background: #a855f7; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg" title="Click a series name to show or hide it"><span class="sP">PDOP</span><span class="sH">HDOP</span><span class="sT">TDOP</span><span class="sV">VDOP</span></div>
+  </div>
+` +
+        "\n  " +
+        so +
+        ' type="application/json" id="gsof-dop-payload">' +
+        j +
+        sc +
+        "\n  " +
+        so +
+        ">\n" +
+        `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-dop-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var seriesVis = { P: true, H: true, T: true, V: true };
+  function yAxisLabel() {
+    var parts = [];
+    if (seriesVis.P) parts.push("PDOP");
+    if (seriesVis.H) parts.push("HDOP");
+    if (seriesVis.T) parts.push("TDOP");
+    if (seriesVis.V) parts.push("VDOP");
+    if (!parts.length) return "DOP (none visible)";
+    return "DOP (" + parts.join(", ") + ")";
+  }
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") return;
+    leg.dataset.bound = "1";
+    function sync() {
+      leg.querySelector(".sP").classList.toggle("off", !seriesVis.P);
+      leg.querySelector(".sH").classList.toggle("off", !seriesVis.H);
+      leg.querySelector(".sT").classList.toggle("off", !seriesVis.T);
+      leg.querySelector(".sV").classList.toggle("off", !seriesVis.V);
+    }
+    leg.querySelector(".sP").addEventListener("click", function () { seriesVis.P = !seriesVis.P; sync(); draw(); });
+    leg.querySelector(".sH").addEventListener("click", function () { seriesVis.H = !seriesVis.H; sync(); draw(); });
+    leg.querySelector(".sT").addEventListener("click", function () { seriesVis.T = !seriesVis.T; sync(); draw(); });
+    leg.querySelector(".sV").addEventListener("click", function () { seriesVis.V = !seriesVis.V; sync(); draw(); });
+    sync();
+  }
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) return [lo, hi];
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) step *= 5;
+    else if (norm > 2) step *= 2;
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) out.push(x);
+    if (out.length < 2) out.push(lo, hi);
+    return out;
+  }
+  function formatTimeOfDayHM(decimalHours) {
+    var sec = Math.round(Number(decimalHours) * 3600);
+    sec = ((sec % 86400) + 86400) % 86400;
+    var h = (sec / 3600) | 0;
+    var m = ((sec % 3600) / 60) | 0;
+    var ms = m < 10 ? "0" + String(m) : String(m);
+    return String(h) + ":" + ms;
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padL = 68;
+    var padR = 52;
+    var padT = 32;
+    var padB = 78;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
+    var xs = pts.map(function (p) {
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) sec += 86400;
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
+    });
+    var allY = [];
+    pts.forEach(function (p) {
+      if (seriesVis.P) allY.push(p.pdop);
+      if (seriesVis.H) allY.push(p.hdop);
+      if (seriesVis.T) allY.push(p.tdop);
+      if (seriesVis.V) allY.push(p.vdop);
+    });
+    if (!allY.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — click the legend.", 24, cssH / 2);
+      return;
+    }
+    var ymin = Math.min.apply(null, allY);
+    var ymax = Math.max.apply(null, allY);
+    if (!isFinite(ymin) || !isFinite(ymax)) { ymin = 0; ymax = 1; }
+    if (ymax === ymin) { ymin -= 0.5; ymax += 0.5; }
+    var yPad = (ymax - ymin) * 0.08;
+    ymin -= yPad;
+    ymax += yPad;
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    function xSc(v) { return padL + ((v - x0) / (x1 - x0)) * gw; }
+    function ySc(v) { return padT + (1 - (v - ymin) / (ymax - ymin)) * gh; }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + gh);
+    ctx.lineTo(padL + gw, padT + gh);
+    ctx.stroke();
+    var xt = niceTicks(x0, x1, 10);
+    var yt = niceTicks(ymin, ymax, 9);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT);
+      ctx.lineTo(px, padT + gh);
+      ctx.stroke();
+    });
+    yt.forEach(function (tk) {
+      var py = ySc(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab = xUnit === "h" ? formatTimeOfDayHM(tk) : Math.abs(tk) >= 10000 ? tk.toFixed(0) + " s" : Math.abs(tk) >= 1000 ? tk.toFixed(1) + " s" : tk.toFixed(2) + " s";
+      ctx.save();
+      ctx.translate(px, padT + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    yt.forEach(function (tk) {
+      ctx.fillText(tk.toFixed(2), padL - 8, ySc(tk));
+    });
+    ctx.save();
+    ctx.translate(cssW - 14, padT + gh / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(18, padT + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(yAxisLabel(), 0, 0);
+    ctx.restore();
+    function stroke(getter, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      for (var i = 0; i < pts.length; i++) {
+        var px = xSc(xs[i]);
+        var py = ySc(getter(pts[i]));
+        if (!mv) { ctx.moveTo(px, py); mv = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(xSc(xs[0]), ySc(getter(pts[0])), 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (seriesVis.P) stroke(function (p) { return p.pdop; }, "#3d8bfd");
+    if (seriesVis.H) stroke(function (p) { return p.hdop; }, "#5bd48a");
+    if (seriesVis.T) stroke(function (p) { return p.tdop; }, "#e6a23a");
+    if (seriesVis.V) stroke(function (p) { return p.vdop; }, "#a855f7");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-dop-update" || !ev.data.payload) return;
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) document.getElementById("hdr").textContent = INIT.title;
+    draw();
+  });
+  window.addEventListener("resize", function () { requestAnimationFrame(draw); });
+  bindLegend();
+  draw();
+})();
+` +
+        sc +
+        `
+</body>
+</html>`;
+    }
+
+    /** Full HTML document for type-12 sigma graph (RMS and σ components vs GPS TOW). */
+    function sigmaGraphStandaloneDoc(initObj) {
+      const j = tangentGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · position sigma (type 12)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .gR::before { background: #f56c6c; }
+    .gE::before { background: #3d8bfd; }
+    .gN::before { background: #5bd48a; }
+    .gU::before { background: #e6a23a; }
+    .gZ::before { background: #909399; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg" title="Click a series name to show or hide it"><span class="gR">Pos RMS (m)</span><span class="gE">σ_E (m)</span><span class="gN">σ_N (m)</span><span class="gU">σ_U (m)</span><span class="gZ">σ_H (m)</span></div>
+  </div>
+` +
+        "\n  " +
+        so +
+        ' type="application/json" id="gsof-sigma-payload">' +
+        j +
+        sc +
+        "\n  " +
+        so +
+        ">\n" +
+        `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-sigma-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var seriesVis = { R: true, E: true, N: true, U: true, Z: true };
+  function yAxisLabel() {
+    var parts = [];
+    if (seriesVis.R) parts.push("RMS");
+    if (seriesVis.E) parts.push("σ_E");
+    if (seriesVis.N) parts.push("σ_N");
+    if (seriesVis.U) parts.push("σ_U");
+    if (seriesVis.Z) parts.push("σ_H");
+    if (!parts.length) return "Metres (none visible)";
+    return "Metres (" + parts.join(", ") + ")";
+  }
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") return;
+    leg.dataset.bound = "1";
+    function sync() {
+      leg.querySelector(".gR").classList.toggle("off", !seriesVis.R);
+      leg.querySelector(".gE").classList.toggle("off", !seriesVis.E);
+      leg.querySelector(".gN").classList.toggle("off", !seriesVis.N);
+      leg.querySelector(".gU").classList.toggle("off", !seriesVis.U);
+      leg.querySelector(".gZ").classList.toggle("off", !seriesVis.Z);
+    }
+    leg.querySelector(".gR").addEventListener("click", function () { seriesVis.R = !seriesVis.R; sync(); draw(); });
+    leg.querySelector(".gE").addEventListener("click", function () { seriesVis.E = !seriesVis.E; sync(); draw(); });
+    leg.querySelector(".gN").addEventListener("click", function () { seriesVis.N = !seriesVis.N; sync(); draw(); });
+    leg.querySelector(".gU").addEventListener("click", function () { seriesVis.U = !seriesVis.U; sync(); draw(); });
+    leg.querySelector(".gZ").addEventListener("click", function () { seriesVis.Z = !seriesVis.Z; sync(); draw(); });
+    sync();
+  }
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) return [lo, hi];
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) step *= 5;
+    else if (norm > 2) step *= 2;
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) out.push(x);
+    if (out.length < 2) out.push(lo, hi);
+    return out;
+  }
+  function formatTimeOfDayHM(decimalHours) {
+    var sec = Math.round(Number(decimalHours) * 3600);
+    sec = ((sec % 86400) + 86400) % 86400;
+    var h = (sec / 3600) | 0;
+    var m = ((sec % 3600) / 60) | 0;
+    var ms = m < 10 ? "0" + String(m) : String(m);
+    return String(h) + ":" + ms;
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padL = 72;
+    var padR = 52;
+    var padT = 32;
+    var padB = 78;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
+    var xs = pts.map(function (p) {
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) sec += 86400;
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
+    });
+    var allY = [];
+    pts.forEach(function (p) {
+      if (seriesVis.R) allY.push(p.position_rms_m);
+      if (seriesVis.E) allY.push(p.sigma_east_m);
+      if (seriesVis.N) allY.push(p.sigma_north_m);
+      if (seriesVis.U) allY.push(p.sigma_up_m);
+      if (seriesVis.Z) allY.push(p.sigma_h_m);
+    });
+    if (!allY.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — click the legend.", 24, cssH / 2);
+      return;
+    }
+    var ymin = Math.min.apply(null, allY);
+    var ymax = Math.max.apply(null, allY);
+    if (!isFinite(ymin) || !isFinite(ymax)) { ymin = -1e-3; ymax = 1e-3; }
+    if (ymax === ymin) { ymin -= 1e-4; ymax += 1e-4; }
+    var yPad = (ymax - ymin) * 0.08;
+    ymin -= yPad;
+    ymax += yPad;
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    function xSc(v) { return padL + ((v - x0) / (x1 - x0)) * gw; }
+    function ySc(v) { return padT + (1 - (v - ymin) / (ymax - ymin)) * gh; }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + gh);
+    ctx.lineTo(padL + gw, padT + gh);
+    ctx.stroke();
+    var xt = niceTicks(x0, x1, 10);
+    var yt = niceTicks(ymin, ymax, 9);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT);
+      ctx.lineTo(px, padT + gh);
+      ctx.stroke();
+    });
+    yt.forEach(function (tk) {
+      var py = ySc(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab = xUnit === "h" ? formatTimeOfDayHM(tk) : Math.abs(tk) >= 10000 ? tk.toFixed(0) + " s" : Math.abs(tk) >= 1000 ? tk.toFixed(1) + " s" : tk.toFixed(2) + " s";
+      ctx.save();
+      ctx.translate(px, padT + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    yt.forEach(function (tk) {
+      ctx.fillText(tk.toFixed(5) + " m", padL - 6, ySc(tk));
+    });
+    ctx.save();
+    ctx.translate(cssW - 14, padT + gh / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(18, padT + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(yAxisLabel(), 0, 0);
+    ctx.restore();
+    function stroke(getter, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      for (var i = 0; i < pts.length; i++) {
+        var px = xSc(xs[i]);
+        var py = ySc(getter(pts[i]));
+        if (!mv) { ctx.moveTo(px, py); mv = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(xSc(xs[0]), ySc(getter(pts[0])), 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (seriesVis.R) stroke(function (p) { return p.position_rms_m; }, "#f56c6c");
+    if (seriesVis.E) stroke(function (p) { return p.sigma_east_m; }, "#3d8bfd");
+    if (seriesVis.N) stroke(function (p) { return p.sigma_north_m; }, "#5bd48a");
+    if (seriesVis.U) stroke(function (p) { return p.sigma_up_m; }, "#e6a23a");
+    if (seriesVis.Z) stroke(function (p) { return p.sigma_h_m; }, "#909399");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-sigma-update" || !ev.data.payload) return;
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) document.getElementById("hdr").textContent = INIT.title;
+    draw();
+  });
+  window.addEventListener("resize", function () { requestAnimationFrame(draw); });
+  bindLegend();
+  draw();
+})();
+` +
+        sc +
+        `
 </body>
 </html>`;
     }
@@ -2449,6 +3067,141 @@
       });
     }
 
+    function syncDOPGraphPlotWindow(data) {
+      const w = window.__gsofDOPPlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row9 = (data.records || []).find((r) => r.type === 9);
+      const payload = {
+        title: row9 ? String(row9.name || "GSOF type 9") : "GSOF type 9",
+        points: row9 && row9.dop_history ? row9.dop_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-dop-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
+    function openDOPGraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 9"),
+        points: Array.isArray(r.dop_history) ? r.dop_history : [],
+      };
+      const existing = window.__gsofDOPPlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-dop-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
+      const html = dopGraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "width=980,height=760");
+      if (w) {
+        window.__gsofDOPPlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-dop-update", payload: init }, "*");
+        } catch (e) {}
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureDOPGraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".dop-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "dop-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title = "Open PDOP / HDOP / TDOP / VDOP vs GPS TOW in a new window (seconds or time-of-day on X)";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openDOPGraphWindow(art._dopRecord);
+      });
+    }
+
+    function syncSigmaGraphPlotWindow(data) {
+      const w = window.__gsofSigmaPlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row12 = (data.records || []).find((r) => r.type === 12);
+      const payload = {
+        title: row12 ? String(row12.name || "GSOF type 12") : "GSOF type 12",
+        points: row12 && row12.sigma_history ? row12.sigma_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-sigma-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
+    function openSigmaGraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 12"),
+        points: Array.isArray(r.sigma_history) ? r.sigma_history : [],
+      };
+      const existing = window.__gsofSigmaPlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
+      const html = sigmaGraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "width=980,height=760");
+      if (w) {
+        window.__gsofSigmaPlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
+        } catch (e) {}
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureSigmaGraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".sigma-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sigma-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title =
+        "Open position RMS and σ_E / σ_N / σ_U / σ_H vs GPS TOW in a new window (seconds or time-of-day on X)";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openSigmaGraphWindow(art._sigmaRecord);
+      });
+    }
+
     /** Create card once; same <details> node is kept across SSE updates. */
     function createCard(key) {
       const art = document.createElement("article");
@@ -2555,18 +3308,23 @@
       const svDetRoot = body.querySelector(".sv-detailed-root");
       const isSV13 = r.type === 13;
       const isSV33 = r.type === 33;
+      const isSV34 = r.type === 34;
       const isSV14 = r.type === 14;
       const isTan7 = r.type === 7;
       const isLL2 = r.type === 2;
+      const isDOP9 = r.type === 9;
+      const isSig12 = r.type === 12;
 
-      art.classList.toggle("card--sv-brief", isSV13 || isSV33);
+      art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34);
       art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (!isSV13 && !isSV33 && !isSV14 && !isTan7 && !isLL2) {
+      if (!isSV13 && !isSV33 && !isSV34 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -2585,16 +3343,26 @@
         if (lg) {
           lg.remove();
         }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const sg = art.querySelector(".sigma-graph-open-btn");
+        if (sg) {
+          sg.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
         svDetRoot.replaceChildren();
         dl.hidden = false;
         fillFields(dl, r.fields);
-      } else if (isSV13 || isSV33) {
+      } else if (isSV13 || isSV33 || isSV34) {
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
         delete art.dataset.svDetailedView;
         const t2 = art.querySelector(".sv-detailed-view-toggle");
         if (t2) {
@@ -2607,6 +3375,14 @@
         const lg = art.querySelector(".llh-graph-open-btn");
         if (lg) {
           lg.remove();
+        }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
         }
         svDetRoot.hidden = true;
         svDetRoot.replaceChildren();
@@ -2623,6 +3399,8 @@
         art._svBriefRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
         delete art.dataset.svBriefView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
         if (t1) {
@@ -2635,6 +3413,14 @@
         const lg = art.querySelector(".llh-graph-open-btn");
         if (lg) {
           lg.remove();
+        }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
@@ -2651,6 +3437,8 @@
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -2665,6 +3453,14 @@
         if (lg) {
           lg.remove();
         }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -2678,6 +3474,8 @@
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -2692,6 +3490,14 @@
         if (tg) {
           tg.remove();
         }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -2699,6 +3505,80 @@
 
         art._llhRecord = r;
         ensureLLHGraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+      } else if (isDOP9) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._sigmaRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        const lg = art.querySelector(".llh-graph-open-btn");
+        if (lg) {
+          lg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._dopRecord = r;
+        ensureDOPGraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+      } else if (isSig12) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        const lg = art.querySelector(".llh-graph-open-btn");
+        if (lg) {
+          lg.remove();
+        }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._sigmaRecord = r;
+        ensureSigmaGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
       }
@@ -2789,6 +3669,8 @@
       }
       syncTangentGraphPlotWindow(data);
       syncLLHGraphPlotWindow(data);
+      syncDOPGraphPlotWindow(data);
+      syncSigmaGraphPlotWindow(data);
     }
 
     function connect() {

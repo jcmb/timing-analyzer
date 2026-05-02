@@ -220,6 +220,8 @@ type RecordRow struct {
 	SVBrief []gsof.SVBriefEntry `json:"sv_brief,omitempty"`
 	// AllSVBrief is populated for GSOF type 33 (all systems SV brief) for structured dashboard views.
 	AllSVBrief []gsof.AllSVBriefEntry `json:"all_sv_brief,omitempty"`
+	// AllSVDetailed is populated for GSOF type 34 (all systems SV detailed) for structured dashboard views.
+	AllSVDetailed []gsof.AllSVDetailedEntry `json:"all_sv_detailed,omitempty"`
 	// SVDetailed is populated for GSOF type 14 (detailed satellite info).
 	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
 	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
@@ -290,6 +292,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 33 {
 			_, row.AllSVBrief = gsof.ParseAllSVBriefEntries(payload)
+		}
+		if subType == 34 {
+			_, row.AllSVDetailed = gsof.ParseAllSVDetailedEntries(payload)
 		}
 		if subType == 14 {
 			_, row.SVDetailed = gsof.ParseSVDetailedEntries(payload)

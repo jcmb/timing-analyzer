@@ -105,6 +105,15 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(33).DocURL() != base+"gsof-messages-all-sv-brief.html" {
 		t.Fatalf("type 33 doc: %s", Lookup(33).DocURL())
 	}
+	if Lookup(34).DocURL() != base+"gsof-messages-all-sv-detail.html" {
+		t.Fatalf("type 34 doc: %s", Lookup(34).DocURL())
+	}
+	if Lookup(35).DocURL() != base+"gsof-messages-received-base-info.html" {
+		t.Fatalf("type 35 doc: %s", Lookup(35).DocURL())
+	}
+	if Lookup(37).DocURL() != base+"gsof-messages-batt-mem.html" {
+		t.Fatalf("type 37 doc: %s", Lookup(37).DocURL())
+	}
 	if Lookup(15).DocURL() != base+"gsof-messages-receiver-serial-no.html" {
 		t.Fatalf("type 15 doc: %s", Lookup(15).DocURL())
 	}
@@ -113,6 +122,15 @@ func TestCatalogDocURLs129(t *testing.T) {
 	}
 	if Lookup(16).DocURL() != base+"gsof-messages-utc.html" {
 		t.Fatalf("type 16 doc: %s", Lookup(16).DocURL())
+	}
+	if Lookup(38).DocURL() != base+"gsof-messages-position-type.html" {
+		t.Fatalf("type 38 doc: %s", Lookup(38).DocURL())
+	}
+	if Lookup(40).DocURL() != base+"gsof-messages-l-band.html" {
+		t.Fatalf("type 40 doc: %s", Lookup(40).DocURL())
+	}
+	if Lookup(41).DocURL() != base+"gsof-messages-base-position-quality-indicator.html" {
+		t.Fatalf("type 41 doc: %s", Lookup(41).DocURL())
 	}
 }
 
@@ -212,6 +230,10 @@ func TestDecode12SigmaUnitsAndOrientation(t *testing.T) {
 	}
 	if got["NUMBER_EPOCHS"] != "3088" {
 		t.Fatalf("epochs: %q", got["NUMBER_EPOCHS"])
+	}
+	// √(3² + 4²) = 5 m
+	if got["SIGMA_H (m)"] != "\u00a05.00000 m" {
+		t.Fatalf("SIGMA_H: %q", got["SIGMA_H (m)"])
 	}
 }
 
@@ -497,6 +519,76 @@ func TestDecode14SVDetailedRows(t *testing.T) {
 	}
 }
 
+func TestDecode35ReceivedBase(t *testing.T) {
+	payload := make([]byte, 35)
+	payload[0] = 0x09 // version 1, bit 3 set (base info valid)
+	copy(payload[1:9], []byte("BASE____"))
+	binary.BigEndian.PutUint16(payload[9:], 0xabcd)
+	latDeg := 40.7128
+	lonDeg := -74.0060
+	latRad := latDeg * math.Pi / 180
+	lonRad := lonDeg * math.Pi / 180
+	binary.BigEndian.PutUint64(payload[11:], math.Float64bits(latRad))
+	binary.BigEndian.PutUint64(payload[19:], math.Float64bits(lonRad))
+	binary.BigEndian.PutUint64(payload[27:], math.Float64bits(10.5))
+	fields := Decode(35, payload)
+	got := map[string]string{}
+	var baseFlags *Field
+	for i := range fields {
+		f := &fields[i]
+		if f.Label == "Base flags" {
+			baseFlags = f
+			continue
+		}
+		got[f.Label] = f.Value
+	}
+	if got["Summary"] != Lookup(35).Function {
+		t.Fatalf("summary %q", got["Summary"])
+	}
+	if got["Base name"] != "BASE____" {
+		t.Fatalf("name %q", got["Base name"])
+	}
+	if got["Base ID"] != "43981" {
+		t.Fatalf("id %q", got["Base ID"])
+	}
+	if !strings.Contains(got["Base latitude (DMS)"], "N") || !strings.Contains(got["Base latitude (decimal °)"], "40.71280000") {
+		t.Fatalf("lat: %q / %q", got["Base latitude (DMS)"], got["Base latitude (decimal °)"])
+	}
+	if !strings.Contains(got["Base longitude (DMS)"], "W") || !strings.Contains(got["Base longitude (decimal °)"], "-74.00600000") {
+		t.Fatalf("lon: %q / %q", got["Base longitude (DMS)"], got["Base longitude (decimal °)"])
+	}
+	if baseFlags == nil || len(baseFlags.Detail) < 2 {
+		t.Fatalf("base flags detail %#v", baseFlags)
+	}
+	if baseFlags.Detail[0].Label != "Bits 0–2 — Version" || baseFlags.Detail[0].Value != "1" {
+		t.Fatalf("version row %#v", baseFlags.Detail[0])
+	}
+	if baseFlags.Detail[1].Label != "Bit 3 — Base information valid" || baseFlags.Detail[1].Value != "Yes" {
+		t.Fatalf("valid row %#v", baseFlags.Detail[1])
+	}
+}
+
+func TestDecode37BatteryMemory(t *testing.T) {
+	payload := make([]byte, 10)
+	binary.BigEndian.PutUint16(payload[0:], 88)
+	// 3.25 h → 3 h 15 min
+	binary.BigEndian.PutUint64(payload[2:], math.Float64bits(3.25))
+	fields := Decode(37, payload)
+	got := map[string]string{}
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["Summary"] != Lookup(37).Function {
+		t.Fatalf("summary %q", got["Summary"])
+	}
+	if got["Battery capacity (%)"] != "88 %" {
+		t.Fatalf("battery %q", got["Battery capacity (%)"])
+	}
+	if got["Memory left"] != "3 h 15 min" {
+		t.Fatalf("memory %q", got["Memory left"])
+	}
+}
+
 func TestDecodeReservedBitViolationStillShown(t *testing.T) {
 	t.Cleanup(func() { ShowExpectedReservedBits = false })
 	payload := make([]byte, 17)
@@ -549,5 +641,231 @@ func TestDecodeShowExpectedReservedBits(t *testing.T) {
 	}
 	if vf == nil || len(vf.Detail) != 8 {
 		t.Fatalf("verbose velocity flags: %#v", vf)
+	}
+}
+
+func TestDecodePositionType38Legacy(t *testing.T) {
+	payload := make([]byte, 11)
+	binary.BigEndian.PutUint32(payload[0:], math.Float32bits(1.5))
+	payload[4] = 0x03 // bits 1,0 set: VRS + RTK fixed
+	payload[5] = 0x02 // RTK condition low nibble = 2
+	binary.BigEndian.PutUint32(payload[6:], math.Float32bits(12.5))
+	payload[10] = 0xC0 // bits 7,6 set; bits 2,1 = 0
+	fields := Decode(38, payload)
+	got := make(map[string]string)
+	var sol *Field
+	for i := range fields {
+		f := &fields[i]
+		got[f.Label] = f.Value
+		if f.Label == "Solution flags" {
+			sol = f
+		}
+	}
+	if !strings.Contains(got["Summary"], "legacy") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if got["Error scale"] != "1.5" {
+		t.Fatalf("error scale: %q", got["Error scale"])
+	}
+	if !strings.HasPrefix(got["RTK condition"], "2 —") {
+		t.Fatalf("rtk: %q", got["RTK condition"])
+	}
+	if sol == nil || len(sol.Detail) < 3 {
+		t.Fatalf("solution flags detail: %#v", sol)
+	}
+}
+
+func TestDecodePositionType38OEM(t *testing.T) {
+	payload := make([]byte, 26)
+	// reserved 0–3 left zero
+	payload[4] = 0x03 // solution
+	payload[5] = 0x01 // RTK condition 1
+	binary.BigEndian.PutUint32(payload[6:], math.Float32bits(3))
+	payload[10] = 0x06 // net: bits 2,1 = 3
+	payload[11] = 0x01 // net2 bit 0
+	payload[12] = 0x01 // frame: ITRF current epoch
+	binary.BigEndian.PutUint16(payload[13:], uint16(100)) // +1.00 year → ~2006-01-01
+	payload[15] = 7                                      // Australia
+	binary.BigEndian.PutUint32(payload[16:], 0xFFFFFFFF) // RTX minutes expired
+	payload[20] = 0x00
+	binary.BigEndian.PutUint32(payload[21:], math.Float32bits(0))
+	payload[25] = 9 // full fixed RTK
+	fields := Decode(38, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Summary"], "Position type") || strings.Contains(got["Summary"], "legacy") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if !strings.Contains(got["Position fix type"], "9 —") {
+		t.Fatalf("fix type: %q", got["Position fix type"])
+	}
+	if !strings.Contains(got["Tectonic plate"], "Australia") {
+		t.Fatalf("plate: %q", got["Tectonic plate"])
+	}
+	if !strings.Contains(got["RTX STD SUB minutes left"], "0xFFFFFFFF") {
+		t.Fatalf("rtx min: %q", got["RTX STD SUB minutes left"])
+	}
+	if got["Correction age (s)"] != "3.00" {
+		t.Fatalf("correction age: %q", got["Correction age (s)"])
+	}
+	if _, ok := got["Reserved (bytes 0–3)"]; ok {
+		t.Fatalf("reserved row should be hidden without ShowExpectedReservedBits")
+	}
+}
+
+func TestDecodePositionType38OEMReservedVerbose(t *testing.T) {
+	t.Cleanup(func() { ShowExpectedReservedBits = false })
+	ShowExpectedReservedBits = true
+	payload := make([]byte, 26)
+	payload[4] = 0x00
+	binary.BigEndian.PutUint32(payload[6:], math.Float32bits(0))
+	payload[10] = 0x00
+	payload[11] = 0x00
+	payload[12] = 0x01
+	binary.BigEndian.PutUint16(payload[13:], 0)
+	payload[15] = 0
+	binary.BigEndian.PutUint32(payload[16:], 0)
+	payload[20] = 0
+	binary.BigEndian.PutUint32(payload[21:], math.Float32bits(1.2345))
+	payload[25] = 0
+	fields := Decode(38, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if _, ok := got["Reserved (bytes 0–3)"]; !ok {
+		t.Fatalf("expected reserved row with ShowExpectedReservedBits: %#v", got)
+	}
+	if got["Pole wobble distance (m)"] != "1.235" {
+		t.Fatalf("pole dist: %q", got["Pole wobble distance (m)"])
+	}
+}
+
+func TestDecodeLBand40(t *testing.T) {
+	payload := make([]byte, lBandStatusPayloadBytes)
+	copy(payload[0:5], []byte("Custo"))
+	binary.BigEndian.PutUint32(payload[5:], math.Float32bits(1531.25))
+	binary.BigEndian.PutUint16(payload[9:], 1200)
+	binary.BigEndian.PutUint32(payload[11:], math.Float32bits(42.5))
+	payload[15] = 1 // HP
+	payload[16] = 1
+	payload[17] = 0
+	payload[18] = 7 // tracking
+	payload[19] = 0 // dynamic
+	binary.BigEndian.PutUint32(payload[20:], math.Float32bits(0.5))
+	binary.BigEndian.PutUint32(payload[24:], math.Float32bits(1.0))
+	payload[28] = 0
+	binary.BigEndian.PutUint32(payload[29:], math.Float32bits(1.25))
+	binary.BigEndian.PutUint32(payload[33:], math.Float32bits(1e-6))
+	binary.BigEndian.PutUint32(payload[37:], 100)
+	binary.BigEndian.PutUint32(payload[41:], 2)
+	binary.BigEndian.PutUint32(payload[45:], 3)
+	binary.BigEndian.PutUint32(payload[49:], 0xFFFFFF00-1)
+	binary.BigEndian.PutUint32(payload[53:], 10)
+	binary.BigEndian.PutUint32(payload[57:], 1)
+	payload[61] = 1
+	binary.BigEndian.PutUint64(payload[62:], math.Float64bits(1.542e9))
+
+	fields := Decode(40, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Summary"], "L-Band") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if !strings.Contains(got["Satellite name"], "Custo") {
+		t.Fatalf("name: %q", got["Satellite name"])
+	}
+	if got["Satellite frequency (MHz)"] != "1531.25" {
+		t.Fatalf("MHz: %q", got["Satellite frequency (MHz)"])
+	}
+	if got["Satellite bit rate (Hz)"] != "1200" {
+		t.Fatalf("bitrate: %q", got["Satellite bit rate (Hz)"])
+	}
+	if !strings.HasPrefix(got["SNR (C/No)"], "42.5") {
+		t.Fatalf("snr: %q", got["SNR (C/No)"])
+	}
+	if !strings.Contains(got["Beam mode"], "7 — Tracking") {
+		t.Fatalf("beam: %q", got["Beam mode"])
+	}
+	if !strings.Contains(got["MEAS frequency (Hz)"], "1.542e+09") && !strings.Contains(got["MEAS frequency (Hz)"], "1542000000") {
+		t.Fatalf("meas hz: %q", got["MEAS frequency (Hz)"])
+	}
+}
+
+func TestDecode41BasePositionQuality(t *testing.T) {
+	payload := make([]byte, 31)
+	binary.BigEndian.PutUint32(payload[0:], 1234500) // 1234.50 s
+	binary.BigEndian.PutUint16(payload[4:], 2300)
+	binary.BigEndian.PutUint64(payload[6:], math.Float64bits(37.7749))
+	binary.BigEndian.PutUint64(payload[14:], math.Float64bits(-122.4194))
+	binary.BigEndian.PutUint64(payload[22:], math.Float64bits(12.34))
+	payload[30] = 5
+	fields := Decode(41, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["GPS time of week"], "1234.50 s") {
+		t.Fatalf("tow: %q", got["GPS time of week"])
+	}
+	if got["GPS week"] != "2300" {
+		t.Fatalf("week: %q", got["GPS week"])
+	}
+	if !strings.Contains(got["Base latitude (DMS)"], "N") {
+		t.Fatalf("lat DMS: %q", got["Base latitude (DMS)"])
+	}
+	if !strings.Contains(got["Base latitude (decimal °)"], "37.7749") {
+		t.Fatalf("lat dec: %q", got["Base latitude (decimal °)"])
+	}
+	if !strings.Contains(got["Quality"], "5 —") || !strings.Contains(got["Quality"], "Location RTK") {
+		t.Fatalf("quality: %q", got["Quality"])
+	}
+}
+
+func TestDecodeLBand40Short(t *testing.T) {
+	fields := Decode(40, []byte{1, 2, 3})
+	if len(fields) < 2 {
+		t.Fatal(fields)
+	}
+	if fields[0].Label != "Summary" {
+		t.Fatalf("first: %#v", fields[0])
+	}
+	if !strings.Contains(fields[2].Value, "70") {
+		t.Fatalf("parse line: %#v", fields[2])
+	}
+}
+
+func TestDecodePositionType38OEMExtraFrameByte(t *testing.T) {
+	payload := make([]byte, 27)
+	payload[4] = 0x00
+	payload[5] = 0x00
+	binary.BigEndian.PutUint32(payload[6:], 0)
+	payload[10] = 0x00
+	payload[11] = 0x00
+	payload[12] = 0x80 // bit 7: second frame byte follows
+	payload[13] = 0x00
+	binary.BigEndian.PutUint16(payload[14:], 0)
+	payload[16] = 0
+	binary.BigEndian.PutUint32(payload[17:], 0)
+	payload[21] = 0
+	binary.BigEndian.PutUint32(payload[22:], 0)
+	payload[26] = 0
+	fields := Decode(38, payload)
+	if len(fields) < 5 {
+		t.Fatalf("fields: %#v", fields)
+	}
+	var frame *Field
+	for i := range fields {
+		if fields[i].Label == "Frame flag" {
+			frame = &fields[i]
+			break
+		}
+	}
+	if frame == nil || !strings.Contains(frame.Value, "+") {
+		t.Fatalf("frame value: %#v", frame)
 	}
 }

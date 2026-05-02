@@ -91,7 +91,7 @@ func Decode(msgType int, payload []byte) []Field {
 	case 37:
 		return decodeBatteryMemory(payload)
 	case 38:
-		return decodeRTKErrorScale(payload)
+		return decodePositionType38(payload)
 	case 40:
 		return decodeLBandStatus(payload)
 	case 41:
@@ -128,6 +128,18 @@ func (r *beReader) u32() uint32 {
 	return v
 }
 
+func (r *beReader) i16() int16 {
+	v := binary.BigEndian.Uint16(r.b[r.i:])
+	r.i += 2
+	return int16(v)
+}
+
+func (r *beReader) i32() int32 {
+	v := binary.BigEndian.Uint32(r.b[r.i:])
+	r.i += 4
+	return int32(v)
+}
+
 func (r *beReader) f32() float32 {
 	v := binary.BigEndian.Uint32(r.b[r.i:])
 	r.i += 4
@@ -147,6 +159,17 @@ func (r *beReader) str8() string {
 	s := string(r.b[r.i : r.i+8])
 	r.i += 8
 	return strings.TrimRight(s, "\x00")
+}
+
+// str5 reads a 5-byte ASCII field (Trimble GSOF type 40 satellite name; "Custo" prefix in custom mode).
+func (r *beReader) str5() string {
+	if !r.ok(5) {
+		return ""
+	}
+	s := string(r.b[r.i : r.i+5])
+	r.i += 5
+	s = strings.TrimRight(strings.TrimRight(s, "\x00"), " ")
+	return s
 }
 
 func hexPreview(b []byte, max int) string {
@@ -180,8 +203,8 @@ func decode01(payload []byte) []Field {
 	towSec := float64(gpsTime) / 1000
 	return []Field{
 		kv("Summary", Lookup(1).Function),
-		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
 		kv("GPS week", fmt.Sprintf("%d", week)),
+		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
 		kv("SVs used", fmt.Sprintf("%d", sv)),
 		{
 			Label:  "Flags 1",
@@ -731,8 +754,8 @@ func decodeCurrentTime(payload []byte) []Field {
 	fl := br.u8()
 	return []Field{
 		kv("Summary", Lookup(16).Function),
-		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(towMs)/1000)),
 		kv("UTC week", fmt.Sprintf("%d", week)),
+		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(towMs)/1000)),
 		kv("UTC offset", fmt.Sprintf("%d", utcOff)),
 		{
 			Label:  "Current time flags",
@@ -751,8 +774,8 @@ func decodePositionTimeUTC(payload []byte) []Field {
 	w := br.u16()
 	return []Field{
 		kv("Summary", Lookup(26).Function),
-		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(t)/1000)),
 		kv("UTC week", fmt.Sprintf("%d", w)),
+		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(t)/1000)),
 		kv("SVs", fmt.Sprintf("%d", br.u8())),
 		kv("Flags 1", fmt.Sprintf("0x%02X", br.u8())),
 		kv("Flags 2", fmt.Sprintf("0x%02X", br.u8())),
@@ -977,6 +1000,21 @@ func decodeAllSVDetailed(payload []byte) []Field {
 	return out
 }
 
+// decodeReceivedBaseFlags documents GSOF type-0x23 base flags (version, valid, reserved high nibble).
+func decodeReceivedBaseFlags(flags byte) []Field {
+	ver := int(flags & 0x07)
+	out := []Field{
+		kv("Bits 0–2 — Version", fmt.Sprintf("%d", ver)),
+		kv("Bit 3 — Base information valid", yesNo(bitOn(flags, 3))),
+	}
+	for n := uint(4); n <= 7; n++ {
+		out = appendReservedClearKV(out, flags, n, fmt.Sprintf("Bit %d — Reserved (always clear)", n))
+	}
+	return out
+}
+
+// decodeReceivedBase decodes GSOF type 0x23: flags, 8-char base name, base ID (u16),
+// base latitude and longitude (float64 radians), height (float64, m).
 func decodeReceivedBase(payload []byte) []Field {
 	br := beReader{b: payload}
 	if !br.ok(1 + 8 + 2 + 8 + 8 + 8) {
@@ -985,17 +1023,43 @@ func decodeReceivedBase(payload []byte) []Field {
 	fl := br.u8()
 	name := br.str8()
 	id := br.u16()
-	lat := br.f64()
-	lon := br.f64()
+	// Type 35: latitude and longitude are radians on the wire (Trimble OEM); height is meters.
+	latRad := br.f64()
+	lonRad := br.f64()
 	h := br.f64()
+	latDeg := latRad * 180 / math.Pi
+	lonDeg := lonRad * 180 / math.Pi
+	flagsField := Field{
+		Label:  "Base flags",
+		Value:  fmt.Sprintf("0x%02X · %08b", fl, fl),
+		Detail: decodeReceivedBaseFlags(fl),
+	}
 	return []Field{
-		kv("Flags", fmt.Sprintf("%d", fl)),
+		kv("Summary", Lookup(35).Function),
+		flagsField,
 		kv("Base name", name),
 		kv("Base ID", fmt.Sprintf("%d", id)),
-		kv("Base lat", fmt.Sprintf("%g", lat)),
-		kv("Base lon", fmt.Sprintf("%g", lon)),
-		kv("Base height", formatMeters3(h)),
+		kv("Base latitude (DMS)", formatDMS(latDeg, true)),
+		kv("Base latitude (decimal °)", formatDecimalDegrees(latDeg)),
+		kv("Base longitude (DMS)", formatDMS(lonDeg, false)),
+		kv("Base longitude (decimal °)", formatDecimalDegrees(lonDeg)),
+		kv("Base height (m)", formatMeters3(h)),
 	}
+}
+
+// formatMemoryLeftHoursMinutes renders memory remaining (hours as float64) as whole hours and
+// whole minutes, with no fractional parts (e.g. "3 h 15 min").
+func formatMemoryLeftHoursMinutes(hours float64) string {
+	if math.IsNaN(hours) || math.IsInf(hours, 0) || hours <= 0 {
+		return "0 h 0 min"
+	}
+	totalMin := int(math.Round(hours * 60))
+	if totalMin < 0 {
+		totalMin = 0
+	}
+	h := totalMin / 60
+	m := totalMin % 60
+	return fmt.Sprintf("%d h %d min", h, m)
 }
 
 func decodeBatteryMemory(payload []byte) []Field {
@@ -1003,36 +1067,12 @@ func decodeBatteryMemory(payload []byte) []Field {
 	if !br.ok(2 + 8) {
 		return shortFields(Lookup(37).Function, payload, 10)
 	}
+	capPct := br.u16()
+	memHours := br.f64()
 	return []Field{
-		kv("Battery capacity", fmt.Sprintf("%d", br.u16())),
-		kv("Memory left", fmt.Sprintf("%g", br.f64())),
-	}
-}
-
-func decodeRTKErrorScale(payload []byte) []Field {
-	br := beReader{b: payload}
-	if !br.ok(4 + 1 + 1 + 4 + 1) {
-		return shortFields(Lookup(38).Function, payload, 11)
-	}
-	return []Field{
-		kv("Error scale", fmt.Sprintf("%g", br.f32())),
-		kv("Solution flags", fmt.Sprintf("%d", br.u8())),
-		kv("RTK condition", fmt.Sprintf("%d", br.u8())),
-		kv("Correction age", fmt.Sprintf("%g", br.f32())),
-		kv("Network flags", fmt.Sprintf("%d", br.u8())),
-	}
-}
-
-func decodeLBandStatus(payload []byte) []Field {
-	m := Lookup(40)
-	if len(payload) < 4 {
-		return shortFields(m.Function, payload, 4)
-	}
-	return []Field{
-		kv("Summary", m.Function),
-		kv("Payload length (bytes)", fmt.Sprintf("%d", len(payload))),
-		kv("Note", "Full L-Band layout is long in GSOF.py; use hex for remainder until fully expanded."),
-		kv("Payload (hex)", hexPreview(payload, 128)),
+		kv("Summary", Lookup(37).Function),
+		kv("Battery capacity (%)", fmt.Sprintf("%d %%", capPct)),
+		kv("Memory left", formatMemoryLeftHoursMinutes(memHours)),
 	}
 }
 
@@ -1041,13 +1081,41 @@ func decodeBasePositionQuality(payload []byte) []Field {
 	if !br.ok(4 + 2 + 8 + 8 + 8 + 1) {
 		return shortFields(Lookup(41).Function, payload, 31)
 	}
+	gpsMS := br.u32()
+	week := br.u16()
+	lat := br.f64()
+	lon := br.f64()
+	h := br.f64()
+	qual := br.u8()
+	towSec := float64(gpsMS) / 1000.0
 	return []Field{
-		kv("GPS time (raw)", fmt.Sprintf("%d", br.u32())),
-		kv("GPS week", fmt.Sprintf("%d", br.u16())),
-		kv("Base latitude", fmt.Sprintf("%g", br.f64())),
-		kv("Base longitude", fmt.Sprintf("%g", br.f64())),
-		kv("Base height", formatMeters3(br.f64())),
-		kv("Quality", fmt.Sprintf("%d", br.u8())),
+		kv("Summary", Lookup(41).Function),
+		kv("GPS week", fmt.Sprintf("%d", week)),
+		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
+		kv("Base latitude (DMS)", formatDMS(lat, true)),
+		kv("Base latitude (decimal °)", formatDecimalDegrees(lat)),
+		kv("Base longitude (DMS)", formatDMS(lon, false)),
+		kv("Base longitude (decimal °)", formatDecimalDegrees(lon)),
+		kv("Base height (m)", formatMeters3(h)),
+		kv("Quality", formatBasePositionQuality(qual)),
+	}
+}
+
+// formatBasePositionQuality maps the type 41 quality code (Trimble OEM base position / quality indicator).
+func formatBasePositionQuality(code byte) string {
+	switch code {
+	case 0:
+		return "0 — Fix not available or invalid"
+	case 1:
+		return "1 — Autonomous GPS fix"
+	case 2:
+		return "2 — Differential SBAS or OmniSTAR VBS"
+	case 4:
+		return "4 — RTK Fixed, xFill"
+	case 5:
+		return "5 — OmniSTAR XP, OmniSTAR HP, CenterPoint RTX, Float RTK, or Location RTK"
+	default:
+		return fmt.Sprintf("%d — Unknown or reserved", code)
 	}
 }
 
