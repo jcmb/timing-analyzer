@@ -96,10 +96,13 @@
     }
     .card-head-top {
       display: flex;
+      flex-wrap: wrap;
       align-items: flex-start;
-      justify-content: space-between;
-      gap: 0.65rem;
+      gap: 0.45rem 0.65rem;
       margin-bottom: 0.35rem;
+    }
+    .card-head-top .card-copy-all {
+      margin-left: auto;
     }
     .card-head-top h2.card-title { margin-bottom: 0; flex: 1; min-width: 0; }
     /* GSOF human-readable message name — always first / top of card */
@@ -147,12 +150,12 @@
       display: none;
     }
     .card-more-chevron {
-      flex: 0 0 0.85rem;
-      width: 0.85rem;
+      flex: 0 0 1.35rem;
+      width: 1.35rem;
       text-align: center;
-      margin-top: 0.78rem;
+      margin-top: 0.62rem;
       color: var(--muted);
-      font-size: 0.72rem;
+      font-size: 1.2rem;
       line-height: 1;
       transition: transform 0.15s;
     }
@@ -235,7 +238,7 @@
     }
     details.field-expand > summary {
       cursor: pointer;
-      font-size: 0.78rem;
+      font-size: 0.85rem;
       color: var(--accent);
       list-style: none;
       user-select: none;
@@ -244,6 +247,12 @@
     details.field-expand > summary::-webkit-details-marker { display: none; }
     details.field-expand > summary::before {
       content: "▸ ";
+      display: inline-block;
+      min-width: 1.15em;
+      margin-right: 0.15em;
+      font-size: 1.15rem;
+      line-height: 1;
+      vertical-align: -0.12em;
       color: var(--muted);
       font-family: var(--mono);
     }
@@ -324,6 +333,106 @@
       color: var(--accent);
       border-color: var(--accent);
     }
+    .sv-brief-view-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .sv-brief-view-toggle button {
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: rgba(15, 20, 25, 0.55);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .sv-brief-view-toggle button[aria-pressed="true"] {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(61, 139, 253, 0.12);
+    }
+    .sv-brief-view-toggle button:hover {
+      color: var(--text);
+      border-color: var(--muted);
+    }
+    .sv-brief-root {
+      margin: 0;
+      padding: 0 0.85rem 0.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+    article.card.card--sv-brief .card-body > dl {
+      display: none;
+    }
+    article.card.card--sv-brief .sv-brief-root {
+      border-top: none;
+      padding-top: 0.35rem;
+    }
+    .sv-brief-basic-table,
+    .sv-brief-detail-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      margin: 0 0 0.65rem;
+    }
+    .sv-brief-basic-table th,
+    .sv-brief-basic-table td,
+    .sv-brief-detail-table th,
+    .sv-brief-detail-table td {
+      border: 1px solid var(--border);
+      padding: 0.28rem 0.45rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    .sv-brief-basic-table th,
+    .sv-brief-detail-table th {
+      background: rgba(0, 0, 0, 0.18);
+      color: var(--muted);
+      font-weight: 600;
+      font-family: var(--sans);
+    }
+    .sv-brief-basic-table td.mono,
+    .sv-brief-detail-table td.mono {
+      font-family: var(--mono);
+      font-variant-numeric: tabular-nums;
+    }
+    .sv-brief-sv-block {
+      margin: 0 0 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .sv-brief-sv-block:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: none;
+    }
+    .sv-brief-sv-block h4 {
+      margin: 0.65rem 0 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .sv-brief-sv-block h4:first-of-type {
+      margin-top: 0.25rem;
+    }
+    .sv-brief-prn {
+      margin: 0 0 0.35rem;
+      font-size: 0.88rem;
+      font-weight: 650;
+      color: var(--text);
+    }
+    .sv-brief-detail-meaning {
+      color: var(--muted);
+      font-family: var(--sans);
+      max-width: 36rem;
+    }
     #warnings {
       margin-top: 1.5rem;
       padding: 0.75rem 1rem;
@@ -369,6 +478,29 @@
     const warnBody = document.getElementById("warnBody");
     let lastStreamData = null;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
+
+    /** GSOF type 13 — Flags 1 bit meanings (Trimble SV brief). */
+    const SV_BRIEF_F1_MEANINGS = [
+      "Satellite above horizon: 0 = No, 1 = Yes.",
+      "Satellite currently assigned to a channel (trying to track): 0 = No, 1 = Yes.",
+      "Satellite currently tracked on L1 frequency: 0 = No, 1 = Yes.",
+      "Satellite currently tracked on L2 frequency: 0 = No, 1 = Yes.",
+      "Satellite reported at base on L1 frequency: 0 = No, 1 = Yes.",
+      "Satellite reported at base on L2 frequency: 0 = No, 1 = Yes.",
+      "Satellite used in position: 0 = No, 1 = Yes.",
+      "Satellite used in current RTK process (Search, Propagate, Fix Solution): 0 = No, 1 = Yes.",
+    ];
+    /** GSOF type 13 — Flags 2 documented bits; bits 2–7 are not specified in the OEM table used here. */
+    const SV_BRIEF_F2_MEANINGS = [
+      "Satellite tracking P-code on L1 band: 0 = No, 1 = Yes.",
+      "Satellite tracking P-code on L2 band: 0 = No, 1 = Yes.",
+      "Reserved / not documented on this page.",
+      "Reserved / not documented on this page.",
+      "Reserved / not documented on this page.",
+      "Reserved / not documented on this page.",
+      "Reserved / not documented on this page.",
+      "Reserved / not documented on this page.",
+    ];
 
     function setStreamPill(ok, label) {
       streamPill.className = "pill " + (ok ? "ok" : "bad");
@@ -562,6 +694,165 @@
       });
     }
 
+    function svBriefFmtU8Binary(v) {
+      let n = Number(v) & 0xff;
+      let s = n.toString(2);
+      while (s.length < 8) {
+        s = "0" + s;
+      }
+      return s;
+    }
+
+    function svBriefBitYesNo(flagsByte, bit) {
+      return (Number(flagsByte) >> Number(bit)) & 1 ? "Yes" : "No";
+    }
+
+    function svBriefMkFlagSection(title, flagsByte, meanings) {
+      const wrap = document.createElement("div");
+      const h4 = document.createElement("h4");
+      h4.textContent = title;
+      wrap.appendChild(h4);
+      const tbl = document.createElement("table");
+      tbl.className = "sv-brief-detail-table";
+      const thead = document.createElement("thead");
+      const trh = document.createElement("tr");
+      ["Bit", "Meaning", "Value"].forEach((h) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      const tb = document.createElement("tbody");
+      for (let bit = 0; bit < 8; bit++) {
+        const tr = document.createElement("tr");
+        const tdb = document.createElement("td");
+        tdb.className = "mono";
+        tdb.textContent = String(bit);
+        const tdm = document.createElement("td");
+        tdm.className = "sv-brief-detail-meaning";
+        tdm.textContent = meanings[bit] || "Bit " + bit + " — reserved / unspecified.";
+        const tdv = document.createElement("td");
+        tdv.className = "mono";
+        tdv.textContent = svBriefBitYesNo(flagsByte, bit);
+        tr.appendChild(tdb);
+        tr.appendChild(tdm);
+        tr.appendChild(tdv);
+        tb.appendChild(tr);
+      }
+      tbl.appendChild(tb);
+      wrap.appendChild(tbl);
+      return wrap;
+    }
+
+    function renderSVBriefBody(art, r) {
+      const root = art.querySelector(".sv-brief-root");
+      if (!root) {
+        return;
+      }
+      root.replaceChildren();
+      const rows = r.sv_brief || [];
+      const view = art.dataset.svBriefView || "basic";
+      if (!rows.length) {
+        const p = document.createElement("p");
+        p.className = "sv-brief-empty";
+        p.textContent = "(no SV rows decoded; check payload / parse errors in export)";
+        root.appendChild(p);
+        return;
+      }
+      if (view === "basic") {
+        const tbl = document.createElement("table");
+        tbl.className = "sv-brief-basic-table";
+        const thead = document.createElement("thead");
+        const trh = document.createElement("tr");
+        ["PRN", "Flags 1 (binary)", "Flags 2 (binary)"].forEach((h) => {
+          const th = document.createElement("th");
+          th.textContent = h;
+          trh.appendChild(th);
+        });
+        thead.appendChild(trh);
+        tbl.appendChild(thead);
+        const tb = document.createElement("tbody");
+        for (const row of rows) {
+          const tr = document.createElement("tr");
+          const td0 = document.createElement("td");
+          td0.textContent = String(row.prn);
+          const td1 = document.createElement("td");
+          td1.className = "mono";
+          td1.textContent = svBriefFmtU8Binary(row.flags1);
+          const td2 = document.createElement("td");
+          td2.className = "mono";
+          td2.textContent = svBriefFmtU8Binary(row.flags2);
+          tr.appendChild(td0);
+          tr.appendChild(td1);
+          tr.appendChild(td2);
+          tb.appendChild(tr);
+        }
+        tbl.appendChild(tb);
+        root.appendChild(tbl);
+        return;
+      }
+      for (const row of rows) {
+        const block = document.createElement("div");
+        block.className = "sv-brief-sv-block";
+        const hp = document.createElement("h3");
+        hp.className = "sv-brief-prn";
+        hp.textContent = "PRN " + String(row.prn);
+        block.appendChild(hp);
+        block.appendChild(svBriefMkFlagSection("Flags 1", row.flags1, SV_BRIEF_F1_MEANINGS));
+        block.appendChild(svBriefMkFlagSection("Flags 2", row.flags2, SV_BRIEF_F2_MEANINGS));
+        root.appendChild(block);
+      }
+    }
+
+    function syncSVBriefTogglePressed(art) {
+      const wrap = art.querySelector(".sv-brief-view-toggle");
+      if (!wrap) {
+        return;
+      }
+      const v = art.dataset.svBriefView || "basic";
+      const btns = wrap.querySelectorAll("button");
+      if (btns.length >= 2) {
+        btns[0].setAttribute("aria-pressed", v === "basic" ? "true" : "false");
+        btns[1].setAttribute("aria-pressed", v === "detailed" ? "true" : "false");
+      }
+    }
+
+    function ensureSVBriefToggle(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".sv-brief-view-toggle")) {
+        return;
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "sv-brief-view-toggle";
+      const b1 = document.createElement("button");
+      b1.type = "button";
+      b1.textContent = "Basic";
+      b1.setAttribute("aria-pressed", "true");
+      const b2 = document.createElement("button");
+      b2.type = "button";
+      b2.textContent = "Detailed";
+      b2.setAttribute("aria-pressed", "false");
+      wrap.appendChild(b1);
+      wrap.appendChild(b2);
+      headTop.insertBefore(wrap, copyBtn);
+      b1.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        art.dataset.svBriefView = "basic";
+        syncSVBriefTogglePressed(art);
+        renderSVBriefBody(art, art._svBriefRecord);
+      });
+      b2.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        art.dataset.svBriefView = "detailed";
+        syncSVBriefTogglePressed(art);
+        renderSVBriefBody(art, art._svBriefRecord);
+      });
+    }
+
     /** Create card once; same <details> node is kept across SSE updates. */
     function createCard(key) {
       const art = document.createElement("article");
@@ -628,6 +919,10 @@
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
       body.appendChild(dl);
+      const svBriefRoot = document.createElement("div");
+      svBriefRoot.className = "sv-brief-root";
+      svBriefRoot.hidden = true;
+      body.appendChild(svBriefRoot);
       body.appendChild(docWrap);
       det.appendChild(sum);
       det.appendChild(body);
@@ -655,7 +950,33 @@
       };
 
       const body = art.querySelector(".card-body");
-      fillFields(body.querySelector("dl"), r.fields);
+      const dl = body.querySelector("dl");
+      const svRoot = body.querySelector(".sv-brief-root");
+      const isSV13 = r.type === 13;
+
+      art.classList.toggle("card--sv-brief", isSV13);
+
+      if (isSV13) {
+        art._svBriefRecord = r;
+        if (!art.dataset.svBriefView) {
+          art.dataset.svBriefView = "basic";
+        }
+        ensureSVBriefToggle(art);
+        syncSVBriefTogglePressed(art);
+        svRoot.hidden = false;
+        renderSVBriefBody(art, r);
+      } else {
+        art._svBriefRecord = null;
+        delete art.dataset.svBriefView;
+        const tgl = art.querySelector(".sv-brief-view-toggle");
+        if (tgl) {
+          tgl.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        fillFields(dl, r.fields);
+      }
+
       const docA = body.querySelector(".doc-link");
       docA.href = r.doc_url || "https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html";
     }

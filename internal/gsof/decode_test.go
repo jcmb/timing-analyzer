@@ -99,6 +99,12 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(12).DocURL() != base+"gsof-messages-sigma.html" {
 		t.Fatalf("type 12 doc: %s", Lookup(12).DocURL())
 	}
+	if Lookup(13).DocURL() != base+"gsof-messages-sv-brief.html" {
+		t.Fatalf("type 13 doc: %s", Lookup(13).DocURL())
+	}
+	if Lookup(15).DocURL() != base+"gsof-messages-receiver-serial-no.html" {
+		t.Fatalf("type 15 doc: %s", Lookup(15).DocURL())
+	}
 }
 
 func TestDecode02LatLonRad(t *testing.T) {
