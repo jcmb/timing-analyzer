@@ -168,6 +168,45 @@
     }
     .card-body dt { color: var(--muted); }
     .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); word-break: break-word; }
+    .field-dd-inner { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
+    .field-value { display: block; }
+    details.field-expand {
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.45rem;
+      background: rgba(0, 0, 0, 0.12);
+    }
+    details.field-expand > summary {
+      cursor: pointer;
+      font-size: 0.78rem;
+      color: var(--accent);
+      list-style: none;
+      user-select: none;
+      font-family: var(--sans);
+    }
+    details.field-expand > summary::-webkit-details-marker { display: none; }
+    details.field-expand > summary::before {
+      content: "▸ ";
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+    details.field-expand[open] > summary::before {
+      content: "▾ ";
+    }
+    details.field-expand .field-nested {
+      margin: 0.4rem 0 0;
+      padding: 0.4rem 0 0;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: minmax(0, 13rem) 1fr;
+      gap: 0.3rem 0.65rem;
+      font-size: 0.8rem;
+    }
+    details.field-expand .field-nested dt { color: var(--muted); font-family: var(--sans); }
+    details.field-expand .field-nested dd { font-size: 0.78rem; }
     .doc-link-wrap {
       margin: 0.5rem 0 0;
       padding-top: 0.5rem;
@@ -250,6 +289,41 @@
       dl.appendChild(dd);
     }
 
+    function appendFieldToDL(dl, f, fieldKey) {
+      const dt = document.createElement("dt");
+      dt.textContent = f.label;
+      const dd = document.createElement("dd");
+      dd.dataset.field = fieldKey;
+
+      const inner = document.createElement("div");
+      inner.className = "field-dd-inner";
+
+      const valEl = document.createElement("span");
+      valEl.className = "field-value";
+      valEl.textContent = f.value;
+      inner.appendChild(valEl);
+
+      if (f.detail && f.detail.length > 0) {
+        const det = document.createElement("details");
+        det.className = "field-expand";
+        const sum = document.createElement("summary");
+        sum.textContent =
+          f.label === "Flags 1" ? "Flag bit meanings" : "Details";
+        const nested = document.createElement("dl");
+        nested.className = "field-nested";
+        f.detail.forEach((child, j) => {
+          appendFieldToDL(nested, child, fieldKey + "-d" + j);
+        });
+        det.appendChild(sum);
+        det.appendChild(nested);
+        inner.appendChild(det);
+      }
+
+      dd.appendChild(inner);
+      dl.appendChild(dt);
+      dl.appendChild(dd);
+    }
+
     function fillFields(dl, fields) {
       dl.replaceChildren();
       if (!fields || !fields.length) {
@@ -257,7 +331,7 @@
         return;
       }
       fields.forEach((f, i) => {
-        dlRow(dl, f.label, "f" + i, f.value);
+        appendFieldToDL(dl, f, "f" + i);
       });
     }
 

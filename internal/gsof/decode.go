@@ -5,81 +5,148 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"strings"
 )
 
+// GSOF record payloads use big-endian multi-byte fields (struct prefix '>' in
+// https://github.com/jcmb/DCOL/blob/master/Public/GSOF.py). Trimble OEM topic:
+// https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html
+//
+// Payload is the GSOF record body only (after per-record type and length bytes).
+
 // Field is one decoded row for UI / JSON.
+// Detail is optional nested rows (e.g. bit meanings under "Flags 1").
 type Field struct {
-	Label string `json:"label"`
-	Value string `json:"value"`
+	Label  string  `json:"label"`
+	Value  string  `json:"value"`
+	Detail []Field `json:"detail,omitempty"`
 }
 
-// Decode returns human-readable fields for the payload of one GSOF record (bytes after
-// the type and length bytes). Layout follows Trimble OEM documentation where available;
-// types 1, 16, 26, and 41 also align with offsets used in RTKLIB decode_gsof_* (little-endian).
+func kv(label, value string) Field {
+	return Field{Label: label, Value: value}
+}
+
+var gnssSystemNames = []string{
+	"GPS", "SBAS", "GLONASS", "GALILEO", "QZSS", "BEIDOU", "IRNSS",
+	"R7", "R8", "R9", "OMNISTAR",
+}
+
+func gnssName(idx int) string {
+	if idx >= 0 && idx < len(gnssSystemNames) {
+		return gnssSystemNames[idx]
+	}
+	return fmt.Sprintf("GNSS(%d)", idx)
+}
+
+// Decode returns human-readable fields for the payload of one GSOF record.
 func Decode(msgType int, payload []byte) []Field {
 	if len(payload) == 0 {
-		return []Field{{"Payload", "(empty)"}}
+		return []Field{kv("Payload", "(empty)")}
 	}
 	switch msgType {
 	case 1:
 		return decode01(payload)
 	case 2:
-		return decodeLLH(2, payload)
+		return decode3xF64(2, "Latitude (deg)", "Longitude (deg)", "Height (m)", payload)
 	case 3:
-		return decodeLLH(3, payload)
+		return decode3xF64(3, "X (m)", "Y (m)", "Z (m)", payload)
+	case 4:
+		return decodeLocalDatum(payload)
+	case 5:
+		return decodeLocalZone(payload)
+	case 6:
+		return decode3xF64(6, "dX (m)", "dY (m)", "dZ (m)", payload)
+	case 7:
+		return decode3xF64(7, "dE (m)", "dN (m)", "dU (m)", payload)
+	case 8:
+		return decodeVelocity(payload)
+	case 9:
+		return decodePDOP(payload)
+	case 10:
+		return decodeClock(payload)
+	case 11:
+		return decodeVCV(payload)
+	case 12:
+		return decodeSigma(payload)
+	case 13:
+		return decodeSVBrief(payload)
+	case 14:
+		return decodeSVDetailed(payload)
+	case 15:
+		return decodeSerial(payload)
 	case 16:
-		return decode16(payload)
+		return decodeCurrentTime(payload)
 	case 26:
-		return decode26(payload)
+		return decodePositionTimeUTC(payload)
+	case 27:
+		return decodeAttitude(payload)
+	case 28:
+		return decodeMasterReceiver(payload)
+	case 33:
+		return decodeAllSVBrief(payload)
+	case 34:
+		return decodeAllSVDetailed(payload)
+	case 35:
+		return decodeReceivedBase(payload)
+	case 37:
+		return decodeBatteryMemory(payload)
+	case 38:
+		return decodeRTKErrorScale(payload)
+	case 40:
+		return decodeLBandStatus(payload)
 	case 41:
-		return decode41(payload)
+		return decodeBasePositionQuality(payload)
+	case 48:
+		return decodeMultiPageAllSV(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}
 }
 
-// decodeLLH shows the first three little-endian doubles (common for LLH / ECEF XYZ in OEM docs).
-// Values are indicative only; confirm field order in the Trimble message ICD for this type.
-func decodeLLH(msgType int, payload []byte) []Field {
-	m := Lookup(msgType)
-	out := []Field{{"Summary", m.Function}}
-	if len(payload) < 24 {
-		out = append(out,
-			Field{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
-			Field{"Payload (hex)", hexPreview(payload, 64)},
-			Field{"Parse", "Need ≥24 bytes for three IEEE-754 doubles (LE)."},
-		)
-		return out
-	}
-	a, _ := readF64LE(payload, 0)
-	b, _ := readF64LE(payload, 8)
-	c, _ := readF64LE(payload, 16)
-	labelA, labelB, labelC := "Value A (double @0, LE)", "Value B (double @8, LE)", "Value C (double @16, LE)"
-	if msgType == 2 {
-		labelA, labelB, labelC = "Latitude (deg, LE @0)", "Longitude (deg, LE @8)", "Height (m, LE @16)"
-	}
-	if msgType == 3 {
-		labelA, labelB, labelC = "X (m, LE @0)", "Y (m, LE @8)", "Z (m, LE @16)"
-	}
-	out = append(out,
-		Field{labelA, fmt.Sprintf("%.9g", a)},
-		Field{labelB, fmt.Sprintf("%.9g", b)},
-		Field{labelC, fmt.Sprintf("%.9g", c)},
-		Field{"Note", "Field names follow common Trimble layouts; verify ordering and units in the OEM GSOF message topic for this type."},
-		Field{"Payload (hex)", hexPreview(payload, 64)},
-	)
-	return out
+type beReader struct {
+	b []byte
+	i int
 }
 
-func decodeGeneric(msgType int, payload []byte) []Field {
-	m := Lookup(msgType)
-	out := []Field{
-		{"Summary", m.Function},
-		{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
+func (r *beReader) ok(n int) bool { return r.i+n <= len(r.b) }
+
+func (r *beReader) u8() byte {
+	v := r.b[r.i]
+	r.i++
+	return v
+}
+
+func (r *beReader) u16() uint16 {
+	v := binary.BigEndian.Uint16(r.b[r.i:])
+	r.i += 2
+	return v
+}
+
+func (r *beReader) u32() uint32 {
+	v := binary.BigEndian.Uint32(r.b[r.i:])
+	r.i += 4
+	return v
+}
+
+func (r *beReader) f32() float32 {
+	v := binary.BigEndian.Uint32(r.b[r.i:])
+	r.i += 4
+	return math.Float32frombits(v)
+}
+
+func (r *beReader) f64() float64 {
+	v := binary.BigEndian.Uint64(r.b[r.i:])
+	r.i += 8
+	return math.Float64frombits(v)
+}
+
+func (r *beReader) str8() string {
+	if !r.ok(8) {
+		return ""
 	}
-	out = append(out, Field{"Payload (hex)", hexPreview(payload, 96)})
-	out = append(out, Field{"Note", "Binary field layout is message-specific; see Trimble GSOF message documentation for this type."})
-	return out
+	s := string(r.b[r.i : r.i+8])
+	r.i += 8
+	return strings.TrimRight(s, "\x00")
 }
 
 func hexPreview(b []byte, max int) string {
@@ -89,116 +156,529 @@ func hexPreview(b []byte, max int) string {
 	return hex.EncodeToString(b[:max]) + fmt.Sprintf("… (%d more bytes)", len(b)-max)
 }
 
-func readU8(b []byte, off int) (byte, bool) {
-	if off+1 > len(b) {
-		return 0, false
+func decodeGeneric(msgType int, payload []byte) []Field {
+	m := Lookup(msgType)
+	return []Field{
+		kv("Summary", m.Function),
+		kv("Payload length (bytes)", fmt.Sprintf("%d", len(payload))),
+		kv("Payload (hex)", hexPreview(payload, 96)),
+		kv("Note", "No decoder layout wired for this type; see Trimble GSOF documentation."),
 	}
-	return b[off], true
 }
 
-func readI16LE(b []byte, off int) (int16, bool) {
-	if off+2 > len(b) {
-		return 0, false
-	}
-	return int16(binary.LittleEndian.Uint16(b[off:])), true
-}
-
-func readI32LE(b []byte, off int) (int32, bool) {
-	if off+4 > len(b) {
-		return 0, false
-	}
-	return int32(binary.LittleEndian.Uint32(b[off:])), true
-}
-
-func readF64LE(b []byte, off int) (float64, bool) {
-	if off+8 > len(b) {
-		return 0, false
-	}
-	u := binary.LittleEndian.Uint64(b[off:])
-	return math.Float64frombits(u), true
-}
-
-// RTKLIB decode_gsof_1: I4(p+2), I2(p+6) with p[0]=type, p[1]=len → payload offsets 0 and 4.
 func decode01(payload []byte) []Field {
-	if len(payload) < 8 {
-		return []Field{
-			{"Summary", Lookup(1).Function},
-			{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
-			{"Payload (hex)", hexPreview(payload, 64)},
-			{"Parse", "Need ≥8 bytes for GPS TOW ms + week (LE)."},
-		}
+	br := beReader{b: payload}
+	if !br.ok(10) {
+		return shortFields(Lookup(1).Function, payload, 10)
 	}
-	towMs, _ := readI32LE(payload, 0)
-	week, _ := readI16LE(payload, 4)
-	out := []Field{
-		{"Summary", Lookup(1).Function},
-		{"GPS time of week (ms, LE)", fmt.Sprintf("%d", towMs)},
-		{"GPS week (LE)", fmt.Sprintf("%d", week)},
+	gpsTime := br.u32()
+	week := br.u16()
+	sv := br.u8()
+	f1 := br.u8()
+	f2 := br.u8()
+	init := br.u8()
+	towSec := float64(gpsTime) / 1000
+	return []Field{
+		kv("Summary", Lookup(1).Function),
+		kv("GPS time of week", fmt.Sprintf("%.6f s", towSec)),
+		kv("GPS week", fmt.Sprintf("%d", week)),
+		kv("SVs used", fmt.Sprintf("%d", sv)),
+		{
+			Label:  "Flags 1",
+			Value:  fmt.Sprintf("0x%02X · %08b", f1, f1),
+			Detail: decodePositionFlags1(f1),
+		},
+		kv("Flags 2", fmt.Sprintf("0x%02X · %08b", f2, f2)),
+		kv("Init counter", fmt.Sprintf("%d", init)),
 	}
-	out = append(out, Field{"Payload (hex)", hexPreview(payload, 64)})
-	return out
 }
 
-// RTKLIB decode_gsof_16: I4(p+2), I2(p+6), validity U1(p+10) bit0.
-func decode16(payload []byte) []Field {
-	out := []Field{{"Summary", Lookup(16).Function}}
-	if len(payload) < 11 {
-		out = append(out,
-			Field{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
-			Field{"Payload (hex)", hexPreview(payload, 64)},
-			Field{"Parse", "Need ≥11 bytes for time fields + validity byte."},
-		)
+func yesNo(bit byte) string {
+	if bit&1 != 0 {
+		return "Yes"
+	}
+	return "No"
+}
+
+func bitOn(flags byte, n uint) byte { return (flags >> n) & 1 }
+
+func reservedAlwaysSet(flags byte, n uint) string {
+	if bitOn(flags, n) == 1 {
+		return "Yes — set (expected)"
+	}
+	return "No — clear (unexpected)"
+}
+
+func reservedAlwaysClear(flags byte, n uint) string {
+	if bitOn(flags, n) == 0 {
+		return "Yes — clear (expected)"
+	}
+	return "No — set (unexpected)"
+}
+
+func decodePositionFlags1(flags byte) []Field {
+	return []Field{
+		kv("Bit 0 — New position", yesNo(bitOn(flags, 0))),
+		kv("Bit 1 — Clock fix for current position", yesNo(bitOn(flags, 1))),
+		kv("Bit 2 — Horizontal coordinates from this position", yesNo(bitOn(flags, 2))),
+		kv("Bit 3 — Height from this position", yesNo(bitOn(flags, 3))),
+		kv("Bit 4 — Reserved (always set)", reservedAlwaysSet(flags, 4)),
+		kv("Bit 5 — Least squares position", yesNo(bitOn(flags, 5))),
+		kv("Bit 6 — Reserved (always clear)", reservedAlwaysClear(flags, 6)),
+		kv("Bit 7 — Filtered L1 pseudoranges", yesNo(bitOn(flags, 7))),
+	}
+}
+
+func decode3xF64(msgType int, a, b, c string, payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(24) {
+		return shortFields(Lookup(msgType).Function, payload, 24)
+	}
+	x := br.f64()
+	y := br.f64()
+	z := br.f64()
+	return []Field{
+		kv(a, fmt.Sprintf("%.9g", x)),
+		kv(b, fmt.Sprintf("%.9g", y)),
+		kv(c, fmt.Sprintf("%.9g", z)),
+	}
+}
+
+func decodePDOP(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(16) {
+		return shortFields(Lookup(9).Function, payload, 16)
+	}
+	return []Field{
+		kv("Summary", Lookup(9).Function),
+		kv("PDOP", fmt.Sprintf("%g", br.f32())),
+		kv("HDOP", fmt.Sprintf("%g", br.f32())),
+		kv("TDOP", fmt.Sprintf("%g", br.f32())),
+		kv("VDOP", fmt.Sprintf("%g", br.f32())),
+	}
+}
+
+func decodeLocalDatum(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(8 + 8 + 8 + 8) {
+		return shortFields(Lookup(4).Function, payload, 32)
+	}
+	datum := br.str8()
+	return []Field{
+		kv("Datum ID (8 chars)", datum),
+		kv("Local latitude (deg)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local longitude (deg)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local height (m)", fmt.Sprintf("%.9g", br.f64())),
+	}
+}
+
+func decodeLocalZone(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(8 + 8 + 8 + 8 + 8) {
+		return shortFields(Lookup(5).Function, payload, 40)
+	}
+	return []Field{
+		kv("Datum ID (8 chars)", br.str8()),
+		kv("Zone ID (8 chars)", br.str8()),
+		kv("Local north (m)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local east (m)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local elevation (m)", fmt.Sprintf("%.9g", br.f64())),
+	}
+}
+
+func decodeVelocity(payload []byte) []Field {
+	br := beReader{b: payload}
+	if len(payload) >= 0x11 {
+		if !br.ok(1 + 4*4) {
+			return shortFields(Lookup(8).Function, payload, 17)
+		}
+		fl := br.u8()
+		out := []Field{
+			kv("Summary", Lookup(8).Function),
+			kv("Velocity flags", fmt.Sprintf("%d", fl)),
+			kv("Velocity", fmt.Sprintf("%g", br.f32())),
+			kv("Heading", fmt.Sprintf("%g", br.f32())),
+			kv("Vertical velocity", fmt.Sprintf("%g", br.f32())),
+			kv("Local heading", fmt.Sprintf("%g", br.f32())),
+		}
 		return out
 	}
-	towMs, _ := readI32LE(payload, 0)
-	week, _ := readI16LE(payload, 4)
-	v, _ := readU8(payload, 8)
-	valid := (v & 1) != 0
-	out = append(out,
-		Field{"GPS time of week (ms, LE)", fmt.Sprintf("%d", towMs)},
-		Field{"GPS week (LE)", fmt.Sprintf("%d", week)},
-		Field{"Time valid (bit 0 of byte @ offset 8)", fmt.Sprintf("%v", valid)},
-	)
-	out = append(out, Field{"Payload (hex)", hexPreview(payload, 64)})
+	if !br.ok(1 + 4*3) {
+		return shortFields(Lookup(8).Function, payload, 13)
+	}
+	fl := br.u8()
+	return []Field{
+		kv("Summary", Lookup(8).Function),
+		kv("Velocity flags", fmt.Sprintf("%d", fl)),
+		kv("Velocity", fmt.Sprintf("%g", br.f32())),
+		kv("Heading", fmt.Sprintf("%g", br.f32())),
+		kv("Vertical velocity", fmt.Sprintf("%g", br.f32())),
+		kv("Local heading", "(not present; payload length < 17 bytes)"),
+	}
+}
+
+func decodeClock(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(1 + 8 + 8) {
+		return shortFields(Lookup(10).Function, payload, 17)
+	}
+	return []Field{
+		kv("Clock flags", fmt.Sprintf("%d", br.u8())),
+		kv("Clock offset", fmt.Sprintf("%g", br.f64())),
+		kv("Frequency offset", fmt.Sprintf("%g", br.f64())),
+	}
+}
+
+func decodeVCV(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(8*4 + 2) {
+		return shortFields(Lookup(11).Function, payload, 34)
+	}
+	labels := []string{
+		"POSITION_RMS", "VCV_xx", "VCV_xy", "VCV_xz", "VCV_yy", "VCV_yz", "VCV_zz", "UNIT_VARIANCE",
+	}
+	var out []Field
+	out = append(out, kv("Summary", Lookup(11).Function))
+	for _, l := range labels {
+		out = append(out, kv(l, fmt.Sprintf("%g", br.f32())))
+	}
+	out = append(out, kv("NUMBER_OF_EPOCHS", fmt.Sprintf("%d", br.u16())))
 	return out
 }
 
-func decode26(payload []byte) []Field {
-	if len(payload) < 8 {
-		return []Field{
-			{"Summary", Lookup(26).Function},
-			{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
-			{"Payload (hex)", hexPreview(payload, 64)},
-			{"Parse", "Need ≥8 bytes for UTC time fields (LE)."},
-		}
+func decodeSigma(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(9*4 + 2) {
+		return shortFields(Lookup(12).Function, payload, 38)
 	}
-	towMs, _ := readI32LE(payload, 0)
-	week, _ := readI16LE(payload, 4)
-	out := []Field{
-		{"Summary", Lookup(26).Function},
-		{"UTC/GPS time of week (ms, LE)", fmt.Sprintf("%d", towMs)},
-		{"Week (LE)", fmt.Sprintf("%d", week)},
-		{"Payload (hex)", hexPreview(payload, 64)},
+	labels := []string{
+		"POSITION_RMS", "SIGMA_EAST", "SIGMA_NORTH", "COVAR_EAST_NORTH", "SIGMA_UP",
+		"SEMI_MAJOR_AXIS", "SEMI_MINOR_AXIS", "ORIENTATION", "UNIT_VARIANCE",
+	}
+	var out []Field
+	out = append(out, kv("Summary", Lookup(12).Function))
+	for _, l := range labels {
+		out = append(out, kv(l, fmt.Sprintf("%g", br.f32())))
+	}
+	out = append(out, kv("NUMBER_EPOCHS", fmt.Sprintf("%d", br.u16())))
+	return out
+}
+
+func decodeSVBrief(payload []byte) []Field {
+	if len(payload) < 1 {
+		return shortFields(Lookup(13).Function, payload, 1)
+	}
+	br := beReader{b: payload}
+	n := int(br.u8())
+	var out []Field
+	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
+	for i := 0; i < n; i++ {
+		if !br.ok(3) {
+			out = append(out, kv("Parse", "truncated SV brief list"))
+			break
+		}
+		a, b, c := br.u8(), br.u8(), br.u8()
+		out = append(out, kv(fmt.Sprintf("SV %d", i), fmt.Sprintf("%d / %d / %d", a, b, c)))
 	}
 	return out
 }
 
-func decode41(payload []byte) []Field {
-	if len(payload) < 8 {
-		return []Field{
-			{"Summary", Lookup(41).Function},
-			{"Payload length (bytes)", fmt.Sprintf("%d", len(payload))},
-			{"Payload (hex)", hexPreview(payload, 64)},
-			{"Parse", "Need ≥8 bytes for base quality fields (LE)."},
-		}
+func decodeSVDetailed(payload []byte) []Field {
+	if len(payload) < 1 {
+		return shortFields(Lookup(14).Function, payload, 1)
 	}
-	towMs, _ := readI32LE(payload, 0)
-	week, _ := readI16LE(payload, 4)
-	out := []Field{
-		{"Summary", Lookup(41).Function},
-		{"Time of week (ms, LE)", fmt.Sprintf("%d", towMs)},
-		{"Week (LE)", fmt.Sprintf("%d", week)},
-		{"Payload (hex)", hexPreview(payload, 64)},
+	br := beReader{b: payload}
+	n := int(br.u8())
+	var out []Field
+	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
+	for i := 0; i < n; i++ {
+		if !br.ok(8) {
+			out = append(out, kv("Parse", "truncated SV detailed list"))
+			break
+		}
+		ch := br.u8()
+		flags1 := br.u8()
+		flags2 := br.u8()
+		elev := int8(br.u8())
+		az := br.u16()
+		snrL1 := br.u8()
+		snrL2 := br.u8()
+		out = append(out, kv(fmt.Sprintf("SV %d", i),
+			fmt.Sprintf("channel=%d flags1=0x%02X flags2=0x%02X elev=%d° az=%d L1_SNR=%.2f L2_SNR=%.2f",
+				ch, flags1, flags2, elev, az, float64(snrL1)/4, float64(snrL2)/4)))
 	}
 	return out
+}
+
+func decodeSerial(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(4) {
+		return shortFields(Lookup(15).Function, payload, 4)
+	}
+	return []Field{kv("Serial number", fmt.Sprintf("%d", br.u32()))}
+}
+
+func decodeCurrentTime(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(4 + 2 + 2 + 1) {
+		return shortFields(Lookup(16).Function, payload, 9)
+	}
+	return []Field{
+		kv("Current time (raw)", fmt.Sprintf("%d", br.u32())),
+		kv("Current week", fmt.Sprintf("%d", br.u16())),
+		kv("UTC offset", fmt.Sprintf("%d", br.u16())),
+		kv("Time flags", fmt.Sprintf("%d", br.u8())),
+	}
+}
+
+func decodePositionTimeUTC(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(4 + 2 + 1 + 1 + 1) {
+		return shortFields(Lookup(26).Function, payload, 8)
+	}
+	t := br.u32()
+	w := br.u16()
+	return []Field{
+		kv("Summary", Lookup(26).Function),
+		kv("UTC time of week", fmt.Sprintf("%.6f s", float64(t)/1000)),
+		kv("UTC week", fmt.Sprintf("%d", w)),
+		kv("SVs", fmt.Sprintf("%d", br.u8())),
+		kv("Flags 1", fmt.Sprintf("0x%02X", br.u8())),
+		kv("Flags 2", fmt.Sprintf("0x%02X", br.u8())),
+	}
+}
+
+func decodeAttitude(payload []byte) []Field {
+	br := beReader{b: payload}
+	need := 4 + 4 + 8*4 + 2 + 7*4
+	if !br.ok(need) {
+		return shortFields(Lookup(27).Function, payload, need)
+	}
+	gpsT := br.u32()
+	fl := br.u8()
+	nsv := br.u8()
+	mode := br.u8()
+	res := br.u8()
+	pitch := br.f64()
+	yaw := br.f64()
+	roll := br.f64()
+	rng := br.f64()
+	pdop10 := br.u16()
+	pv := br.f32()
+	yv := br.f32()
+	rv := br.f32()
+	covPY := br.f32()
+	covPR := br.f32()
+	covYR := br.f32()
+	rngVar := br.f32()
+	return []Field{
+		kv("Summary", Lookup(27).Function),
+		kv("GPS time of week", fmt.Sprintf("%.6f s", float64(gpsT)/1000)),
+		kv("Flags", fmt.Sprintf("%d", fl)),
+		kv("Num SVs", fmt.Sprintf("%d", nsv)),
+		kv("Calc mode", fmt.Sprintf("%d", mode)),
+		kv("Reserved", fmt.Sprintf("%d", res)),
+		kv("Pitch (rad)", fmt.Sprintf("%g", pitch)),
+		kv("Yaw (rad)", fmt.Sprintf("%g", yaw)),
+		kv("Roll (rad)", fmt.Sprintf("%g", roll)),
+		kv("Range (m)", fmt.Sprintf("%g", rng)),
+		kv("PDOP (/10)", fmt.Sprintf("%.1f", float64(pdop10)/10)),
+		kv("Pitch variance (rad²)", fmt.Sprintf("%g", pv)),
+		kv("Yaw variance (rad²)", fmt.Sprintf("%g", yv)),
+		kv("Roll variance (rad²)", fmt.Sprintf("%g", rv)),
+		kv("Pitch–yaw covariance (rad²)", fmt.Sprintf("%g", covPY)),
+		kv("Pitch–roll covariance (rad²)", fmt.Sprintf("%g", covPR)),
+		kv("Yaw–roll covariance (rad²)", fmt.Sprintf("%g", covYR)),
+		kv("Range variance (m²)", fmt.Sprintf("%g", rngVar)),
+	}
+}
+
+func decodeMasterReceiver(payload []byte) []Field {
+	if len(payload) < 18 {
+		return shortFields(Lookup(28).Function, payload, 18)
+	}
+	br := beReader{b: payload}
+	rf := br.u8()
+	ch := br.u8()
+	tr := uint32(br.u8())<<16 | uint32(br.u8())<<8 | uint32(br.u8())
+	bf := br.u8()
+	l100 := br.u8()
+	l1k := br.u8()
+	l10k := br.u8()
+	c1 := br.u8()
+	c2 := br.u8()
+	dlat := float64(br.u8()) / 10
+	dtype := br.u8()
+	dsv := br.u8()
+	rtkp := br.u8()
+	rtks := br.u8()
+	posl := float64(br.u8()) / 10
+	res := br.u8()
+	return []Field{
+		kv("Summary", Lookup(28).Function),
+		kv("DIAG_RF_FLAGS", fmt.Sprintf("%d", rf)),
+		kv("DIAG_CHANNELS", fmt.Sprintf("%d", ch)),
+		kv("DIAG_TRACKING", fmt.Sprintf("0x%06x", tr)),
+		kv("DIAG_BASE_FLAGS", fmt.Sprintf("%d", bf)),
+		kv("DIAG_LINK_100", fmt.Sprintf("%d", l100)),
+		kv("DIAG_LINK_1000", fmt.Sprintf("%d", l1k)),
+		kv("DIAG_LINK_10000", fmt.Sprintf("%d", l10k)),
+		kv("DIAG_COMMON_L1", fmt.Sprintf("%d", c1)),
+		kv("DIAG_COMMON_L2", fmt.Sprintf("%d", c2)),
+		kv("DIAG_DATALINK_LATENCY (/10)", fmt.Sprintf("%g", dlat)),
+		kv("DIAG_DIFF_TYPE", fmt.Sprintf("%d", dtype)),
+		kv("DIAG_DIFF_SVs", fmt.Sprintf("%d", dsv)),
+		kv("DIAG_RTK_POS_FAULT", fmt.Sprintf("%d", rtkp)),
+		kv("DIAG_RTK_SEARCH_FAULT", fmt.Sprintf("%d", rtks)),
+		kv("DIAG_POS_LATENCY (/10)", fmt.Sprintf("%g", posl)),
+		kv("DIAG_RESERVED", fmt.Sprintf("%d", res)),
+	}
+}
+
+func decodeAllSVBrief(payload []byte) []Field {
+	if len(payload) < 1 {
+		return shortFields(Lookup(33).Function, payload, 1)
+	}
+	br := beReader{b: payload}
+	n := int(br.u8())
+	var out []Field
+	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
+	for i := 0; i < n; i++ {
+		if !br.ok(4) {
+			out = append(out, kv("Parse", "truncated"))
+			break
+		}
+		out = append(out, kv(fmt.Sprintf("SV %d", i),
+			fmt.Sprintf("%d %d %d %d", br.u8(), br.u8(), br.u8(), br.u8())))
+	}
+	return out
+}
+
+func decodeAllSVDetailed(payload []byte) []Field {
+	if len(payload) < 1 {
+		return shortFields(Lookup(34).Function, payload, 1)
+	}
+	br := beReader{b: payload}
+	n := int(br.u8())
+	var out []Field
+	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
+	for i := 0; i < n; i++ {
+		if !br.ok(10) {
+			out = append(out, kv("Parse", "truncated"))
+			break
+		}
+		sv := br.u8()
+		gnss := br.u8()
+		flags1 := br.u8()
+		flags2 := br.u8()
+		elev := int8(br.u8())
+		az := br.u16()
+		snrL1 := br.u8()
+		snrL2 := br.u8()
+		snrL5 := br.u8()
+		out = append(out, kv(fmt.Sprintf("SV %d", i),
+			fmt.Sprintf("%s PRN=%d flags1=0x%02X flags2=0x%02X elev=%d° az=%d L1=%.2f L2=%.2f L5=%.2f",
+				gnssName(int(gnss)), sv, flags1, flags2, elev, az, float64(snrL1)/4, float64(snrL2)/4, float64(snrL5)/4)))
+	}
+	return out
+}
+
+func decodeReceivedBase(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(1 + 8 + 2 + 8 + 8 + 8) {
+		return shortFields(Lookup(35).Function, payload, 35)
+	}
+	fl := br.u8()
+	name := br.str8()
+	id := br.u16()
+	lat := br.f64()
+	lon := br.f64()
+	h := br.f64()
+	return []Field{
+		kv("Flags", fmt.Sprintf("%d", fl)),
+		kv("Base name", name),
+		kv("Base ID", fmt.Sprintf("%d", id)),
+		kv("Base lat", fmt.Sprintf("%g", lat)),
+		kv("Base lon", fmt.Sprintf("%g", lon)),
+		kv("Base height", fmt.Sprintf("%g", h)),
+	}
+}
+
+func decodeBatteryMemory(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(2 + 8) {
+		return shortFields(Lookup(37).Function, payload, 10)
+	}
+	return []Field{
+		kv("Battery capacity", fmt.Sprintf("%d", br.u16())),
+		kv("Memory left", fmt.Sprintf("%g", br.f64())),
+	}
+}
+
+func decodeRTKErrorScale(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(4 + 1 + 1 + 4 + 1) {
+		return shortFields(Lookup(38).Function, payload, 11)
+	}
+	return []Field{
+		kv("Error scale", fmt.Sprintf("%g", br.f32())),
+		kv("Solution flags", fmt.Sprintf("%d", br.u8())),
+		kv("RTK condition", fmt.Sprintf("%d", br.u8())),
+		kv("Correction age", fmt.Sprintf("%g", br.f32())),
+		kv("Network flags", fmt.Sprintf("%d", br.u8())),
+	}
+}
+
+func decodeLBandStatus(payload []byte) []Field {
+	m := Lookup(40)
+	if len(payload) < 4 {
+		return shortFields(m.Function, payload, 4)
+	}
+	return []Field{
+		kv("Summary", m.Function),
+		kv("Payload length (bytes)", fmt.Sprintf("%d", len(payload))),
+		kv("Note", "Full L-Band layout is long in GSOF.py; use hex for remainder until fully expanded."),
+		kv("Payload (hex)", hexPreview(payload, 128)),
+	}
+}
+
+func decodeBasePositionQuality(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(4 + 2 + 8 + 8 + 8 + 1) {
+		return shortFields(Lookup(41).Function, payload, 31)
+	}
+	return []Field{
+		kv("GPS time (raw)", fmt.Sprintf("%d", br.u32())),
+		kv("GPS week", fmt.Sprintf("%d", br.u16())),
+		kv("Base latitude", fmt.Sprintf("%g", br.f64())),
+		kv("Base longitude", fmt.Sprintf("%g", br.f64())),
+		kv("Base height", fmt.Sprintf("%g", br.f64())),
+		kv("Quality", fmt.Sprintf("%d", br.u8())),
+	}
+}
+
+func decodeMultiPageAllSV(payload []byte) []Field {
+	if len(payload) < 3 {
+		return shortFields(Lookup(48).Title, payload, 3)
+	}
+	return []Field{
+		kv("Summary", Lookup(48).Function),
+		kv("Multi-page version", fmt.Sprintf("%d", payload[0])),
+		kv("Multi-page info", fmt.Sprintf("%d", payload[1])),
+		kv("SVs in this page", fmt.Sprintf("%d", payload[2])),
+		kv("Note", "Full decode aggregates pages; see Trimble multi-page all-SV topic."),
+		kv("Payload (hex)", hexPreview(payload, 96)),
+	}
+}
+
+func shortFields(summary string, payload []byte, need int) []Field {
+	if summary == "" {
+		summary = "Insufficient data for full decode"
+	}
+	return []Field{
+		kv("Summary", summary),
+		kv("Payload length (bytes)", fmt.Sprintf("%d", len(payload))),
+		kv("Parse", fmt.Sprintf("need ≥%d bytes for this layout", need)),
+		kv("Payload (hex)", hexPreview(payload, 64)),
+	}
 }
