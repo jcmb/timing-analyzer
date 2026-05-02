@@ -360,7 +360,51 @@
       color: var(--text);
       border-color: var(--muted);
     }
-    .sv-brief-root {
+    .sv-detailed-view-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .sv-detailed-view-toggle button {
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: rgba(15, 20, 25, 0.55);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    .sv-detailed-view-toggle button[aria-pressed="true"] {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(61, 139, 253, 0.12);
+    }
+    .sv-detailed-view-toggle button:hover {
+      color: var(--text);
+      border-color: var(--muted);
+    }
+    button.tangent-graph-open-btn {
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: rgba(15, 20, 25, 0.55);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1.2;
+    }
+    button.tangent-graph-open-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .sv-brief-root,
+    .sv-detailed-root {
       margin: 0;
       padding: 0 0.85rem 0.75rem;
       border-top: 1px solid var(--border);
@@ -368,10 +412,12 @@
       font-size: 0.82rem;
       color: var(--text);
     }
-    article.card.card--sv-brief .card-body > dl {
+    article.card.card--sv-brief .card-body > dl,
+    article.card.card--sv-detailed .card-body > dl {
       display: none;
     }
-    article.card.card--sv-brief .sv-brief-root {
+    article.card.card--sv-brief .sv-brief-root,
+    article.card.card--sv-detailed .sv-detailed-root {
       border-top: none;
       padding-top: 0.35rem;
     }
@@ -412,6 +458,7 @@
     .sv-brief-detail-wide-table {
       width: 100%;
       min-width: 36rem;
+      table-layout: fixed;
       border-collapse: collapse;
       font-size: 0.78rem;
     }
@@ -438,8 +485,22 @@
     .sv-brief-detail-wide-table tbody td {
       text-align: center;
     }
+    .sv-brief-detail-wide-table col.sv-brief-prn-col {
+      width: 2.35rem;
+    }
+    .sv-brief-detail-wide-table col.sv-brief-bit-colgroup {
+      width: 2.35rem;
+    }
+    .sv-brief-detail-wide-table thead th.sv-brief-prn-col,
     .sv-brief-detail-wide-table tbody td.sv-brief-prn-col {
-      text-align: left;
+      white-space: nowrap;
+      box-sizing: border-box;
+      text-align: center;
+      padding-left: 0.28rem;
+      padding-right: 0.28rem;
+      vertical-align: middle;
+    }
+    .sv-brief-detail-wide-table tbody td.sv-brief-prn-col {
       font-weight: 600;
     }
     .sv-brief-detail-wide-table tbody td.mono {
@@ -561,6 +622,8 @@
     const warningsEl = document.getElementById("warnings");
     const warnBody = document.getElementById("warnBody");
     let lastStreamData = null;
+    /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
+    let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
 
     /** GSOF type 13 — Flags 1 bit meanings (Trimble SV brief). */
@@ -678,6 +741,9 @@
       if (f.label === "Clock flags") {
         return "clockFlags";
       }
+      if (f.label === "Current time flags") {
+        return "timeFlags16";
+      }
       return "f" + i;
     }
 
@@ -719,7 +785,8 @@
           f.label === "Flags 1" ||
           f.label === "Flags 2" ||
           f.label === "Velocity flags" ||
-          f.label === "Clock flags";
+          f.label === "Clock flags" ||
+          f.label === "Current time flags";
         sum.textContent = isFlagField ? "Flag bit meanings" : "Details";
         const nested = document.createElement(isFlagField ? "div" : "dl");
         nested.className = isFlagField ? "field-nested field-nested-flags" : "field-nested";
@@ -791,12 +858,23 @@
       return (Number(flagsByte) >> Number(bit)) & 1 ? "Yes" : "No";
     }
 
-    function svBriefAppendLegendDetailed(container) {
+    function satFlagsAppendLegend(container, showF2Cols) {
       const box = document.createElement("div");
       box.className = "sv-brief-legend";
       const h = document.createElement("h4");
       h.textContent = "Bit field meanings";
       box.appendChild(h);
+
+      if (!showF2Cols) {
+        const top = document.createElement("p");
+        top.className = "sv-brief-legend-note";
+        top.style.marginTop = "0";
+        top.style.paddingTop = "0";
+        top.style.borderTop = "none";
+        top.textContent =
+          "Flags 2 is omitted from the bit table above unless gsof-dashboard is started with -show-expected-reserved-bits. The Flags 2 meanings below still apply to bits 0 and 1.";
+        box.appendChild(top);
+      }
 
       function addBitsHeading(title) {
         const h5 = document.createElement("h5");
@@ -823,17 +901,35 @@
 
       const note = document.createElement("p");
       note.className = "sv-brief-legend-note";
-      note.textContent =
-        "Flags 2 bits 2–7 are carried on the wire but are not shown as columns here (reserved / not documented in the OEM excerpt used for this UI). See Basic view for the full 8-bit Flags 2 binary string per SV.";
+      if (showF2Cols) {
+        note.textContent =
+          "Flags 2 bits 2–7 are carried on the wire but are not shown as columns (reserved / not documented in the OEM excerpt used for this UI). See Basic view for the full 8-bit Flags 2 binary.";
+      } else {
+        note.textContent =
+          "With -show-expected-reserved-bits, the table adds Flags 2 columns for bits 0–1 only; bits 2–7 stay off the table. Full 8-bit value: Basic view.";
+      }
       box.appendChild(note);
       container.appendChild(box);
     }
 
-    function svBriefRenderDetailedWideTable(container, rows) {
+    // extraColumns optional: [{ label, value(row) }] appended after flag bit columns.
+    function satFlagsRenderDetailedGrid(
+      container,
+      rows,
+      firstColLabel,
+      firstFieldKey,
+      showF2,
+      extraColumns
+    ) {
       const wrap = document.createElement("div");
       wrap.className = "sv-brief-detail-wide-wrap";
       const tbl = document.createElement("table");
       tbl.className = "sv-brief-detail-wide-table";
+      let minW = showF2 ? 32 : 24;
+      if (extraColumns && extraColumns.length) {
+        minW += extraColumns.length * 5.5;
+      }
+      tbl.style.minWidth = String(minW) + "rem";
 
       const cap = document.createElement("caption");
       cap.style.captionSide = "top";
@@ -842,26 +938,72 @@
       cap.style.fontSize = "0.74rem";
       cap.style.color = "var(--muted)";
       cap.style.lineHeight = "1.4";
-      cap.textContent =
-        "One row per SV. Under Flags 1 and Flags 2 the column titles are bit numbers only (0–7 and 0–1). Each cell is Yes if that bit is set, No if clear. Full 8-bit flag bytes: Basic view.";
+      let capText =
+        "One row per space vehicle. Under Flags 1 the column titles are bit numbers 0–7. Each cell is Yes if that bit is set, No if clear.";
+      if (showF2) {
+        capText +=
+          " Flags 2 uses columns 0–1 only; bits 2–7 are not columns. Full 8-bit bytes: Basic view.";
+      } else {
+        capText +=
+          " Flags 2 columns are hidden unless gsof-dashboard is run with -show-expected-reserved-bits.";
+      }
+      if (extraColumns && extraColumns.length) {
+        capText +=
+          " Trailing columns repeat the numeric fields from Basic view (only flag columns switch to per-bit Yes/No).";
+      }
+      cap.textContent = capText;
       tbl.appendChild(cap);
+
+      const cg = document.createElement("colgroup");
+      const col0 = document.createElement("col");
+      col0.className = "sv-brief-prn-col";
+      cg.appendChild(col0);
+      for (let i = 0; i < 8; i++) {
+        const c = document.createElement("col");
+        c.className = "sv-brief-bit-colgroup";
+        cg.appendChild(c);
+      }
+      if (showF2) {
+        for (let i = 0; i < 2; i++) {
+          const c = document.createElement("col");
+          c.className = "sv-brief-bit-colgroup";
+          cg.appendChild(c);
+        }
+      }
+      if (extraColumns) {
+        for (let i = 0; i < extraColumns.length; i++) {
+          cg.appendChild(document.createElement("col"));
+        }
+      }
+      tbl.appendChild(cg);
 
       const thead = document.createElement("thead");
       const tr1 = document.createElement("tr");
-      const thPrn = document.createElement("th");
-      thPrn.rowSpan = 2;
-      thPrn.textContent = "PRN";
-      tr1.appendChild(thPrn);
+      const th0 = document.createElement("th");
+      th0.rowSpan = 2;
+      th0.className = "sv-brief-prn-col";
+      th0.textContent = firstColLabel;
+      tr1.appendChild(th0);
 
       const thF1 = document.createElement("th");
       thF1.colSpan = 8;
       thF1.textContent = "Flags 1";
       tr1.appendChild(thF1);
 
-      const thF2 = document.createElement("th");
-      thF2.colSpan = 2;
-      thF2.textContent = "Flags 2";
-      tr1.appendChild(thF2);
+      if (showF2) {
+        const thF2 = document.createElement("th");
+        thF2.colSpan = 2;
+        thF2.textContent = "Flags 2";
+        tr1.appendChild(thF2);
+      }
+      if (extraColumns) {
+        for (const col of extraColumns) {
+          const th = document.createElement("th");
+          th.rowSpan = 2;
+          th.textContent = col.label;
+          tr1.appendChild(th);
+        }
+      }
 
       const tr2 = document.createElement("tr");
       for (let b = 0; b < 8; b++) {
@@ -871,12 +1013,14 @@
         th.title = "Flags 1 — bit " + String(b);
         tr2.appendChild(th);
       }
-      for (let b = 0; b < 2; b++) {
-        const th = document.createElement("th");
-        th.className = "mono sv-brief-bit-col";
-        th.textContent = String(b);
-        th.title = "Flags 2 — bit " + String(b);
-        tr2.appendChild(th);
+      if (showF2) {
+        for (let b = 0; b < 2; b++) {
+          const th = document.createElement("th");
+          th.className = "mono sv-brief-bit-col";
+          th.textContent = String(b);
+          th.title = "Flags 2 — bit " + String(b);
+          tr2.appendChild(th);
+        }
       }
       thead.appendChild(tr1);
       thead.appendChild(tr2);
@@ -885,21 +1029,31 @@
       const tb = document.createElement("tbody");
       for (const row of rows) {
         const tr = document.createElement("tr");
-        const tdPrn = document.createElement("td");
-        tdPrn.className = "sv-brief-prn-col mono";
-        tdPrn.textContent = String(row.prn);
-        tr.appendChild(tdPrn);
+        const td0 = document.createElement("td");
+        td0.className = "sv-brief-prn-col mono";
+        td0.textContent = String(row[firstFieldKey]);
+        tr.appendChild(td0);
         for (let b = 0; b < 8; b++) {
           const td = document.createElement("td");
           td.className = "mono";
           td.textContent = svBriefBitYesNo(row.flags1, b);
           tr.appendChild(td);
         }
-        for (let b = 0; b < 2; b++) {
-          const td = document.createElement("td");
-          td.className = "mono";
-          td.textContent = svBriefBitYesNo(row.flags2, b);
-          tr.appendChild(td);
+        if (showF2) {
+          for (let b = 0; b < 2; b++) {
+            const td = document.createElement("td");
+            td.className = "mono";
+            td.textContent = svBriefBitYesNo(row.flags2, b);
+            tr.appendChild(td);
+          }
+        }
+        if (extraColumns) {
+          for (const col of extraColumns) {
+            const td = document.createElement("td");
+            td.className = "mono";
+            td.textContent = col.value(row);
+            tr.appendChild(td);
+          }
         }
         tb.appendChild(tr);
       }
@@ -928,7 +1082,11 @@
         tbl.className = "sv-brief-basic-table";
         const thead = document.createElement("thead");
         const trh = document.createElement("tr");
-        ["PRN", "Flags 1 (binary)", "Flags 2 (binary)"].forEach((h) => {
+        const heads = ["PRN", "Flags 1 (binary)"];
+        if (gsofShowExpectedReservedBits) {
+          heads.push("Flags 2 (binary)");
+        }
+        heads.forEach((h) => {
           const th = document.createElement("th");
           th.textContent = h;
           trh.appendChild(th);
@@ -943,20 +1101,110 @@
           const td1 = document.createElement("td");
           td1.className = "mono";
           td1.textContent = svBriefFmtU8Binary(row.flags1);
-          const td2 = document.createElement("td");
-          td2.className = "mono";
-          td2.textContent = svBriefFmtU8Binary(row.flags2);
           tr.appendChild(td0);
           tr.appendChild(td1);
-          tr.appendChild(td2);
+          if (gsofShowExpectedReservedBits) {
+            const td2 = document.createElement("td");
+            td2.className = "mono";
+            td2.textContent = svBriefFmtU8Binary(row.flags2);
+            tr.appendChild(td2);
+          }
           tb.appendChild(tr);
         }
         tbl.appendChild(tb);
         root.appendChild(tbl);
         return;
       }
-      svBriefRenderDetailedWideTable(root, rows);
-      svBriefAppendLegendDetailed(root);
+      satFlagsRenderDetailedGrid(root, rows, "PRN", "prn", gsofShowExpectedReservedBits);
+      satFlagsAppendLegend(root, gsofShowExpectedReservedBits);
+    }
+
+    function renderSVDetailedBody(art, r) {
+      const root = art.querySelector(".sv-detailed-root");
+      if (!root) {
+        return;
+      }
+      root.replaceChildren();
+      const rows = r.sv_detailed || [];
+      const view = art.dataset.svDetailedView || "basic";
+      if (!rows.length) {
+        const p = document.createElement("p");
+        p.className = "sv-brief-empty";
+        p.textContent = "(no SV rows decoded; check payload / parse errors in export)";
+        root.appendChild(p);
+        return;
+      }
+      if (view === "basic") {
+        const tbl = document.createElement("table");
+        tbl.className = "sv-brief-basic-table";
+        const thead = document.createElement("thead");
+        const trh = document.createElement("tr");
+        const heads = ["PRN", "Flags 1 (binary)"];
+        if (gsofShowExpectedReservedBits) {
+          heads.push("Flags 2 (binary)");
+        }
+        heads.push("Elevation (°)", "Azimuth (°)", "L1 SNR", "L2 SNR");
+        heads.forEach((h) => {
+          const th = document.createElement("th");
+          th.textContent = h;
+          trh.appendChild(th);
+        });
+        thead.appendChild(trh);
+        tbl.appendChild(thead);
+        const tb = document.createElement("tbody");
+        for (const row of rows) {
+          const tr = document.createElement("tr");
+          const t0 = document.createElement("td");
+          t0.className = "mono";
+          t0.textContent = String(row.prn);
+          const t1 = document.createElement("td");
+          t1.className = "mono";
+          t1.textContent = svBriefFmtU8Binary(row.flags1);
+          tr.appendChild(t0);
+          tr.appendChild(t1);
+          if (gsofShowExpectedReservedBits) {
+            const t2 = document.createElement("td");
+            t2.className = "mono";
+            t2.textContent = svBriefFmtU8Binary(row.flags2);
+            tr.appendChild(t2);
+          }
+          const te = document.createElement("td");
+          te.className = "mono";
+          te.textContent = String(row.elev);
+          const ta = document.createElement("td");
+          ta.className = "mono";
+          ta.textContent = String(row.azimuth);
+          const tL1 = document.createElement("td");
+          tL1.className = "mono";
+          tL1.textContent = String(row.snr_l1);
+          const tL2 = document.createElement("td");
+          tL2.className = "mono";
+          tL2.textContent = String(row.snr_l2);
+          tr.appendChild(te);
+          tr.appendChild(ta);
+          tr.appendChild(tL1);
+          tr.appendChild(tL2);
+          tb.appendChild(tr);
+        }
+        tbl.appendChild(tb);
+        root.appendChild(tbl);
+        return;
+      }
+      const sv14Extras = [
+        { label: "Elevation (°)", value: (row) => String(row.elev) },
+        { label: "Azimuth (°)", value: (row) => String(row.azimuth) },
+        { label: "L1 SNR", value: (row) => String(row.snr_l1) },
+        { label: "L2 SNR", value: (row) => String(row.snr_l2) },
+      ];
+      satFlagsRenderDetailedGrid(
+        root,
+        rows,
+        "PRN",
+        "prn",
+        gsofShowExpectedReservedBits,
+        sv14Extras
+      );
+      satFlagsAppendLegend(root, gsofShowExpectedReservedBits);
     }
 
     function syncSVBriefTogglePressed(art) {
@@ -1004,6 +1252,339 @@
         art.dataset.svBriefView = "detailed";
         syncSVBriefTogglePressed(art);
         renderSVBriefBody(art, art._svBriefRecord);
+      });
+    }
+
+    function syncSVDetailedTogglePressed(art) {
+      const wrap = art.querySelector(".sv-detailed-view-toggle");
+      if (!wrap) {
+        return;
+      }
+      const v = art.dataset.svDetailedView || "basic";
+      const btns = wrap.querySelectorAll("button");
+      if (btns.length >= 2) {
+        btns[0].setAttribute("aria-pressed", v === "basic" ? "true" : "false");
+        btns[1].setAttribute("aria-pressed", v === "detailed" ? "true" : "false");
+      }
+    }
+
+    function ensureSVDetailedToggle(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".sv-detailed-view-toggle")) {
+        return;
+      }
+      const wrap = document.createElement("div");
+      wrap.className = "sv-detailed-view-toggle";
+      const b1 = document.createElement("button");
+      b1.type = "button";
+      b1.textContent = "Basic";
+      b1.setAttribute("aria-pressed", "true");
+      const b2 = document.createElement("button");
+      b2.type = "button";
+      b2.textContent = "Detailed";
+      b2.setAttribute("aria-pressed", "false");
+      wrap.appendChild(b1);
+      wrap.appendChild(b2);
+      headTop.insertBefore(wrap, copyBtn);
+      b1.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        art.dataset.svDetailedView = "basic";
+        syncSVDetailedTogglePressed(art);
+        renderSVDetailedBody(art, art._svDetailedRecord);
+      });
+      b2.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        art.dataset.svDetailedView = "detailed";
+        syncSVDetailedTogglePressed(art);
+        renderSVDetailedBody(art, art._svDetailedRecord);
+      });
+    }
+
+    /** Escape &lt; so JSON can sit inside an HTML script block in a blob document. */
+    function tangentGraphJsonForScript(initObj) {
+      return JSON.stringify(initObj).replace(/</g, "\\u003c");
+    }
+
+    /** Full HTML document for type-7 graph window (self-contained canvas + ticks). */
+    function tangentGraphStandaloneDoc(initObj) {
+      const j = tangentGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · tangent plane delta</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 1rem; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .dE::before { background: #3d8bfd; }
+    .dN::before { background: #5bd48a; }
+    .dU::before { background: #e6a23a; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg"><span class="dE">dE (m)</span><span class="dN">dN (m)</span><span class="dU">dU (m)</span></div>
+  </div>
+` +
+      "\n  " +
+      so +
+      ' type="application/json" id="gsof-tg-payload">' +
+      j +
+      sc +
+      "\n  " +
+      so +
+      ">\n" +
+      `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-tg-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) {
+      return [lo, hi];
+    }
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) {
+      return [lo, hi];
+    }
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) {
+      step *= 5;
+    } else if (norm > 2) {
+      step *= 2;
+    }
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) {
+      out.push(x);
+    }
+    if (out.length < 2) {
+      out.push(lo, hi);
+    }
+    return out;
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padL = 68;
+    var padR = 22;
+    var padT = 32;
+    var padB = 58;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
+    var xs = pts.map(function (p) {
+      return xUnit === "h" ? p.gps_tow_s / 3600 : p.gps_tow_s;
+    });
+    var allY = [];
+    pts.forEach(function (p) {
+      allY.push(p.de_m, p.dn_m, p.du_m);
+    });
+    var ymin = Math.min.apply(null, allY);
+    var ymax = Math.max.apply(null, allY);
+    if (!isFinite(ymin) || !isFinite(ymax)) {
+      ymin = -1;
+      ymax = 1;
+    }
+    if (ymax === ymin) {
+      ymin -= 0.5;
+      ymax += 0.5;
+    }
+    var yPad = (ymax - ymin) * 0.08;
+    ymin -= yPad;
+    ymax += yPad;
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xSpan = xmax - xmin;
+    var xPad = Math.max(xSpan * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    function xSc(v) {
+      return padL + ((v - x0) / (x1 - x0)) * gw;
+    }
+    function ySc(v) {
+      return padT + (1 - (v - ymin) / (ymax - ymin)) * gh;
+    }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + gh);
+    ctx.lineTo(padL + gw, padT + gh);
+    ctx.stroke();
+    var xt = niceTicks(x0, x1, 10);
+    var yt = niceTicks(ymin, ymax, 9);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT);
+      ctx.lineTo(px, padT + gh);
+      ctx.stroke();
+    });
+    yt.forEach(function (tk) {
+      var py = ySc(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab =
+        xUnit === "h"
+          ? tk.toFixed(4) + " h"
+          : Math.abs(tk) >= 10000
+            ? tk.toFixed(0) + " s"
+            : Math.abs(tk) >= 1000
+              ? tk.toFixed(1) + " s"
+              : tk.toFixed(2) + " s";
+      ctx.fillText(lab, px, padT + gh + 6);
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    yt.forEach(function (tk) {
+      var py = ySc(tk);
+      ctx.fillText(tk.toFixed(3) + " m", padL - 8, py);
+    });
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "GPS time of week (h)" : "GPS time of week (s)", padL + gw / 2, cssH - 8);
+    ctx.save();
+    ctx.translate(18, padT + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.fillText("Metres (dE, dN, dU)", 0, 0);
+    ctx.restore();
+    function stroke(getter, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      var i;
+      for (i = 0; i < pts.length; i++) {
+        var px = xSc(xs[i]);
+        var py = ySc(getter(pts[i]));
+        if (!mv) {
+          ctx.moveTo(px, py);
+          mv = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(xSc(xs[0]), ySc(getter(pts[0])), 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    stroke(function (p) {
+      return p.de_m;
+    }, "#3d8bfd");
+    stroke(function (p) {
+      return p.dn_m;
+    }, "#5bd48a");
+    stroke(function (p) {
+      return p.du_m;
+    }, "#e6a23a");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("resize", function () {
+    requestAnimationFrame(draw);
+  });
+  draw();
+})();
+` +
+      sc +
+      `
+</body>
+</html>`;
+    }
+
+    function openTangentGraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 7"),
+        points: Array.isArray(r.tangent_history) ? r.tangent_history : [],
+      };
+      const html = tangentGraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "noopener,noreferrer,width=980,height=760");
+      if (w) {
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureTangentGraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".tangent-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "tangent-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title = "Open dE / dN / dU vs GPS TOW in a new window (tick scales, seconds or hours on X)";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openTangentGraphWindow(art._tangentRecord);
       });
     }
 
@@ -1077,6 +1658,10 @@
       svBriefRoot.className = "sv-brief-root";
       svBriefRoot.hidden = true;
       body.appendChild(svBriefRoot);
+      const svDetailedRoot = document.createElement("div");
+      svDetailedRoot.className = "sv-detailed-root";
+      svDetailedRoot.hidden = true;
+      body.appendChild(svDetailedRoot);
       body.appendChild(docWrap);
       det.appendChild(sum);
       det.appendChild(body);
@@ -1106,11 +1691,53 @@
       const body = art.querySelector(".card-body");
       const dl = body.querySelector("dl");
       const svRoot = body.querySelector(".sv-brief-root");
+      const svDetRoot = body.querySelector(".sv-detailed-root");
       const isSV13 = r.type === 13;
+      const isSV14 = r.type === 14;
+      const isTan7 = r.type === 7;
 
       art.classList.toggle("card--sv-brief", isSV13);
+      art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (isSV13) {
+      if (!isSV13 && !isSV14 && !isTan7) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+      } else if (isSV13) {
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        delete art.dataset.svDetailedView;
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
         art._svBriefRecord = r;
         if (!art.dataset.svBriefView) {
           art.dataset.svBriefView = "basic";
@@ -1119,15 +1746,50 @@
         syncSVBriefTogglePressed(art);
         svRoot.hidden = false;
         renderSVBriefBody(art, r);
-      } else {
+      } else if (isSV14) {
         art._svBriefRecord = null;
+        art._tangentRecord = null;
         delete art.dataset.svBriefView;
-        const tgl = art.querySelector(".sv-brief-view-toggle");
-        if (tgl) {
-          tgl.remove();
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
+
+        art._svDetailedRecord = r;
+        if (!art.dataset.svDetailedView) {
+          art.dataset.svDetailedView = "basic";
+        }
+        ensureSVDetailedToggle(art);
+        syncSVDetailedTogglePressed(art);
+        svDetRoot.hidden = false;
+        renderSVDetailedBody(art, r);
+      } else if (isTan7) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._tangentRecord = r;
+        ensureTangentGraphOpenButton(art);
+        dl.hidden = false;
         fillFields(dl, r.fields);
       }
 
@@ -1147,6 +1809,7 @@
 
     function render(data) {
       lastStreamData = data;
+      gsofShowExpectedReservedBits = data.show_expected_reserved_bits === true;
       if (data.dashboard_version) {
         const srv = String(data.dashboard_version);
         if (!CLIENT_BUILD || srv !== CLIENT_BUILD) {

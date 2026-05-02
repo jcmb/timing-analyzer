@@ -105,6 +105,12 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(15).DocURL() != base+"gsof-messages-receiver-serial-no.html" {
 		t.Fatalf("type 15 doc: %s", Lookup(15).DocURL())
 	}
+	if Lookup(14).DocURL() != base+"gsof-messages-sv-detail.html" {
+		t.Fatalf("type 14 doc: %s", Lookup(14).DocURL())
+	}
+	if Lookup(16).DocURL() != base+"gsof-messages-utc.html" {
+		t.Fatalf("type 16 doc: %s", Lookup(16).DocURL())
+	}
 }
 
 func TestDecode02LatLonRad(t *testing.T) {
@@ -327,6 +333,74 @@ func TestDecode03ECEFFormat(t *testing.T) {
 	}
 	if x != "\u00a01.250" || y != "-2.500" || z != "\u00a0100.000" {
 		t.Fatalf("ECEF m: x=%q y=%q z=%q", x, y, z)
+	}
+}
+
+func TestDecode16CurrentTimeLikeType1Layout(t *testing.T) {
+	payload := make([]byte, 9)
+	binary.BigEndian.PutUint32(payload[0:], 5000) // 5.000 s
+	binary.BigEndian.PutUint16(payload[4:], 2271)
+	binary.BigEndian.PutUint16(payload[6:], 0)
+	payload[8] = 0x03 // bits 0,1 set
+	fields := Decode(16, payload)
+	got := make(map[string]string)
+	var tf *Field
+	for i := range fields {
+		got[fields[i].Label] = fields[i].Value
+		if fields[i].Label == "Current time flags" {
+			tf = &fields[i]
+		}
+	}
+	if got["Summary"] == "" {
+		t.Fatal("missing Summary")
+	}
+	if got["UTC time of week"] != "5.00 s" {
+		t.Fatalf("tow: %q", got["UTC time of week"])
+	}
+	if got["UTC week"] != "2271" {
+		t.Fatalf("week: %q", got["UTC week"])
+	}
+	if tf == nil || len(tf.Detail) != 2 {
+		t.Fatalf("time flags detail len %v %#v", tf != nil, tf)
+	}
+}
+
+func TestDecode16TimeFlagsVerboseReserved(t *testing.T) {
+	t.Cleanup(func() { ShowExpectedReservedBits = false })
+	ShowExpectedReservedBits = true
+
+	payload := make([]byte, 9)
+	binary.BigEndian.PutUint32(payload[0:], 0)
+	binary.BigEndian.PutUint16(payload[4:], 0)
+	binary.BigEndian.PutUint16(payload[6:], 0)
+	payload[8] = 0x00
+	fields := Decode(16, payload)
+	var tf *Field
+	for i := range fields {
+		if fields[i].Label == "Current time flags" {
+			tf = &fields[i]
+			break
+		}
+	}
+	if tf == nil || len(tf.Detail) != 8 {
+		t.Fatalf("verbose time flags: %#v", tf)
+	}
+}
+
+func TestDecode14SVDetailedRows(t *testing.T) {
+	payload := []byte{
+		1,
+		2, 0x03, 0x0C, 250,
+		0, 90,
+		8, 12,
+	}
+	fields := Decode(14, payload)
+	if len(fields) < 8 {
+		t.Fatalf("fields %#v", fields)
+	}
+	_, rows := ParseSVDetailedEntries(payload)
+	if len(rows) != 1 || rows[0].PRN != 2 || rows[0].Azimuth != 90 {
+		t.Fatalf("parse %+v", rows)
 	}
 }
 

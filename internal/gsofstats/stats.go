@@ -11,6 +11,8 @@ import (
 	"timing-analyzer/internal/gsof"
 )
 
+const tangentHistoryMax = 2000
+
 // Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
 type Stats struct {
 	mu             sync.Mutex
@@ -24,6 +26,10 @@ type Stats struct {
 	warnings       []string
 	suppressSingle bool
 	lastPayload    map[int][]byte // last GSOF record payload per type (for dashboard decode)
+	// lastGPSTOWSec is the GPS time-of-week (s) from the latest type-0x01 in stream order.
+	lastGPSTOWSec float64
+	// tangentHistory holds recent type-0x07 samples paired with lastGPSTOWSec at decode time.
+	tangentHistory []gsof.TangentPlanePoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -116,6 +122,22 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 		copy(pld, buffer[ptr+2:ptr+2+recLen])
 		s.lastPayload[recType] = pld
 
+		if recType == 1 {
+			if sec, ok := gsof.ParsePositionTimeTOWSec(pld); ok {
+				s.lastGPSTOWSec = sec
+			}
+		}
+		if recType == 7 {
+			if de, dn, du, ok := gsof.ParseTangentPlaneENU(pld); ok {
+				s.appendTangentPoint(gsof.TangentPlanePoint{
+					GPSTOWSec: s.lastGPSTOWSec,
+					DEm:       de,
+					DNm:       dn,
+					DUm:       du,
+				})
+			}
+		}
+
 		ptr += 2 + recLen
 	}
 
@@ -124,6 +146,13 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 	} else {
 		s.warnings = append(s.warnings, fmt.Sprintf("[%s] WARNING: Packet (Seq %d) missing Type 0x01. Found: [%s]",
 			now.Format("15:04:05"), seq, strings.Join(packetSubtypes, ", ")))
+	}
+}
+
+func (s *Stats) appendTangentPoint(pt gsof.TangentPlanePoint) {
+	s.tangentHistory = append(s.tangentHistory, pt)
+	if len(s.tangentHistory) > tangentHistoryMax {
+		s.tangentHistory = s.tangentHistory[len(s.tangentHistory)-tangentHistoryMax:]
 	}
 }
 
@@ -140,6 +169,10 @@ type RecordRow struct {
 	Stale    bool         `json:"stale"`
 	// SVBrief is populated for GSOF type 13 (GPS SV brief) for structured dashboard views.
 	SVBrief []gsof.SVBriefEntry `json:"sv_brief,omitempty"`
+	// SVDetailed is populated for GSOF type 14 (detailed satellite info).
+	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
+	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
+	TangentHistory []gsof.TangentPlanePoint `json:"tangent_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -150,8 +183,9 @@ type DashboardPayload struct {
 	Port             int         `json:"port"`
 	Records          []RecordRow `json:"records"`
 	Warnings         []string    `json:"warnings"`
-	StreamOK         bool        `json:"stream_ok"`
-	DashboardVersion string      `json:"dashboard_version,omitempty"`
+	StreamOK                   bool   `json:"stream_ok"`
+	DashboardVersion           string `json:"dashboard_version,omitempty"`
+	ShowExpectedReservedBits   bool   `json:"show_expected_reserved_bits"`
 }
 
 // BuildDashboard returns a snapshot for JSON/SSE (sorted by record type).
@@ -197,6 +231,12 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		if subType == 13 {
 			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)
 		}
+		if subType == 14 {
+			_, row.SVDetailed = gsof.ParseSVDetailedEntries(payload)
+		}
+		if subType == 7 && len(s.tangentHistory) > 0 {
+			row.TangentHistory = append([]gsof.TangentPlanePoint(nil), s.tangentHistory...)
+		}
 		rows = append(rows, row)
 	}
 
@@ -206,14 +246,15 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 	}
 
 	return &DashboardPayload{
-		ServerTime:       now.Format(time.RFC3339Nano),
-		LastSeq:          int(s.lastSeq),
-		Mode:             mode,
-		Port:             port,
-		Records:          rows,
-		Warnings:         warn,
-		StreamOK:         streamOK,
-		DashboardVersion: dashboardVersion,
+		ServerTime:                 now.Format(time.RFC3339Nano),
+		LastSeq:                    int(s.lastSeq),
+		Mode:                       mode,
+		Port:                       port,
+		Records:                    rows,
+		Warnings:                   warn,
+		StreamOK:                   streamOK,
+		DashboardVersion:           dashboardVersion,
+		ShowExpectedReservedBits:   gsof.ShowExpectedReservedBits,
 	}
 }
 

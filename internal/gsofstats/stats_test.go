@@ -1,6 +1,10 @@
 package gsofstats
 
-import "testing"
+import (
+	"encoding/binary"
+	"math"
+	"testing"
+)
 
 func TestStats_UpdateAndDashboard(t *testing.T) {
 	s := NewStats(false)
@@ -35,5 +39,44 @@ func TestStats_Type13SVBriefJSON(t *testing.T) {
 	}
 	if row.SVBrief[0].PRN != 5 || row.SVBrief[0].Flags1 != 0x0F || row.SVBrief[0].Flags2 != 0x30 {
 		t.Fatalf("entry %+v", row.SVBrief[0])
+	}
+}
+
+func f64be(v float64) []byte {
+	b := make([]byte, 8)
+	binary.BigEndian.PutUint64(b, math.Float64bits(v))
+	return b
+}
+
+func TestStats_TangentHistoryFromType1And7(t *testing.T) {
+	s := NewStats(false)
+	// Type 1: 10-byte payload (GPS TOW ms = 5000 → 5 s), then type 7: 24 bytes ENU.
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x07, 0x18,
+	}
+	buf = append(buf, f64be(0.1)...)
+	buf = append(buf, f64be(-0.2)...)
+	buf = append(buf, f64be(0.3)...)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 7 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 7 row")
+	}
+	if len(row.TangentHistory) != 1 {
+		t.Fatalf("tangent_history len %d", len(row.TangentHistory))
+	}
+	p := row.TangentHistory[0]
+	if p.GPSTOWSec != 5.0 || p.DEm != 0.1 || p.DNm != -0.2 || p.DUm != 0.3 {
+		t.Fatalf("point %+v", p)
 	}
 }

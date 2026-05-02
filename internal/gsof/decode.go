@@ -649,25 +649,20 @@ func decodeSVDetailed(payload []byte) []Field {
 	if len(payload) < 1 {
 		return shortFields(Lookup(14).Function, payload, 1)
 	}
-	br := beReader{b: payload}
-	n := int(br.u8())
+	n, rows := ParseSVDetailedEntries(payload)
 	var out []Field
 	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
-	for i := 0; i < n; i++ {
-		if !br.ok(8) {
-			out = append(out, kv("Parse", "truncated SV detailed list"))
-			break
-		}
-		ch := br.u8()
-		flags1 := br.u8()
-		flags2 := br.u8()
-		elev := int8(br.u8())
-		az := br.u16()
-		snrL1 := br.u8()
-		snrL2 := br.u8()
-		out = append(out, kv(fmt.Sprintf("SV %d", i),
-			fmt.Sprintf("channel=%d flags1=0x%02X flags2=0x%02X elev=%d° az=%d L1_SNR=%.2f L2_SNR=%.2f",
-				ch, flags1, flags2, elev, az, float64(snrL1)/4, float64(snrL2)/4)))
+	if len(rows) < n {
+		out = append(out, kv("Parse", "truncated SV detailed list"))
+	}
+	for i, e := range rows {
+		out = append(out, kv(fmt.Sprintf("SV %d PRN", i), fmt.Sprintf("%d", e.PRN)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 1 (binary)", i), fmt.Sprintf("%08b", e.Flags1)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 2 (binary)", i), fmt.Sprintf("%08b", e.Flags2)))
+		out = append(out, kv(fmt.Sprintf("SV %d Elevation (°)", i), fmt.Sprintf("%d", e.Elev)))
+		out = append(out, kv(fmt.Sprintf("SV %d Azimuth (°)", i), fmt.Sprintf("%d", e.Azimuth)))
+		out = append(out, kv(fmt.Sprintf("SV %d L1 SNR", i), fmt.Sprintf("%.2f", e.SNRL1)))
+		out = append(out, kv(fmt.Sprintf("SV %d L2 SNR", i), fmt.Sprintf("%.2f", e.SNRL2)))
 	}
 	return out
 }
@@ -680,16 +675,50 @@ func decodeSerial(payload []byte) []Field {
 	return []Field{kv("Serial number", fmt.Sprintf("%d", br.u32()))}
 }
 
+func timeUTCWeekInfoValidity(flags byte) string {
+	if bitOn(flags, 0) == 1 {
+		return "Valid"
+	}
+	return "Not valid"
+}
+
+func timeUTCOffsetValidity(flags byte) string {
+	if bitOn(flags, 1) == 1 {
+		return "Valid"
+	}
+	return "Not valid"
+}
+
+func decodeTimeFlags16(flags byte) []Field {
+	out := []Field{
+		kv("Bit 0 — Time information (week and millisecond of week) validity", timeUTCWeekInfoValidity(flags)),
+		kv("Bit 1 — UTC offset validity", timeUTCOffsetValidity(flags)),
+	}
+	for n := uint(2); n <= 7; n++ {
+		out = appendReservedClearKV(out, flags, n, fmt.Sprintf("Bit %d — Reserved (set to zero)", n))
+	}
+	return out
+}
+
 func decodeCurrentTime(payload []byte) []Field {
 	br := beReader{b: payload}
-	if !br.ok(4 + 2 + 2 + 1) {
+	if !br.ok(4+2+2+1) {
 		return shortFields(Lookup(16).Function, payload, 9)
 	}
+	towMs := br.u32()
+	week := br.u16()
+	utcOff := br.u16()
+	fl := br.u8()
 	return []Field{
-		kv("Current time (raw)", fmt.Sprintf("%d", br.u32())),
-		kv("Current week", fmt.Sprintf("%d", br.u16())),
-		kv("UTC offset", fmt.Sprintf("%d", br.u16())),
-		kv("Time flags", fmt.Sprintf("%d", br.u8())),
+		kv("Summary", Lookup(16).Function),
+		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(towMs)/1000)),
+		kv("UTC week", fmt.Sprintf("%d", week)),
+		kv("UTC offset", fmt.Sprintf("%d", utcOff)),
+		{
+			Label:  "Current time flags",
+			Value:  fmt.Sprintf("0x%02X · %08b", fl, fl),
+			Detail: decodeTimeFlags16(fl),
+		},
 	}
 }
 
