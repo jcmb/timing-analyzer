@@ -631,17 +631,16 @@ func decodeSVBrief(payload []byte) []Field {
 	if len(payload) < 1 {
 		return shortFields(Lookup(13).Function, payload, 1)
 	}
-	br := beReader{b: payload}
-	n := int(br.u8())
+	n, rows := ParseSVBriefEntries(payload)
 	var out []Field
 	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
-	for i := 0; i < n; i++ {
-		if !br.ok(3) {
-			out = append(out, kv("Parse", "truncated SV brief list"))
-			break
-		}
-		a, b, c := br.u8(), br.u8(), br.u8()
-		out = append(out, kv(fmt.Sprintf("SV %d", i), fmt.Sprintf("%d / %d / %d", a, b, c)))
+	if len(rows) < n {
+		out = append(out, kv("Parse", "truncated SV brief list"))
+	}
+	for i, e := range rows {
+		out = append(out, kv(fmt.Sprintf("SV %d PRN", i), fmt.Sprintf("%d", e.PRN)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 1 (binary)", i), fmt.Sprintf("%08b", e.Flags1)))
+		out = append(out, kv(fmt.Sprintf("SV %d Flags 2 (binary)", i), fmt.Sprintf("%08b", e.Flags2)))
 	}
 	return out
 }

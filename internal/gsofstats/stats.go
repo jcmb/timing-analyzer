@@ -138,6 +138,8 @@ type RecordRow struct {
 	Count    int          `json:"count"`
 	Rate     string       `json:"rate"`
 	Stale    bool         `json:"stale"`
+	// SVBrief is populated for GSOF type 13 (GPS SV brief) for structured dashboard views.
+	SVBrief []gsof.SVBriefEntry `json:"sv_brief,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -181,7 +183,7 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		meta := gsof.Lookup(subType)
 		payload := s.lastPayload[subType]
 		fields := gsof.Decode(subType, payload)
-		rows = append(rows, RecordRow{
+		row := RecordRow{
 			Type:     subType,
 			TypeHex:  fmt.Sprintf("0x%02X", subType),
 			Name:     meta.Title,
@@ -191,7 +193,11 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 			Count:    s.counts[subType],
 			Rate:     rateStr,
 			Stale:    stale,
-		})
+		}
+		if subType == 13 {
+			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)
+		}
+		rows = append(rows, row)
 	}
 
 	warn := append([]string(nil), s.warnings...)
