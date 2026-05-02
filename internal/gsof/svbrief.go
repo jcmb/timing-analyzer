@@ -9,7 +9,7 @@ type SVBriefEntry struct {
 	Flags2 int `json:"flags2"`
 }
 
-// AllSVBriefEntry is one row of GSOF type 33 (all systems SV brief): GNSS system id, PRN, two flag bytes.
+// AllSVBriefEntry is one row of GSOF type 33 (all systems SV brief): PRN, GNSS system id, two flag bytes.
 type AllSVBriefEntry struct {
 	System     int    `json:"system"`
 	SystemName string `json:"system_name"`
@@ -36,7 +36,7 @@ func ParseSVBriefEntries(payload []byte) (count int, rows []SVBriefEntry) {
 	return count, rows
 }
 
-// ParseAllSVBriefEntries reads the type-33 payload: count byte, then count × (GNSS system, PRN, flags1, flags2).
+// ParseAllSVBriefEntries reads the type-33 payload: count byte, then count × (PRN, GNSS system, flags1, flags2).
 // Rows are sorted by SV system id then PRN for stable display. count is the declared count; rows may be shorter if truncated.
 func ParseAllSVBriefEntries(payload []byte) (count int, rows []AllSVBriefEntry) {
 	if len(payload) < 1 {
@@ -48,8 +48,8 @@ func ParseAllSVBriefEntries(payload []byte) (count int, rows []AllSVBriefEntry) 
 		if !br.ok(4) {
 			return count, rows
 		}
-		sys := int(br.u8())
 		prn := int(br.u8())
+		sys := int(br.u8())
 		f1 := int(br.u8())
 		f2 := int(br.u8())
 		rows = append(rows, AllSVBriefEntry{

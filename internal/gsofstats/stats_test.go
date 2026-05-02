@@ -21,8 +21,8 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 
 func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 	s := NewStats(false)
-	// Type 33: count=1, system=0 (GPS), PRN=4, flags1=0x0F, flags2=0x30
-	s.Update(1, []byte{0x21, 0x05, 0x01, 0x00, 0x04, 0x0F, 0x30})
+	// Type 33: count=1, PRN=4, system=0 (GPS), flags1=0x0F, flags2=0x30
+	s.Update(1, []byte{0x21, 0x05, 0x01, 0x04, 0x00, 0x0F, 0x30})
 	d := s.BuildDashboard("udp", 2101, "")
 	var row *RecordRow
 	for i := range d.Records {

@@ -3,8 +3,9 @@ package gsof
 import "testing"
 
 func TestParseAllSVBriefEntriesSortsBySystemThenPRN(t *testing.T) {
-	// count=2: GLONASS (2) PRN 10, then GPS (0) PRN 5 — wire order differs from display order.
-	payload := []byte{2, 2, 10, 0x11, 0x22, 0, 5, 0x33, 0x44}
+	// count=2: wire order PRN,sys,flags×2 per row; sorted for display by system then PRN.
+	// Row A: GLO PRN 10 — 10, 2, …  Row B: GPS PRN 5 — 5, 0, …
+	payload := []byte{2, 10, 2, 0x11, 0x22, 5, 0, 0x33, 0x44}
 	n, rows := ParseAllSVBriefEntries(payload)
 	if n != 2 || len(rows) != 2 {
 		t.Fatalf("n=%d rows=%d", n, len(rows))

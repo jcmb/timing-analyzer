@@ -237,8 +237,8 @@ func TestDecode09PDOPOneDecimal(t *testing.T) {
 }
 
 func TestDecode33AllSVBriefFields(t *testing.T) {
-	// One SV: GPS (0), PRN 7, flags1=0xAA, flags2=0xBB
-	payload := []byte{0x01, 0x00, 0x07, 0xaa, 0xbb}
+	// One SV: PRN 7, GPS (0), flags1=0xAA, flags2=0xBB
+	payload := []byte{0x01, 0x07, 0x00, 0xaa, 0xbb}
 	fields := Decode(33, payload)
 	got := make(map[string]string)
 	for _, f := range fields {
