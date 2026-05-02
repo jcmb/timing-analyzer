@@ -11,7 +11,7 @@ import (
 	"timing-analyzer/internal/gsof"
 )
 
-const tangentHistoryMax = 2000
+const historySamplesMax = 2000
 
 // Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
 type Stats struct {
@@ -30,6 +30,8 @@ type Stats struct {
 	lastGPSTOWSec float64
 	// tangentHistory holds recent type-0x07 samples paired with lastGPSTOWSec at decode time.
 	tangentHistory []gsof.TangentPlanePoint
+	// llhHistory holds recent type-0x02 lat/lon samples paired with lastGPSTOWSec at decode time.
+	llhHistory []gsof.LLHPoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -137,6 +139,15 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				})
 			}
 		}
+		if recType == 2 {
+			if lat, lon, ok := gsof.ParseLatLonDeg(pld); ok {
+				s.appendLLHPoint(gsof.LLHPoint{
+					GPSTOWSec: s.lastGPSTOWSec,
+					LatDeg:    lat,
+					LonDeg:    lon,
+				})
+			}
+		}
 
 		ptr += 2 + recLen
 	}
@@ -151,8 +162,15 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 
 func (s *Stats) appendTangentPoint(pt gsof.TangentPlanePoint) {
 	s.tangentHistory = append(s.tangentHistory, pt)
-	if len(s.tangentHistory) > tangentHistoryMax {
-		s.tangentHistory = s.tangentHistory[len(s.tangentHistory)-tangentHistoryMax:]
+	if len(s.tangentHistory) > historySamplesMax {
+		s.tangentHistory = s.tangentHistory[len(s.tangentHistory)-historySamplesMax:]
+	}
+}
+
+func (s *Stats) appendLLHPoint(pt gsof.LLHPoint) {
+	s.llhHistory = append(s.llhHistory, pt)
+	if len(s.llhHistory) > historySamplesMax {
+		s.llhHistory = s.llhHistory[len(s.llhHistory)-historySamplesMax:]
 	}
 }
 
@@ -169,10 +187,14 @@ type RecordRow struct {
 	Stale    bool         `json:"stale"`
 	// SVBrief is populated for GSOF type 13 (GPS SV brief) for structured dashboard views.
 	SVBrief []gsof.SVBriefEntry `json:"sv_brief,omitempty"`
+	// AllSVBrief is populated for GSOF type 33 (all systems SV brief) for structured dashboard views.
+	AllSVBrief []gsof.AllSVBriefEntry `json:"all_sv_brief,omitempty"`
 	// SVDetailed is populated for GSOF type 14 (detailed satellite info).
 	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
 	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
 	TangentHistory []gsof.TangentPlanePoint `json:"tangent_history,omitempty"`
+	// LLHHistory is populated for GSOF type 2 (latitude / longitude) for dashboard graphing.
+	LLHHistory []gsof.LLHPoint `json:"llh_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -231,11 +253,17 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		if subType == 13 {
 			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)
 		}
+		if subType == 33 {
+			_, row.AllSVBrief = gsof.ParseAllSVBriefEntries(payload)
+		}
 		if subType == 14 {
 			_, row.SVDetailed = gsof.ParseSVDetailedEntries(payload)
 		}
 		if subType == 7 && len(s.tangentHistory) > 0 {
 			row.TangentHistory = append([]gsof.TangentPlanePoint(nil), s.tangentHistory...)
+		}
+		if subType == 2 && len(s.llhHistory) > 0 {
+			row.LLHHistory = append([]gsof.LLHPoint(nil), s.llhHistory...)
 		}
 		rows = append(rows, row)
 	}
