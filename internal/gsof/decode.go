@@ -188,7 +188,11 @@ func decode01(payload []byte) []Field {
 			Value:  fmt.Sprintf("0x%02X · %08b", f1, f1),
 			Detail: decodePositionFlags1(f1),
 		},
-		kv("Flags 2", fmt.Sprintf("0x%02X · %08b", f2, f2)),
+		{
+			Label:  "Flags 2",
+			Value:  fmt.Sprintf("0x%02X · %08b", f2, f2),
+			Detail: decodePositionFlags2(f2),
+		},
 		kv("Init counter", fmt.Sprintf("%d", init)),
 	}
 }
@@ -226,6 +230,38 @@ func decodePositionFlags1(flags byte) []Field {
 		kv("Bit 5 — Least squares position", yesNo(bitOn(flags, 5))),
 		kv("Bit 6 — Reserved (always clear)", reservedAlwaysClear(flags, 6)),
 		kv("Bit 7 — Filtered L1 pseudoranges", yesNo(bitOn(flags, 7))),
+	}
+}
+
+func decodePositionFlags2(flags byte) []Field {
+	b0 := bitOn(flags, 0)
+	b1 := bitOn(flags, 1)
+	b2 := bitOn(flags, 2)
+	diff := "Differential solution."
+	if b0 == 0 {
+		diff = "Autonomous or WAAS solution (not differential)."
+	}
+	method1 := "Code."
+	if b1 == 1 {
+		method1 = "Phase, including RTK (fix, float, or dithered), RTX, HP or XP OmniSTAR (VBS is not derived from phase)."
+	}
+	method2 := "RTK-Float, dithered RTK, or code-phase DGNSS; uncorrected position is autonomous if bit 0 = 0."
+	if b2 == 1 {
+		method2 = "Fixed integer phase (RTK-Fixed); uncorrected position is WAAS if bit 0 = 0."
+	}
+	omni := "OmniSTAR differential solution (including HP, XP, and VBS)."
+	if bitOn(flags, 3) == 0 {
+		omni = "OmniSTAR not active."
+	}
+	return []Field{
+		kv("Bit 0 — Differential position", diff),
+		kv("Bit 1 — Differential method (code vs phase)", method1),
+		kv("Bit 2 — Differential method (float vs fixed)", method2),
+		kv("Bit 3 — OmniSTAR solution", omni),
+		kv("Bit 4 — Position with static constraint", yesNo(bitOn(flags, 4))),
+		kv("Bit 5 — Network RTK solution", yesNo(bitOn(flags, 5))),
+		kv("Bit 6 — Dithered RTK", yesNo(bitOn(flags, 6))),
+		kv("Bit 7 — Beacon DGNSS", yesNo(bitOn(flags, 7))),
 	}
 }
 

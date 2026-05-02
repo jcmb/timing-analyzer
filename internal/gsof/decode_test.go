@@ -19,7 +19,7 @@ func TestDecode01(t *testing.T) {
 		t.Fatalf("fields %#v", fields)
 	}
 	var tow, week, svs string
-	var flags1 *Field
+	var flags1, flags2 *Field
 	for i := range fields {
 		f := &fields[i]
 		switch f.Label {
@@ -31,6 +31,8 @@ func TestDecode01(t *testing.T) {
 			svs = f.Value
 		case "Flags 1":
 			flags1 = f
+		case "Flags 2":
+			flags2 = f
 		}
 	}
 	if tow != "1.000000 s" || week != "2271" || svs != "5" {
@@ -38,6 +40,9 @@ func TestDecode01(t *testing.T) {
 	}
 	if flags1 == nil || len(flags1.Detail) != 8 {
 		t.Fatalf("Flags 1 detail: %#v", flags1)
+	}
+	if flags2 == nil || len(flags2.Detail) != 8 {
+		t.Fatalf("Flags 2 detail: %#v", flags2)
 	}
 }
 

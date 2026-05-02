@@ -289,6 +289,17 @@
       dl.appendChild(dd);
     }
 
+    /** Stable key for preserving <details open> across SSE reflows. */
+    function fieldRowKey(f, i) {
+      if (f.label === "Flags 1") {
+        return "flags1";
+      }
+      if (f.label === "Flags 2") {
+        return "flags2";
+      }
+      return "f" + i;
+    }
+
     function appendFieldToDL(dl, f, fieldKey) {
       const dt = document.createElement("dt");
       dt.textContent = f.label;
@@ -308,7 +319,9 @@
         det.className = "field-expand";
         const sum = document.createElement("summary");
         sum.textContent =
-          f.label === "Flags 1" ? "Flag bit meanings" : "Details";
+          f.label === "Flags 1" || f.label === "Flags 2"
+            ? "Flag bit meanings"
+            : "Details";
         const nested = document.createElement("dl");
         nested.className = "field-nested";
         f.detail.forEach((child, j) => {
@@ -325,13 +338,29 @@
     }
 
     function fillFields(dl, fields) {
+      const openFieldKeys = new Set();
+      dl.querySelectorAll("dd[data-field]").forEach((dd) => {
+        const det = dd.querySelector("details.field-expand[open]");
+        if (det && dd.dataset.field) {
+          openFieldKeys.add(dd.dataset.field);
+        }
+      });
+
       dl.replaceChildren();
       if (!fields || !fields.length) {
         dlRow(dl, "Decoded fields", "none", "—");
         return;
       }
       fields.forEach((f, i) => {
-        appendFieldToDL(dl, f, "f" + i);
+        const key = fieldRowKey(f, i);
+        appendFieldToDL(dl, f, key);
+        if (openFieldKeys.has(key)) {
+          const dd = dl.querySelector('dd[data-field="' + key + '"]');
+          const det = dd && dd.querySelector("details.field-expand");
+          if (det) {
+            det.open = true;
+          }
+        }
       });
     }
 
