@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"timing-analyzer/internal/core"
+	"timing-analyzer/internal/gsof"
 	"timing-analyzer/internal/gsofstats"
 	"timing-analyzer/internal/stream"
 )
@@ -30,6 +31,8 @@ func setNoCacheHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
+	// Hint shared caches / reverse proxies not to treat this as cacheable.
+	w.Header().Set("Surrogate-Control", "no-store")
 }
 
 func main() {
@@ -38,7 +41,10 @@ func main() {
 	port := flag.Int("port", 2101, "Port to listen on or connect to")
 	webPort := flag.Int("web-port", 8080, "Local HTTP port for the dashboard")
 	verbose := flag.Int("verbose", 0, "DCOL / stream verbosity (passed to listener)")
+	showExpectedReserved := flag.Bool("show-expected-reserved-bits", false, "In GSOF flag decodes (types 1/8/10), include reserved bits that match the spec; default hides them")
 	flag.Parse()
+
+	gsof.ShowExpectedReservedBits = *showExpectedReserved
 
 	cfg := core.Config{
 		IP:      *ipFlag,
@@ -68,7 +74,7 @@ func main() {
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
 		for range t.C {
-			dash := stats.BuildDashboard(cfg.IP, cfg.Port)
+			dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version)
 			data, err := json.Marshal(dash)
 			if err != nil {
 				continue
@@ -85,6 +91,7 @@ func main() {
 		}
 		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("X-GSOF-Dashboard-Version", Version)
 		_, _ = w.Write(dashboardHTMLLive)
 	})
 	mux.Handle("/events", broker)

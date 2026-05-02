@@ -49,7 +49,7 @@ func Decode(msgType int, payload []byte) []Field {
 	case 2:
 		return decodeLatLonHeight(payload)
 	case 3:
-		return decode3xF64(3, "X (m)", "Y (m)", "Z (m)", payload)
+		return decodeECEFPosition(payload)
 	case 4:
 		return decodeLocalDatum(payload)
 	case 5:
@@ -206,6 +206,26 @@ func yesNo(bit byte) string {
 
 func bitOn(flags byte, n uint) byte { return (flags >> n) & 1 }
 
+// ShowExpectedReservedBits, when true, includes reserved flag-bit rows that
+// match the specification in type 1 / 8 / 10 flag decodes. The default (false)
+// omits those rows so only unexpected violations appear. Set from CLI (e.g.
+// gsof-dashboard) before calling Decode.
+var ShowExpectedReservedBits bool
+
+func appendReservedSetKV(out []Field, flags byte, n uint, label string) []Field {
+	if bitOn(flags, n) == 1 && !ShowExpectedReservedBits {
+		return out
+	}
+	return append(out, kv(label, reservedAlwaysSet(flags, n)))
+}
+
+func appendReservedClearKV(out []Field, flags byte, n uint, label string) []Field {
+	if bitOn(flags, n) == 0 && !ShowExpectedReservedBits {
+		return out
+	}
+	return append(out, kv(label, reservedAlwaysClear(flags, n)))
+}
+
 func reservedAlwaysSet(flags byte, n uint) string {
 	if bitOn(flags, n) == 1 {
 		return "Yes — set (expected)"
@@ -221,16 +241,17 @@ func reservedAlwaysClear(flags byte, n uint) string {
 }
 
 func decodePositionFlags1(flags byte) []Field {
-	return []Field{
+	out := []Field{
 		kv("Bit 0 — New position", yesNo(bitOn(flags, 0))),
 		kv("Bit 1 — Clock fix for current position", yesNo(bitOn(flags, 1))),
 		kv("Bit 2 — Horizontal coordinates from this position", yesNo(bitOn(flags, 2))),
 		kv("Bit 3 — Height from this position", yesNo(bitOn(flags, 3))),
-		kv("Bit 4 — Reserved (always set)", reservedAlwaysSet(flags, 4)),
-		kv("Bit 5 — Least squares position", yesNo(bitOn(flags, 5))),
-		kv("Bit 6 — Reserved (always clear)", reservedAlwaysClear(flags, 6)),
-		kv("Bit 7 — Filtered L1 pseudoranges", yesNo(bitOn(flags, 7))),
 	}
+	out = appendReservedSetKV(out, flags, 4, "Bit 4 — Reserved (always set)")
+	out = append(out, kv("Bit 5 — Least squares position", yesNo(bitOn(flags, 5))))
+	out = appendReservedClearKV(out, flags, 6, "Bit 6 — Reserved (always clear)")
+	out = append(out, kv("Bit 7 — Filtered L1 pseudoranges", yesNo(bitOn(flags, 7))))
+	return out
 }
 
 func decodePositionFlags2(flags byte) []Field {
@@ -274,9 +295,35 @@ func decode3xF64(msgType int, a, b, c string, payload []byte) []Field {
 	y := br.f64()
 	z := br.f64()
 	return []Field{
-		kv(a, fmt.Sprintf("%.9g", x)),
-		kv(b, fmt.Sprintf("%.9g", y)),
-		kv(c, fmt.Sprintf("%.9g", z)),
+		kv(a, formatMeters3(x)),
+		kv(b, formatMeters3(y)),
+		kv(c, formatMeters3(z)),
+	}
+}
+
+// formatMeters3 formats a length in metres to three decimal places (default for (m) fields).
+// Strictly positive values are prefixed with U+00A0 (NBSP) so they align with negatives in monospace UIs.
+func formatMeters3(v float64) string {
+	s := fmt.Sprintf("%.3f", v)
+	if v > 0 {
+		return "\u00a0" + s
+	}
+	return s
+}
+
+// decodeECEFPosition decodes GSOF type 3: '>d d d' — X, Y, Z in metres (big-endian).
+func decodeECEFPosition(payload []byte) []Field {
+	br := beReader{b: payload}
+	if !br.ok(24) {
+		return shortFields(Lookup(3).Function, payload, 24)
+	}
+	x := br.f64()
+	y := br.f64()
+	z := br.f64()
+	return []Field{
+		kv("X (m)", formatMeters3(x)),
+		kv("Y (m)", formatMeters3(y)),
+		kv("Z (m)", formatMeters3(z)),
 	}
 }
 
@@ -293,11 +340,11 @@ func decodeLatLonHeight(payload []byte) []Field {
 	latDeg := latRad * 180 / math.Pi
 	lonDeg := lonRad * 180 / math.Pi
 	return []Field{
-		kv("Latitude (decimal °)", formatDecimalDegrees(latDeg)),
 		kv("Latitude (DMS)", formatDMS(latDeg, true)),
-		kv("Longitude (decimal °)", formatDecimalDegrees(lonDeg)),
 		kv("Longitude (DMS)", formatDMS(lonDeg, false)),
-		kv("Height (m)", fmt.Sprintf("%.6f", h)),
+		kv("Latitude (decimal °)", formatDecimalDegrees(latDeg)),
+		kv("Longitude (decimal °)", formatDecimalDegrees(lonDeg)),
+		kv("Height (m)", formatMeters3(h)),
 	}
 }
 
@@ -340,17 +387,20 @@ func formatDMS(deg float64, isLat bool) string {
 	return fmt.Sprintf("%s %d° %d′ %.5f″", hemi, d, m, s)
 }
 
+func formatDOP1(v float32) string {
+	return fmt.Sprintf("%.1f", v)
+}
+
 func decodePDOP(payload []byte) []Field {
 	br := beReader{b: payload}
 	if !br.ok(16) {
 		return shortFields(Lookup(9).Function, payload, 16)
 	}
 	return []Field{
-		kv("Summary", Lookup(9).Function),
-		kv("PDOP", fmt.Sprintf("%g", br.f32())),
-		kv("HDOP", fmt.Sprintf("%g", br.f32())),
-		kv("TDOP", fmt.Sprintf("%g", br.f32())),
-		kv("VDOP", fmt.Sprintf("%g", br.f32())),
+		kv("PDOP", formatDOP1(br.f32())),
+		kv("HDOP", formatDOP1(br.f32())),
+		kv("TDOP", formatDOP1(br.f32())),
+		kv("VDOP", formatDOP1(br.f32())),
 	}
 }
 
@@ -364,7 +414,7 @@ func decodeLocalDatum(payload []byte) []Field {
 		kv("Datum ID (8 chars)", datum),
 		kv("Local latitude (deg)", fmt.Sprintf("%.9g", br.f64())),
 		kv("Local longitude (deg)", fmt.Sprintf("%.9g", br.f64())),
-		kv("Local height (m)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local height (m)", formatMeters3(br.f64())),
 	}
 }
 
@@ -376,9 +426,17 @@ func decodeLocalZone(payload []byte) []Field {
 	return []Field{
 		kv("Datum ID (8 chars)", br.str8()),
 		kv("Zone ID (8 chars)", br.str8()),
-		kv("Local north (m)", fmt.Sprintf("%.9g", br.f64())),
-		kv("Local east (m)", fmt.Sprintf("%.9g", br.f64())),
-		kv("Local elevation (m)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local north (m)", formatMeters3(br.f64())),
+		kv("Local east (m)", formatMeters3(br.f64())),
+		kv("Local elevation (m)", formatMeters3(br.f64())),
+	}
+}
+
+// velocitySpeedPair adds m/s and km/h (m/s × 3.6) rows for one speed component.
+func velocitySpeedPair(label string, mps float32) []Field {
+	return []Field{
+		kv(label, fmt.Sprintf("%g m/s", mps)),
+		kv(label+" (km/h)", fmt.Sprintf("%g km/h", float64(mps)*3.6)),
 	}
 }
 
@@ -389,28 +447,67 @@ func decodeVelocity(payload []byte) []Field {
 			return shortFields(Lookup(8).Function, payload, 17)
 		}
 		fl := br.u8()
-		out := []Field{
-			kv("Summary", Lookup(8).Function),
-			kv("Velocity flags", fmt.Sprintf("%d", fl)),
-			kv("Velocity", fmt.Sprintf("%g", br.f32())),
-			kv("Heading", fmt.Sprintf("%g", br.f32())),
-			kv("Vertical velocity", fmt.Sprintf("%g", br.f32())),
-			kv("Local heading", fmt.Sprintf("%g", br.f32())),
-		}
+		vel := br.f32()
+		heading := br.f32()
+		vvel := br.f32()
+		localHeading := br.f32()
+		out := []Field{velocityFlagsField(fl)}
+		out = append(out, velocitySpeedPair("Velocity", vel)...)
+		out = append(out, velocitySpeedPair("Vertical velocity", vvel)...)
+		out = append(out,
+			kv("Heading", fmt.Sprintf("%g", heading)),
+			kv("Local heading", fmt.Sprintf("%g", localHeading)),
+		)
 		return out
 	}
 	if !br.ok(1 + 4*3) {
 		return shortFields(Lookup(8).Function, payload, 13)
 	}
 	fl := br.u8()
-	return []Field{
-		kv("Summary", Lookup(8).Function),
-		kv("Velocity flags", fmt.Sprintf("%d", fl)),
-		kv("Velocity", fmt.Sprintf("%g", br.f32())),
-		kv("Heading", fmt.Sprintf("%g", br.f32())),
-		kv("Vertical velocity", fmt.Sprintf("%g", br.f32())),
+	vel := br.f32()
+	heading := br.f32()
+	vvel := br.f32()
+	out := []Field{velocityFlagsField(fl)}
+	out = append(out, velocitySpeedPair("Velocity", vel)...)
+	out = append(out, velocitySpeedPair("Vertical velocity", vvel)...)
+	out = append(out,
+		kv("Heading", fmt.Sprintf("%g", heading)),
 		kv("Local heading", "(not present; payload length < 17 bytes)"),
+	)
+	return out
+}
+
+func velocityFlagsField(fl byte) Field {
+	return Field{
+		Label:  "Velocity flags",
+		Value:  fmt.Sprintf("0x%02X · %08b", fl, fl),
+		Detail: decodeVelocityFlags(fl),
 	}
+}
+
+// decodeVelocityFlags documents GSOF type 8 velocity flags (first payload byte).
+func decodeVelocityFlags(flags byte) []Field {
+	v0 := "Not valid"
+	if bitOn(flags, 0) == 1 {
+		v0 = "Valid"
+	}
+	v1 := "Computed from Doppler"
+	if bitOn(flags, 1) == 1 {
+		v1 = "Computed from consecutive measurements"
+	}
+	v2 := "Heading data not valid"
+	if bitOn(flags, 2) == 1 {
+		v2 = "Heading data valid"
+	}
+	out := []Field{
+		kv("Bit 0 — Velocity data validity", v0),
+		kv("Bit 1 — Velocity computation", v1),
+		kv("Bit 2 — Heading data validity", v2),
+	}
+	for n := uint(3); n <= 7; n++ {
+		out = appendReservedClearKV(out, flags, n, fmt.Sprintf("Bit %d — Reserved (set to zero)", n))
+	}
+	return out
 }
 
 func decodeClock(payload []byte) []Field {
@@ -418,11 +515,33 @@ func decodeClock(payload []byte) []Field {
 	if !br.ok(1 + 8 + 8) {
 		return shortFields(Lookup(10).Function, payload, 17)
 	}
+	fl := br.u8()
 	return []Field{
-		kv("Clock flags", fmt.Sprintf("%d", br.u8())),
+		clockFlagsField(fl),
 		kv("Clock offset", fmt.Sprintf("%g", br.f64())),
 		kv("Frequency offset", fmt.Sprintf("%g", br.f64())),
 	}
+}
+
+func clockFlagsField(fl byte) Field {
+	return Field{
+		Label:  "Clock flags",
+		Value:  fmt.Sprintf("0x%02X · %08b", fl, fl),
+		Detail: decodeClockFlags(fl),
+	}
+}
+
+// decodeClockFlags documents GSOF type 10 clock flags (first payload byte).
+func decodeClockFlags(flags byte) []Field {
+	out := []Field{
+		kv("Bit 0 — Clock offset valid", yesNo(bitOn(flags, 0))),
+		kv("Bit 1 — Frequency offset valid", yesNo(bitOn(flags, 1))),
+		kv("Bit 2 — Anywhere fix mode", yesNo(bitOn(flags, 2))),
+	}
+	for n := uint(3); n <= 7; n++ {
+		out = appendReservedClearKV(out, flags, n, fmt.Sprintf("Bit %d — Reserved (set to zero)", n))
+	}
+	return out
 }
 
 func decodeVCV(payload []byte) []Field {
@@ -577,7 +696,7 @@ func decodeAttitude(payload []byte) []Field {
 		kv("Pitch (rad)", fmt.Sprintf("%g", pitch)),
 		kv("Yaw (rad)", fmt.Sprintf("%g", yaw)),
 		kv("Roll (rad)", fmt.Sprintf("%g", roll)),
-		kv("Range (m)", fmt.Sprintf("%g", rng)),
+		kv("Range (m)", formatMeters3(rng)),
 		kv("PDOP (/10)", fmt.Sprintf("%.1f", float64(pdop10)/10)),
 		kv("Pitch variance (rad²)", fmt.Sprintf("%g", pv)),
 		kv("Yaw variance (rad²)", fmt.Sprintf("%g", yv)),
@@ -696,7 +815,7 @@ func decodeReceivedBase(payload []byte) []Field {
 		kv("Base ID", fmt.Sprintf("%d", id)),
 		kv("Base lat", fmt.Sprintf("%g", lat)),
 		kv("Base lon", fmt.Sprintf("%g", lon)),
-		kv("Base height", fmt.Sprintf("%g", h)),
+		kv("Base height", formatMeters3(h)),
 	}
 }
 
@@ -748,7 +867,7 @@ func decodeBasePositionQuality(payload []byte) []Field {
 		kv("GPS week", fmt.Sprintf("%d", br.u16())),
 		kv("Base latitude", fmt.Sprintf("%g", br.f64())),
 		kv("Base longitude", fmt.Sprintf("%g", br.f64())),
-		kv("Base height", fmt.Sprintf("%g", br.f64())),
+		kv("Base height", formatMeters3(br.f64())),
 		kv("Quality", fmt.Sprintf("%d", br.u8())),
 	}
 }

@@ -142,17 +142,19 @@ type RecordRow struct {
 
 // DashboardPayload is JSON for the web UI / SSE.
 type DashboardPayload struct {
-	ServerTime string      `json:"server_time"`
-	LastSeq    int         `json:"last_seq"`
-	Mode       string      `json:"mode"`
-	Port       int         `json:"port"`
-	Records    []RecordRow `json:"records"`
-	Warnings   []string    `json:"warnings"`
-	StreamOK   bool        `json:"stream_ok"`
+	ServerTime       string      `json:"server_time"`
+	LastSeq          int         `json:"last_seq"`
+	Mode             string      `json:"mode"`
+	Port             int         `json:"port"`
+	Records          []RecordRow `json:"records"`
+	Warnings         []string    `json:"warnings"`
+	StreamOK         bool        `json:"stream_ok"`
+	DashboardVersion string      `json:"dashboard_version,omitempty"`
 }
 
 // BuildDashboard returns a snapshot for JSON/SSE (sorted by record type).
-func (s *Stats) BuildDashboard(mode string, port int) *DashboardPayload {
+// dashboardVersion is the gsof-dashboard binary build (empty if not applicable).
+func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *DashboardPayload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -198,13 +200,14 @@ func (s *Stats) BuildDashboard(mode string, port int) *DashboardPayload {
 	}
 
 	return &DashboardPayload{
-		ServerTime: now.Format(time.RFC3339Nano),
-		LastSeq:    int(s.lastSeq),
-		Mode:       mode,
-		Port:       port,
-		Records:    rows,
-		Warnings:   warn,
-		StreamOK:   streamOK,
+		ServerTime:       now.Format(time.RFC3339Nano),
+		LastSeq:          int(s.lastSeq),
+		Mode:             mode,
+		Port:             port,
+		Records:          rows,
+		Warnings:         warn,
+		StreamOK:         streamOK,
+		DashboardVersion: dashboardVersion,
 	}
 }
 

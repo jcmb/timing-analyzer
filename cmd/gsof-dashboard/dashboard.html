@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-gsof-build="__GSOF_DASHBOARD_VERSION__">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -76,7 +76,7 @@
       text-decoration: none;
     }
     a.doc-top-link:hover { text-decoration: underline; }
-    main { padding: 1rem 1.25rem 2rem; max-width: 56rem; margin: 0 auto; }
+    main { padding: 1rem 1.25rem 2rem; max-width: 1200px; margin: 0 auto; }
     #cards {
       display: flex;
       flex-direction: column;
@@ -165,24 +165,38 @@
     .card-body dl {
       margin: 0;
       display: grid;
-      grid-template-columns: minmax(20rem, 42%) 1fr;
+      grid-template-columns: 22rem 1fr;
       gap: 0.35rem 0.75rem;
       align-items: start;
     }
-    dt.field-dt {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 0.45rem;
+    .card-body dl > dt,
+    details.field-expand .field-nested > dt {
+      color: var(--muted);
+      word-break: break-word;
       min-width: 0;
     }
-    dt.field-dt .field-label { flex: 1; min-width: 0; word-break: break-word; }
-    .card-body dt.field-dt { color: var(--muted); }
-    details.field-expand .field-nested dt.field-dt { color: var(--muted); }
-    .card-body dt:not(.field-dt) { color: var(--muted); }
-    .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); word-break: break-word; }
-    .field-dd-inner { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }
-    .field-value { display: block; }
+    .card-body dd {
+      margin: 0;
+      color: var(--text);
+      font-family: var(--mono);
+      word-break: break-word;
+      white-space: pre-wrap;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
+    .field-dd-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      align-items: stretch;
+      width: 100%;
+    }
+    .field-value {
+      display: block;
+      width: 100%;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
     details.field-expand {
       width: 100%;
       max-width: 100%;
@@ -214,12 +228,17 @@
       padding: 0.4rem 0 0;
       border-top: 1px solid var(--border);
       display: grid;
-      grid-template-columns: minmax(16rem, 46%) 1fr;
+      grid-template-columns: 22rem 1fr;
       gap: 0.3rem 0.65rem;
       font-size: 0.8rem;
     }
     details.field-expand .field-nested dt { color: var(--muted); font-family: var(--sans); }
-    details.field-expand .field-nested dd { font-size: 0.78rem; }
+    details.field-expand .field-nested dd {
+      font-size: 0.78rem;
+      white-space: pre-wrap;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+    }
     .doc-link-wrap {
       margin: 0.5rem 0 0;
       padding-top: 0.5rem;
@@ -231,8 +250,8 @@
       text-decoration: none;
     }
     .doc-link:hover { text-decoration: underline; }
-    button.copy-row,
-    button.card-copy-all {
+    button.card-copy-all,
+    button.header-copy-all {
       flex-shrink: 0;
       font-family: var(--sans);
       font-size: 0.72rem;
@@ -245,12 +264,11 @@
       cursor: pointer;
       line-height: 1.2;
     }
-    button.copy-row:hover,
-    button.card-copy-all:hover {
+    button.card-copy-all:hover,
+    button.header-copy-all:hover {
       color: var(--accent);
       border-color: var(--accent);
     }
-    button.copy-row { margin-top: 0.05rem; }
     #warnings {
       margin-top: 1.5rem;
       padding: 0.75rem 1rem;
@@ -278,6 +296,7 @@
     <span id="streamPill" class="pill wait">connecting…</span>
     <div class="meta" id="meta"></div>
     <span id="status"></span>
+    <button type="button" id="copyAllRecords" class="header-copy-all" title="Copy every visible GSOF record (tab-separated, includes fields not shown in Details)">Copy all records</button>
   </header>
   <main>
     <div id="cards"></div>
@@ -293,6 +312,8 @@
     const streamPill = document.getElementById("streamPill");
     const warningsEl = document.getElementById("warnings");
     const warnBody = document.getElementById("warnBody");
+    let lastStreamData = null;
+    const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
 
     function setStreamPill(ok, label) {
       streamPill.className = "pill " + (ok ? "ok" : "bad");
@@ -343,12 +364,6 @@
       }
     }
 
-    function fieldRowCopyText(f) {
-      const lines = [];
-      appendFieldLinesTSV("", f, lines);
-      return lines.join("\n");
-    }
-
     function spreadsheetTSVFromRecord(r) {
       const lines = [];
       lines.push(["Message", r.name || ""].join("\t"));
@@ -386,27 +401,18 @@
       if (f.label === "Flags 2") {
         return "flags2";
       }
+      if (f.label === "Velocity flags") {
+        return "velocityFlags";
+      }
+      if (f.label === "Clock flags") {
+        return "clockFlags";
+      }
       return "f" + i;
     }
 
     function appendFieldToDL(dl, f, fieldKey) {
       const dt = document.createElement("dt");
-      dt.className = "field-dt";
-      const lab = document.createElement("span");
-      lab.className = "field-label";
-      lab.textContent = f.label;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "copy-row";
-      btn.textContent = "Copy";
-      btn.title = "Copy this field (includes nested rows if any)";
-      btn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        void copyText(fieldRowCopyText(f));
-      });
-      dt.appendChild(lab);
-      dt.appendChild(btn);
+      dt.textContent = f.label;
 
       const dd = document.createElement("dd");
       dd.dataset.field = fieldKey;
@@ -424,7 +430,10 @@
         det.className = "field-expand";
         const sum = document.createElement("summary");
         sum.textContent =
-          f.label === "Flags 1" || f.label === "Flags 2"
+          f.label === "Flags 1" ||
+          f.label === "Flags 2" ||
+          f.label === "Velocity flags" ||
+          f.label === "Clock flags"
             ? "Flag bit meanings"
             : "Details";
         const nested = document.createElement("dl");
@@ -499,8 +508,8 @@
       const copyAll = document.createElement("button");
       copyAll.type = "button";
       copyAll.className = "card-copy-all";
-      copyAll.textContent = "Copy all";
-      copyAll.title = "Copy all fields (including hidden nested rows) as tab-separated text";
+      copyAll.textContent = "Copy";
+      copyAll.title = "Copy this GSOF record (tab-separated; includes fields hidden in Details)";
       headTop.appendChild(title);
       headTop.appendChild(copyAll);
       head.appendChild(headTop);
@@ -553,7 +562,40 @@
       docA.href = r.doc_url || "https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html";
     }
 
+    function copyAllRecordsTSV() {
+      const data = lastStreamData;
+      if (!data || !data.records || data.records.length === 0) {
+        void copyText("(no GSOF records yet)\n");
+        return;
+      }
+      const parts = data.records.map((r) => spreadsheetTSVFromRecord(r));
+      void copyText(parts.join("\n\n"));
+    }
+
     function render(data) {
+      lastStreamData = data;
+      if (data.dashboard_version) {
+        const srv = String(data.dashboard_version);
+        if (!CLIENT_BUILD || srv !== CLIENT_BUILD) {
+          const usp = new URLSearchParams(window.location.search);
+          const vq = usp.get("v");
+          if (vq === srv) {
+            window.location.replace(
+              window.location.pathname +
+                "?v=" +
+                encodeURIComponent(srv) +
+                "&_=" +
+                String(Date.now()) +
+                window.location.hash
+            );
+          } else {
+            window.location.replace(
+              window.location.pathname + "?v=" + encodeURIComponent(srv) + window.location.hash
+            );
+          }
+          return;
+        }
+      }
       metaEl.textContent =
         "mode " + data.mode + " · port " + data.port +
         " · last seq " + data.last_seq + " · " + data.server_time;
@@ -622,6 +664,9 @@
       };
     }
     connect();
+    document.getElementById("copyAllRecords").addEventListener("click", () => {
+      copyAllRecordsTSV();
+    });
   </script>
 </body>
 </html>
