@@ -81,7 +81,7 @@ func Decode(msgType int, payload []byte) []Field {
 	case 27:
 		return decodeAttitude(payload)
 	case 28:
-		return decodeMasterReceiver(payload)
+		return decodeReceiverDiagnostics(payload)
 	case 33:
 		return decodeAllSVBrief(payload)
 	case 34:
@@ -868,46 +868,62 @@ func decodeAttitude(payload []byte) []Field {
 	return out
 }
 
-func decodeMasterReceiver(payload []byte) []Field {
-	if len(payload) < 18 {
-		return shortFields(Lookup(28).Function, payload, 18)
+// decodeReceiverDiagnostics decodes GSOF type 28: 18-byte receiver diagnostics payload
+// (reserved regions, base flags, link integrity, common SV counts, datalink latency, diff SV count).
+func decodeReceiverDiagnostics(payload []byte) []Field {
+	const need = 18
+	if len(payload) < need {
+		return shortFields(Lookup(28).Function, payload, need)
 	}
-	br := beReader{b: payload}
-	rf := br.u8()
-	ch := br.u8()
-	tr := uint32(br.u8())<<16 | uint32(br.u8())<<8 | uint32(br.u8())
-	bf := br.u8()
-	l100 := br.u8()
-	l1k := br.u8()
-	l10k := br.u8()
-	c1 := br.u8()
-	c2 := br.u8()
-	dlat := float64(br.u8()) / 10
-	dtype := br.u8()
-	dsv := br.u8()
-	rtkp := br.u8()
-	rtks := br.u8()
-	posl := float64(br.u8()) / 10
-	res := br.u8()
-	return []Field{
+	prefix := payload[0:5]
+	baseFlags := payload[5]
+	link100 := payload[6]
+	midRes := payload[7:9]
+	commonL1 := payload[9]
+	commonL2 := payload[10]
+	datalinkLatencyTenths := payload[11]
+	res12 := payload[12]
+	diffSVs := payload[13]
+	suffix := payload[14:18]
+
+	baseField := Field{
+		Label:  "Base flags",
+		Value:  fmt.Sprintf("0x%02X · %08b", baseFlags, baseFlags),
+		Detail: decodeReceiverDiagnosticsBaseFlags(baseFlags),
+	}
+	linkPct := float64(link100) * 100.0 / 255.0
+	latencySec := float64(datalinkLatencyTenths) / 10.0
+
+	out := []Field{
 		kv("Summary", Lookup(28).Function),
-		kv("DIAG_RF_FLAGS", fmt.Sprintf("%d", rf)),
-		kv("DIAG_CHANNELS", fmt.Sprintf("%d", ch)),
-		kv("DIAG_TRACKING", fmt.Sprintf("0x%06x", tr)),
-		kv("DIAG_BASE_FLAGS", fmt.Sprintf("%d", bf)),
-		kv("DIAG_LINK_100", fmt.Sprintf("%d", l100)),
-		kv("DIAG_LINK_1000", fmt.Sprintf("%d", l1k)),
-		kv("DIAG_LINK_10000", fmt.Sprintf("%d", l10k)),
-		kv("DIAG_COMMON_L1", fmt.Sprintf("%d", c1)),
-		kv("DIAG_COMMON_L2", fmt.Sprintf("%d", c2)),
-		kv("DIAG_DATALINK_LATENCY (/10)", fmt.Sprintf("%g", dlat)),
-		kv("DIAG_DIFF_TYPE", fmt.Sprintf("%d", dtype)),
-		kv("DIAG_DIFF_SVs", fmt.Sprintf("%d", dsv)),
-		kv("DIAG_RTK_POS_FAULT", fmt.Sprintf("%d", rtkp)),
-		kv("DIAG_RTK_SEARCH_FAULT", fmt.Sprintf("%d", rtks)),
-		kv("DIAG_POS_LATENCY (/10)", fmt.Sprintf("%g", posl)),
-		kv("DIAG_RESERVED", fmt.Sprintf("%d", res)),
 	}
+	if ShowExpectedReservedBits {
+		out = append(out,
+			kv("Reserved (bytes 0–4)", strings.ToUpper(hex.EncodeToString(prefix))),
+			kv("Reserved (bytes 7–8)", strings.ToUpper(hex.EncodeToString(midRes))),
+			kv("Reserved (byte 12)", fmt.Sprintf("%d", res12)),
+			kv("Reserved (bytes 14–17)", strings.ToUpper(hex.EncodeToString(suffix))),
+		)
+	}
+	out = append(out,
+		baseField,
+		kv("Link integrity (last 100 s)", formatSignedDecimalNBSP(linkPct, 1)+" %"),
+		kv("Common L1 SVs", fmt.Sprintf("%d", commonL1)),
+		kv("Common L2 SVs", fmt.Sprintf("%d", commonL2)),
+		kv("Datalink latency", formatSignedDecimalNBSP(latencySec, 1)+" s"),
+		kv("Diff SVs in use", fmt.Sprintf("%d", diffSVs)),
+	)
+	return out
+}
+
+// decodeReceiverDiagnosticsBaseFlags documents GSOF type 28 base flags (first meaningful payload byte).
+func decodeReceiverDiagnosticsBaseFlags(flags byte) []Field {
+	out := []Field{}
+	for n := uint(0); n <= 6; n++ {
+		out = appendReservedClearKV(out, flags, n, fmt.Sprintf("Bit %d — Reserved (always clear)", n))
+	}
+	out = append(out, kv("Bit 7 — Ref Station Info received", yesNo(bitOn(flags, 7))))
+	return out
 }
 
 func decodeAllSVBrief(payload []byte) []Field {

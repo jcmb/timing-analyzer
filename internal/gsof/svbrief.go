@@ -1,10 +1,21 @@
 package gsof
 
+import "sort"
+
 // SVBriefEntry is one row of GSOF type 13 (GPS SV brief): PRN and two flag bytes.
 type SVBriefEntry struct {
 	PRN    int `json:"prn"`
 	Flags1 int `json:"flags1"`
 	Flags2 int `json:"flags2"`
+}
+
+// AllSVBriefEntry is one row of GSOF type 33 (all systems SV brief): GNSS system id, PRN, two flag bytes.
+type AllSVBriefEntry struct {
+	System     int    `json:"system"`
+	SystemName string `json:"system_name"`
+	PRN        int    `json:"prn"`
+	Flags1     int    `json:"flags1"`
+	Flags2     int    `json:"flags2"`
 }
 
 // ParseSVBriefEntries reads the type-13 payload: count byte, then count × (PRN, flags1, flags2).

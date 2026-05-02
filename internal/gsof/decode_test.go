@@ -233,6 +233,74 @@ func TestDecode09PDOPOneDecimal(t *testing.T) {
 	}
 }
 
+func TestDecode28ReceiverDiagnostics(t *testing.T) {
+	m := Lookup(28)
+	if m.Title != "Receiver diagnostics" {
+		t.Fatalf("catalog title: %q", m.Title)
+	}
+	payload := make([]byte, 18)
+	payload[5] = 0x80 // bit 7 set: Ref Station Info received
+	payload[6] = 255  // link integrity → 100 %
+	payload[9] = 11
+	payload[10] = 12
+	payload[11] = 25 // 2.5 s latency
+	payload[13] = 8
+	fields := Decode(28, payload)
+	got := make(map[string]string)
+	var base *Field
+	for i := range fields {
+		f := &fields[i]
+		if f.Label == "Base flags" {
+			base = f
+			continue
+		}
+		got[f.Label] = f.Value
+	}
+	if got["Summary"] != m.Function {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if strings.Contains(strings.Join(fieldsToLabels(fields), ","), "Reserved") {
+		t.Fatalf("reserved rows should be hidden by default: %v", fieldsToLabels(fields))
+	}
+	if got["Link integrity (last 100 s)"] != "\u00a0100.0 %" {
+		t.Fatalf("link %%: %q", got["Link integrity (last 100 s)"])
+	}
+	if got["Common L1 SVs"] != "11" || got["Common L2 SVs"] != "12" || got["Diff SVs in use"] != "8" {
+		t.Fatalf("counts: %#v", got)
+	}
+	if got["Datalink latency"] != "\u00a02.5 s" {
+		t.Fatalf("latency: %q", got["Datalink latency"])
+	}
+	if base == nil || len(base.Detail) != 1 {
+		t.Fatalf("base flags detail: %#v", base)
+	}
+	if base.Detail[0].Label != "Bit 7 — Ref Station Info received" || base.Detail[0].Value != "Yes" {
+		t.Fatalf("bit 7: %#v", base.Detail[0])
+	}
+
+	t.Cleanup(func() { ShowExpectedReservedBits = false })
+	ShowExpectedReservedBits = true
+	fields2 := Decode(28, payload)
+	var sawReserved bool
+	for _, f := range fields2 {
+		if strings.HasPrefix(f.Label, "Reserved") {
+			sawReserved = true
+			break
+		}
+	}
+	if !sawReserved {
+		t.Fatalf("expected reserved rows with ShowExpectedReservedBits: %v", fieldsToLabels(fields2))
+	}
+}
+
+func fieldsToLabels(fields []Field) []string {
+	out := make([]string, len(fields))
+	for i := range fields {
+		out[i] = fields[i].Label
+	}
+	return out
+}
+
 func TestDecode10ClockFlags(t *testing.T) {
 	payload := make([]byte, 17)
 	payload[0] = 0x07 // bits 0–2 set
