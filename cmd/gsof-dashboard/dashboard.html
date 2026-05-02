@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GSOF dashboard</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+      min-height: 100vh;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem 1.5rem;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .meta {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .pill {
+      display: inline-block;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--mono);
+    }
+    .pill.ok { background: rgba(63, 185, 80, 0.15); color: var(--ok); }
+    .pill.bad { background: rgba(248, 81, 73, 0.15); color: var(--bad); }
+    .pill.wait { background: rgba(210, 153, 34, 0.15); color: var(--warn); }
+    #status { font-size: 0.8rem; color: var(--muted); }
+    main { padding: 1rem 1.25rem 2rem; max-width: 56rem; margin: 0 auto; }
+    #cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    details.card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    details.card summary {
+      cursor: pointer;
+      padding: 0.65rem 0.85rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      user-select: none;
+    }
+    details.card summary::-webkit-details-marker { display: none; }
+    details.card summary::before {
+      content: "▸";
+      display: inline-block;
+      width: 1rem;
+      color: var(--muted);
+      transition: transform 0.15s;
+    }
+    details.card[open] summary::before {
+      transform: rotate(90deg);
+    }
+    details.card summary .rate { color: var(--accent); margin-left: auto; }
+    details.card summary .stale {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: var(--warn);
+      border: 1px solid var(--warn);
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+    }
+    .card-body {
+      padding: 0 0.85rem 0.85rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 0;
+      padding-top: 0.65rem;
+    }
+    .card-body dl {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 8rem 1fr;
+      gap: 0.35rem 0.75rem;
+    }
+    .card-body dt { color: var(--muted); }
+    .card-body dd { margin: 0; color: var(--text); font-family: var(--mono); }
+    #warnings {
+      margin-top: 1.5rem;
+      padding: 0.75rem 1rem;
+      background: rgba(248, 81, 73, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      display: none;
+    }
+    #warnings.visible { display: block; }
+    #warnings h2 { margin: 0 0 0.5rem; font-size: 0.85rem; color: var(--warn); }
+    #warnings pre {
+      margin: 0;
+      white-space: pre-wrap;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Trimble GSOF</h1>
+    <span id="streamPill" class="pill wait">connecting…</span>
+    <div class="meta" id="meta"></div>
+    <span id="status"></span>
+  </header>
+  <main>
+    <div id="cards"></div>
+    <section id="warnings">
+      <h2>Recent warnings</h2>
+      <pre id="warnBody"></pre>
+    </section>
+  </main>
+  <script>
+    const cardsEl = document.getElementById("cards");
+    const metaEl = document.getElementById("meta");
+    const statusEl = document.getElementById("status");
+    const streamPill = document.getElementById("streamPill");
+    const warningsEl = document.getElementById("warnings");
+    const warnBody = document.getElementById("warnBody");
+
+    function setStreamPill(ok, label) {
+      streamPill.className = "pill " + (ok ? "ok" : "bad");
+      streamPill.textContent = label;
+    }
+
+    function render(data) {
+      metaEl.textContent =
+        "mode " + data.mode + " · port " + data.port +
+        " · last seq " + data.last_seq + " · " + data.server_time;
+
+      if (data.stream_ok) {
+        setStreamPill(true, "stream ok");
+      } else {
+        setStreamPill(false, "heartbeat timeout");
+      }
+
+      cardsEl.replaceChildren();
+      for (const r of data.records) {
+        const det = document.createElement("details");
+        det.className = "card";
+        const sum = document.createElement("summary");
+        const left = document.createElement("span");
+        left.textContent = "Type " + r.type_hex + " (" + String(r.type) + ")  |  " + String(r.count);
+        const rate = document.createElement("span");
+        rate.className = "rate";
+        rate.textContent = r.rate;
+        sum.appendChild(left);
+        if (r.stale) {
+          const st = document.createElement("span");
+          st.className = "stale";
+          st.textContent = "stale";
+          sum.appendChild(st);
+        }
+        sum.appendChild(rate);
+
+        const body = document.createElement("div");
+        body.className = "card-body";
+        const dl = document.createElement("dl");
+        function row(label, val) {
+          const dt = document.createElement("dt");
+          dt.textContent = label;
+          const dd = document.createElement("dd");
+          dd.textContent = val;
+          dl.appendChild(dt);
+          dl.appendChild(dd);
+        }
+        row("Title", r.name);
+        row("Type (hex)", r.type_hex);
+        row("Type (dec)", String(r.type));
+        row("Count", String(r.count));
+        row("Rate", r.rate);
+        row("Stale", r.stale ? "yes" : "no");
+        body.appendChild(dl);
+
+        det.appendChild(sum);
+        det.appendChild(body);
+        cardsEl.appendChild(det);
+      }
+
+      if (data.warnings && data.warnings.length) {
+        warningsEl.classList.add("visible");
+        warnBody.textContent = data.warnings.join("\n");
+      } else {
+        warningsEl.classList.remove("visible");
+        warnBody.textContent = "";
+      }
+    }
+
+    function connect() {
+      statusEl.textContent = "Opening SSE…";
+      const es = new EventSource("/events");
+      es.onopen = () => { statusEl.textContent = "SSE connected"; };
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          render(data);
+        } catch (e) {
+          statusEl.textContent = "Bad JSON: " + e;
+        }
+      };
+      es.onerror = () => {
+        statusEl.textContent = "SSE error — retrying…";
+        es.close();
+        streamPill.className = "pill wait";
+        streamPill.textContent = "reconnecting…";
+        setTimeout(connect, 2000);
+      };
+    }
+    connect();
+  </script>
+</body>
+</html>

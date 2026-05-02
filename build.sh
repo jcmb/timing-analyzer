@@ -45,4 +45,13 @@ echo "Building CLI and Server for Windows 32-bit..."
 env CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/cli-windows-386.exe ./cmd/cli
 env CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/server-windows-386.exe ./cmd/webserver
 
+echo "Building GSOF web dashboard (local SSE UI) for each target..."
+env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-linux-amd64 ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-linux-arm32 ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-linux-arm64 ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-macos-arm64 ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-macos-intel ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-windows-amd64.exe ./cmd/gsof-dashboard
+env CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-windows-386.exe ./cmd/gsof-dashboard
+
 echo "Done! All executables are in the /bin folder."
