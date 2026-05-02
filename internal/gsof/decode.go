@@ -633,6 +633,8 @@ func decodeSigma(payload []byte) []Field {
 	out = append(out, kv("POSITION_RMS (m)", formatMeters5F(prms)))
 	out = append(out, kv("SIGMA_EAST (m)", formatMeters5F(se)))
 	out = append(out, kv("SIGMA_NORTH (m)", formatMeters5F(sn)))
+	sigmaH := math.Sqrt(float64(se)*float64(se) + float64(sn)*float64(sn))
+	out = append(out, kv("SIGMA_H (m)", formatMeters5F(float32(sigmaH))))
 	out = append(out, kv("COVAR_EAST_NORTH (m²)", formatM2_5(cov)))
 	out = append(out, kv("SIGMA_UP (m)", formatMeters5F(su)))
 	out = append(out, kv("SEMI_MAJOR_AXIS (m)", formatMeters5F(maj)))

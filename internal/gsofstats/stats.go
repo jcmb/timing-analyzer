@@ -32,6 +32,10 @@ type Stats struct {
 	tangentHistory []gsof.TangentPlanePoint
 	// llhHistory holds recent type-0x02 lat/lon samples paired with lastGPSTOWSec at decode time.
 	llhHistory []gsof.LLHPoint
+	// dopHistory holds recent type-0x09 DOP samples paired with lastGPSTOWSec.
+	dopHistory []gsof.DOPPoint
+	// sigmaHistory holds recent type-0x0C sigma samples paired with lastGPSTOWSec.
+	sigmaHistory []gsof.SigmaPoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -149,6 +153,18 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				})
 			}
 		}
+		if recType == 9 {
+			if pt, ok := gsof.ParseDOPPoint(pld); ok {
+				pt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendDOPPoint(pt)
+			}
+		}
+		if recType == 12 {
+			if pt, ok := gsof.ParseSigmaPoint(pld); ok {
+				pt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendSigmaPoint(pt)
+			}
+		}
 
 		ptr += 2 + recLen
 	}
@@ -175,6 +191,20 @@ func (s *Stats) appendLLHPoint(pt gsof.LLHPoint) {
 	}
 }
 
+func (s *Stats) appendDOPPoint(pt gsof.DOPPoint) {
+	s.dopHistory = append(s.dopHistory, pt)
+	if len(s.dopHistory) > historySamplesMax {
+		s.dopHistory = s.dopHistory[len(s.dopHistory)-historySamplesMax:]
+	}
+}
+
+func (s *Stats) appendSigmaPoint(pt gsof.SigmaPoint) {
+	s.sigmaHistory = append(s.sigmaHistory, pt)
+	if len(s.sigmaHistory) > historySamplesMax {
+		s.sigmaHistory = s.sigmaHistory[len(s.sigmaHistory)-historySamplesMax:]
+	}
+}
+
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
 	Type     int          `json:"type"`
@@ -196,6 +226,10 @@ type RecordRow struct {
 	TangentHistory []gsof.TangentPlanePoint `json:"tangent_history,omitempty"`
 	// LLHHistory is populated for GSOF type 2 (latitude / longitude) for dashboard graphing.
 	LLHHistory []gsof.LLHPoint `json:"llh_history,omitempty"`
+	// DOPHistory is populated for GSOF type 9 (DOP) for dashboard graphing.
+	DOPHistory []gsof.DOPPoint `json:"dop_history,omitempty"`
+	// SigmaHistory is populated for GSOF type 12 (position RMS / sigmas) for dashboard graphing.
+	SigmaHistory []gsof.SigmaPoint `json:"sigma_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -265,6 +299,12 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 2 && len(s.llhHistory) > 0 {
 			row.LLHHistory = append([]gsof.LLHPoint(nil), s.llhHistory...)
+		}
+		if subType == 9 && len(s.dopHistory) > 0 {
+			row.DOPHistory = append([]gsof.DOPPoint(nil), s.dopHistory...)
+		}
+		if subType == 12 && len(s.sigmaHistory) > 0 {
+			row.SigmaHistory = append([]gsof.SigmaPoint(nil), s.sigmaHistory...)
 		}
 		rows = append(rows, row)
 	}
