@@ -34,7 +34,7 @@ var Catalog = map[int]Message{
 	14: {14, "Detailed satellite info", "Detailed satellite information.", "gsof-messages-sv-detail.html"},
 	15: {15, "Receiver serial number", "Receiver serial number.", "gsof-messages-receiver-serial-no.html"},
 	16: {16, "Current UTC time", "Current UTC time.", "gsof-messages-utc.html"},
-	27: {27, "Attitude info", "Attitude information.", ""},
+	27: {27, "Attitude info", "Attitude information.", "gsof-messages-attitude.html"},
 	33: {33, "All SV brief info", "SV brief information for all satellite systems.", "gsof-messages-all-sv-brief.html"},
 	34: {34, "All SV detailed info", "Detailed satellite information for all tracked satellite systems.", ""},
 	35: {35, "Base station info", "Received information about the base station.", ""},

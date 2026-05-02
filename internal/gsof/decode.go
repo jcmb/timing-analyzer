@@ -311,6 +311,24 @@ func formatMeters3(v float64) string {
 	return s
 }
 
+// formatSignedDecimalNBSP formats v with prec decimal places; strictly positive values get a
+// leading NBSP (same alignment trick as formatMeters3).
+func formatSignedDecimalNBSP(v float64, prec int) string {
+	s := fmt.Sprintf("%.*f", prec, v)
+	if v > 0 {
+		return "\u00a0" + s
+	}
+	return s
+}
+
+func formatSpeedMps(v float32) string {
+	return formatSignedDecimalNBSP(float64(v), 3) + " m/s"
+}
+
+func formatSpeedKmh(v float32) string {
+	return formatSignedDecimalNBSP(float64(v)*3.6, 3) + " km/h"
+}
+
 // decodeECEFPosition decodes GSOF type 3: '>d d d' — X, Y, Z in metres (big-endian).
 func decodeECEFPosition(payload []byte) []Field {
 	br := beReader{b: payload}
@@ -436,10 +454,10 @@ func decodeVelocity(payload []byte) []Field {
 	br := beReader{b: payload}
 	appendSpeedRows := func(out []Field, vel, vvel float32) []Field {
 		out = append(out,
-			kv("Velocity", fmt.Sprintf("%g m/s", vel)),
-			kv("Vertical velocity", fmt.Sprintf("%g m/s", vvel)),
-			kv("Velocity (km/h)", fmt.Sprintf("%g km/h", float64(vel)*3.6)),
-			kv("Vertical velocity (km/h)", fmt.Sprintf("%g km/h", float64(vvel)*3.6)),
+			kv("Velocity", formatSpeedMps(vel)),
+			kv("Vertical velocity", formatSpeedMps(vvel)),
+			kv("Velocity (km/h)", formatSpeedKmh(vel)),
+			kv("Vertical velocity (km/h)", formatSpeedKmh(vvel)),
 		)
 		return out
 	}
@@ -702,7 +720,7 @@ func decodeTimeFlags16(flags byte) []Field {
 
 func decodeCurrentTime(payload []byte) []Field {
 	br := beReader{b: payload}
-	if !br.ok(4+2+2+1) {
+	if !br.ok(4 + 2 + 2 + 1) {
 		return shortFields(Lookup(16).Function, payload, 9)
 	}
 	towMs := br.u32()
@@ -731,11 +749,67 @@ func decodePositionTimeUTC(payload []byte) []Field {
 	w := br.u16()
 	return []Field{
 		kv("Summary", Lookup(26).Function),
-		kv("UTC time of week", fmt.Sprintf("%.6f s", float64(t)/1000)),
+		kv("UTC time of week", fmt.Sprintf("%.2f s", float64(t)/1000)),
 		kv("UTC week", fmt.Sprintf("%d", w)),
 		kv("SVs", fmt.Sprintf("%d", br.u8())),
 		kv("Flags 1", fmt.Sprintf("0x%02X", br.u8())),
 		kv("Flags 2", fmt.Sprintf("0x%02X", br.u8())),
+	}
+}
+
+// radToDMS converts radians to degrees/minutes/seconds for attitude display (after rad column).
+func radToDMS(rad float64) string {
+	deg := rad * 180 / math.Pi
+	sign := ""
+	if deg < 0 {
+		sign = "-"
+		deg = -deg
+	}
+	d := math.Floor(deg)
+	mFloat := (deg - d) * 60
+	m := math.Floor(mFloat)
+	s := (mFloat - m) * 60
+	return fmt.Sprintf("%s%.0f° %.0f′ %.5f″", sign, d, m, s)
+}
+
+func formatRad5(rad float64) string {
+	return formatSignedDecimalNBSP(rad, 5) + " rad"
+}
+
+// decodeAttitudeFlags documents GSOF type 27 attitude flags (Trimble OEM GNSS).
+func decodeAttitudeFlags(flags byte) []Field {
+	return []Field{
+		kv("Bit 0 — Calibrated", yesNo(bitOn(flags, 0))),
+		kv("Bit 1 — Pitch valid", yesNo(bitOn(flags, 1))),
+		kv("Bit 2 — Yaw valid", yesNo(bitOn(flags, 2))),
+		kv("Bit 3 — Roll valid", yesNo(bitOn(flags, 3))),
+		kv("Bit 4 — Scalar valid", yesNo(bitOn(flags, 4))),
+		kv("Bit 5 — COBRA: diagnostic valid; non-COBRA: reserved", yesNo(bitOn(flags, 5))),
+		kv("Bit 6 — COBRA: slave static; non-COBRA: reserved", yesNo(bitOn(flags, 6))),
+		kv("Bit 7 — COBRA: error stats valid; non-COBRA: reserved", yesNo(bitOn(flags, 7))),
+	}
+}
+
+func attitudeCalcModeField(mode byte) Field {
+	val, det := attitudeCalcModeValue(mode)
+	return Field{Label: "Calc mode", Value: val, Detail: det}
+}
+
+// attitudeCalcModeValue follows Trimble "Attitude calculation flags" (positioning mode).
+func attitudeCalcModeValue(mode byte) (value string, detail []Field) {
+	switch mode {
+	case 0:
+		return "0 — No position", []Field{kv("Attitude calculation flag", "No position (Trimble OEM GNSS)")}
+	case 1:
+		return "1 — Autonomous position", []Field{kv("Attitude calculation flag", "Autonomous position")}
+	case 2:
+		return "2 — RTK/Float position", []Field{kv("Attitude calculation flag", "RTK/Float position")}
+	case 3:
+		return "3 — RTK/Fix position", []Field{kv("Attitude calculation flag", "RTK/Fix position")}
+	case 4:
+		return "4 — DGPS position", []Field{kv("Attitude calculation flag", "DGPS position")}
+	default:
+		return fmt.Sprintf("%d — Not listed", mode), []Field{kv("See", "Trimble GSOF messages — Flags — Attitude calculation flags")}
 	}
 }
 
@@ -762,26 +836,35 @@ func decodeAttitude(payload []byte) []Field {
 	covPR := br.f32()
 	covYR := br.f32()
 	rngVar := br.f32()
-	return []Field{
-		kv("Summary", Lookup(27).Function),
-		kv("GPS time of week", fmt.Sprintf("%.6f s", float64(gpsT)/1000)),
-		kv("Flags", fmt.Sprintf("%d", fl)),
-		kv("Num SVs", fmt.Sprintf("%d", nsv)),
-		kv("Calc mode", fmt.Sprintf("%d", mode)),
-		kv("Reserved", fmt.Sprintf("%d", res)),
-		kv("Pitch (rad)", fmt.Sprintf("%g", pitch)),
-		kv("Yaw (rad)", fmt.Sprintf("%g", yaw)),
-		kv("Roll (rad)", fmt.Sprintf("%g", roll)),
-		kv("Range (m)", formatMeters3(rng)),
-		kv("PDOP (/10)", fmt.Sprintf("%.1f", float64(pdop10)/10)),
-		kv("Pitch variance (rad²)", fmt.Sprintf("%g", pv)),
-		kv("Yaw variance (rad²)", fmt.Sprintf("%g", yv)),
-		kv("Roll variance (rad²)", fmt.Sprintf("%g", rv)),
-		kv("Pitch–yaw covariance (rad²)", fmt.Sprintf("%g", covPY)),
-		kv("Pitch–roll covariance (rad²)", fmt.Sprintf("%g", covPR)),
-		kv("Yaw–roll covariance (rad²)", fmt.Sprintf("%g", covYR)),
-		kv("Range variance (m²)", fmt.Sprintf("%g", rngVar)),
+	flagsField := Field{
+		Label:  "Flags",
+		Value:  fmt.Sprintf("0x%02X · %08b", fl, fl),
+		Detail: decodeAttitudeFlags(fl),
 	}
+	out := []Field{
+		kv("Summary", Lookup(27).Function),
+		kv("GPS time of week", fmt.Sprintf("%.2f s", float64(gpsT)/1000)),
+		kv("Num SVs", fmt.Sprintf("%d", nsv)),
+		attitudeCalcModeField(mode),
+		kv("Reserved", fmt.Sprintf("%d", res)),
+		kv("Pitch (rad)", formatRad5(pitch)),
+		kv("Pitch (DMS)", radToDMS(pitch)),
+		kv("Yaw (rad)", formatRad5(yaw)),
+		kv("Yaw (DMS)", radToDMS(yaw)),
+		kv("Roll (rad)", formatRad5(roll)),
+		kv("Roll (DMS)", radToDMS(roll)),
+		kv("Range (m)", formatMeters3(rng)),
+		kv("PDOP", fmt.Sprintf("%.1f", float64(pdop10)/10)),
+		kv("Pitch variance (rad²)", formatSignedDecimalNBSP(float64(pv), 6)),
+		kv("Yaw variance (rad²)", formatSignedDecimalNBSP(float64(yv), 6)),
+		kv("Roll variance (rad²)", formatSignedDecimalNBSP(float64(rv), 6)),
+		kv("Pitch–yaw covariance (rad²)", formatSignedDecimalNBSP(float64(covPY), 6)),
+		kv("Pitch–roll covariance (rad²)", formatSignedDecimalNBSP(float64(covPR), 6)),
+		kv("Yaw–roll covariance (rad²)", formatSignedDecimalNBSP(float64(covYR), 6)),
+		kv("Range variance (m²)", formatSignedDecimalNBSP(float64(rngVar), 5)),
+		flagsField,
+	}
+	return out
 }
 
 func decodeMasterReceiver(payload []byte) []Field {

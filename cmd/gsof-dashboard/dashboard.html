@@ -912,15 +912,19 @@
       container.appendChild(box);
     }
 
-    // extraColumns optional: [{ label, value(row) }] appended after flag bit columns.
+    // extraColumns optional: [{ label, value(row) }].
+    // extrasBeforeFlags: when true (with extraColumns), numeric columns precede flag bit columns (type 14).
     function satFlagsRenderDetailedGrid(
       container,
       rows,
       firstColLabel,
       firstFieldKey,
       showF2,
-      extraColumns
+      extraColumns,
+      extrasBeforeFlags
     ) {
+      const metricsFirst =
+        extrasBeforeFlags === true && extraColumns && extraColumns.length > 0;
       const wrap = document.createElement("div");
       wrap.className = "sv-brief-detail-wide-wrap";
       const tbl = document.createElement("table");
@@ -947,7 +951,10 @@
         capText +=
           " Flags 2 columns are hidden unless gsof-dashboard is run with -show-expected-reserved-bits.";
       }
-      if (extraColumns && extraColumns.length) {
+      if (metricsFirst) {
+        capText +=
+          " PRN and numeric fields are on the left; per-bit flag columns are on the right.";
+      } else if (extraColumns && extraColumns.length) {
         capText +=
           " Trailing columns repeat the numeric fields from Basic view (only flag columns switch to per-bit Yes/No).";
       }
@@ -958,21 +965,39 @@
       const col0 = document.createElement("col");
       col0.className = "sv-brief-prn-col";
       cg.appendChild(col0);
-      for (let i = 0; i < 8; i++) {
-        const c = document.createElement("col");
-        c.className = "sv-brief-bit-colgroup";
-        cg.appendChild(c);
-      }
-      if (showF2) {
-        for (let i = 0; i < 2; i++) {
+      if (metricsFirst) {
+        for (let i = 0; i < extraColumns.length; i++) {
+          cg.appendChild(document.createElement("col"));
+        }
+        for (let i = 0; i < 8; i++) {
           const c = document.createElement("col");
           c.className = "sv-brief-bit-colgroup";
           cg.appendChild(c);
         }
-      }
-      if (extraColumns) {
-        for (let i = 0; i < extraColumns.length; i++) {
-          cg.appendChild(document.createElement("col"));
+        if (showF2) {
+          for (let i = 0; i < 2; i++) {
+            const c = document.createElement("col");
+            c.className = "sv-brief-bit-colgroup";
+            cg.appendChild(c);
+          }
+        }
+      } else {
+        for (let i = 0; i < 8; i++) {
+          const c = document.createElement("col");
+          c.className = "sv-brief-bit-colgroup";
+          cg.appendChild(c);
+        }
+        if (showF2) {
+          for (let i = 0; i < 2; i++) {
+            const c = document.createElement("col");
+            c.className = "sv-brief-bit-colgroup";
+            cg.appendChild(c);
+          }
+        }
+        if (extraColumns) {
+          for (let i = 0; i < extraColumns.length; i++) {
+            cg.appendChild(document.createElement("col"));
+          }
         }
       }
       tbl.appendChild(cg);
@@ -985,23 +1010,41 @@
       th0.textContent = firstColLabel;
       tr1.appendChild(th0);
 
-      const thF1 = document.createElement("th");
-      thF1.colSpan = 8;
-      thF1.textContent = "Flags 1";
-      tr1.appendChild(thF1);
-
-      if (showF2) {
-        const thF2 = document.createElement("th");
-        thF2.colSpan = 2;
-        thF2.textContent = "Flags 2";
-        tr1.appendChild(thF2);
-      }
-      if (extraColumns) {
+      if (metricsFirst) {
         for (const col of extraColumns) {
           const th = document.createElement("th");
           th.rowSpan = 2;
           th.textContent = col.label;
           tr1.appendChild(th);
+        }
+        const thF1a = document.createElement("th");
+        thF1a.colSpan = 8;
+        thF1a.textContent = "Flags 1";
+        tr1.appendChild(thF1a);
+        if (showF2) {
+          const thF2a = document.createElement("th");
+          thF2a.colSpan = 2;
+          thF2a.textContent = "Flags 2";
+          tr1.appendChild(thF2a);
+        }
+      } else {
+        const thF1 = document.createElement("th");
+        thF1.colSpan = 8;
+        thF1.textContent = "Flags 1";
+        tr1.appendChild(thF1);
+        if (showF2) {
+          const thF2 = document.createElement("th");
+          thF2.colSpan = 2;
+          thF2.textContent = "Flags 2";
+          tr1.appendChild(thF2);
+        }
+        if (extraColumns) {
+          for (const col of extraColumns) {
+            const th = document.createElement("th");
+            th.rowSpan = 2;
+            th.textContent = col.label;
+            tr1.appendChild(th);
+          }
         }
       }
 
@@ -1033,6 +1076,14 @@
         td0.className = "sv-brief-prn-col mono";
         td0.textContent = String(row[firstFieldKey]);
         tr.appendChild(td0);
+        if (metricsFirst) {
+          for (const col of extraColumns) {
+            const td = document.createElement("td");
+            td.className = "mono";
+            td.textContent = col.value(row);
+            tr.appendChild(td);
+          }
+        }
         for (let b = 0; b < 8; b++) {
           const td = document.createElement("td");
           td.className = "mono";
@@ -1047,7 +1098,7 @@
             tr.appendChild(td);
           }
         }
-        if (extraColumns) {
+        if (!metricsFirst && extraColumns) {
           for (const col of extraColumns) {
             const td = document.createElement("td");
             td.className = "mono";
@@ -1139,11 +1190,10 @@
         tbl.className = "sv-brief-basic-table";
         const thead = document.createElement("thead");
         const trh = document.createElement("tr");
-        const heads = ["PRN", "Flags 1 (binary)"];
+        const heads = ["PRN", "Elevation (°)", "Azimuth (°)", "L1 SNR", "L2 SNR", "Flags 1 (binary)"];
         if (gsofShowExpectedReservedBits) {
           heads.push("Flags 2 (binary)");
         }
-        heads.push("Elevation (°)", "Azimuth (°)", "L1 SNR", "L2 SNR");
         heads.forEach((h) => {
           const th = document.createElement("th");
           th.textContent = h;
@@ -1157,17 +1207,6 @@
           const t0 = document.createElement("td");
           t0.className = "mono";
           t0.textContent = String(row.prn);
-          const t1 = document.createElement("td");
-          t1.className = "mono";
-          t1.textContent = svBriefFmtU8Binary(row.flags1);
-          tr.appendChild(t0);
-          tr.appendChild(t1);
-          if (gsofShowExpectedReservedBits) {
-            const t2 = document.createElement("td");
-            t2.className = "mono";
-            t2.textContent = svBriefFmtU8Binary(row.flags2);
-            tr.appendChild(t2);
-          }
           const te = document.createElement("td");
           te.className = "mono";
           te.textContent = String(row.elev);
@@ -1180,10 +1219,21 @@
           const tL2 = document.createElement("td");
           tL2.className = "mono";
           tL2.textContent = String(row.snr_l2);
+          tr.appendChild(t0);
           tr.appendChild(te);
           tr.appendChild(ta);
           tr.appendChild(tL1);
           tr.appendChild(tL2);
+          const t1 = document.createElement("td");
+          t1.className = "mono";
+          t1.textContent = svBriefFmtU8Binary(row.flags1);
+          tr.appendChild(t1);
+          if (gsofShowExpectedReservedBits) {
+            const t2 = document.createElement("td");
+            t2.className = "mono";
+            t2.textContent = svBriefFmtU8Binary(row.flags2);
+            tr.appendChild(t2);
+          }
           tb.appendChild(tr);
         }
         tbl.appendChild(tb);
@@ -1202,7 +1252,8 @@
         "PRN",
         "prn",
         gsofShowExpectedReservedBits,
-        sv14Extras
+        sv14Extras,
+        true
       );
       satFlagsAppendLegend(root, gsofShowExpectedReservedBits);
     }
@@ -1402,13 +1453,20 @@
       return;
     }
     var padL = 68;
-    var padR = 22;
+    var padR = 52;
     var padT = 32;
-    var padB = 58;
+    var padB = 44;
     var gw = cssW - padL - padR;
     var gh = cssH - padT - padB;
     var xs = pts.map(function (p) {
-      return xUnit === "h" ? p.gps_tow_s / 3600 : p.gps_tow_s;
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) {
+          sec += 86400;
+        }
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
     });
     var allY = [];
     pts.forEach(function (p) {
@@ -1472,13 +1530,13 @@
       var px = xSc(tk);
       var lab =
         xUnit === "h"
-          ? tk.toFixed(4) + " h"
+          ? tk.toFixed(2) + " h"
           : Math.abs(tk) >= 10000
             ? tk.toFixed(0) + " s"
             : Math.abs(tk) >= 1000
               ? tk.toFixed(1) + " s"
               : tk.toFixed(2) + " s";
-      ctx.fillText(lab, px, padT + gh + 6);
+      ctx.fillText(lab, px, padT + gh + 4);
     });
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
@@ -1486,15 +1544,26 @@
       var py = ySc(tk);
       ctx.fillText(tk.toFixed(3) + " m", padL - 8, py);
     });
+    ctx.save();
+    ctx.translate(cssW - 14, padT + gh / 2);
+    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "GPS time of week (h)" : "GPS time of week (s)", padL + gw / 2, cssH - 8);
+    ctx.fillText(
+      xUnit === "h"
+        ? "Time of day (h) = (GPS TOW s mod 24 h) / 3600"
+        : "GPS time of week (s)",
+      0,
+      0
+    );
+    ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.textAlign = "center";
     ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
     ctx.fillText("Metres (dE, dN, dU)", 0, 0);
     ctx.restore();
     function stroke(getter, col) {
@@ -1533,7 +1602,17 @@
   }
   btn.addEventListener("click", function () {
     xUnit = xUnit === "h" ? "s" : "h";
-    btn.textContent = xUnit === "h" ? "X axis: hours" : "X axis: seconds";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-tangent-update" || !ev.data.payload) {
+      return;
+    }
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) {
+      document.getElementById("hdr").textContent = INIT.title;
+    }
     draw();
   });
   window.addEventListener("resize", function () {
@@ -1548,6 +1627,21 @@
 </html>`;
     }
 
+    function syncTangentGraphPlotWindow(data) {
+      const w = window.__gsofTangentPlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row7 = (data.records || []).find((r) => r.type === 7);
+      const payload = {
+        title: row7 ? String(row7.name || "GSOF type 7") : "GSOF type 7",
+        points: row7 && row7.tangent_history ? row7.tangent_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-tangent-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
     function openTangentGraphWindow(r) {
       if (!r) {
         return;
@@ -1556,11 +1650,20 @@
         title: String(r.name || "GSOF type 7"),
         points: Array.isArray(r.tangent_history) ? r.tangent_history : [],
       };
+      const existing = window.__gsofTangentPlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-tangent-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
       const html = tangentGraphStandaloneDoc(init);
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const w = window.open(url, "_blank", "noopener,noreferrer,width=980,height=760");
       if (w) {
+        window.__gsofTangentPlotWin = w;
         setTimeout(function () {
           URL.revokeObjectURL(url);
         }, 120000);
@@ -1877,6 +1980,7 @@
         warningsEl.classList.remove("visible");
         warnBody.textContent = "";
       }
+      syncTangentGraphPlotWindow(data);
     }
 
     function connect() {

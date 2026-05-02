@@ -303,10 +303,10 @@ func TestDecode08VelocityFieldOrderAndUnits(t *testing.T) {
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if got["Velocity"] != "1 m/s" || got["Velocity (km/h)"] != "3.6 km/h" {
+	if got["Velocity"] != "\u00a01.000 m/s" || got["Velocity (km/h)"] != "\u00a03.600 km/h" {
 		t.Fatalf("horizontal speed: %#v", got)
 	}
-	if got["Vertical velocity"] != "2 m/s" || got["Vertical velocity (km/h)"] != "7.2 km/h" {
+	if got["Vertical velocity"] != "\u00a02.000 m/s" || got["Vertical velocity (km/h)"] != "\u00a07.200 km/h" {
 		t.Fatalf("vertical speed: %#v", got)
 	}
 	if got["Heading"] != "90" || got["Local heading"] != "180" {
