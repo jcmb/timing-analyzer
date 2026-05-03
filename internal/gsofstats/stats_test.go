@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestStats_UpdateAndDashboard(t *testing.T) {
@@ -27,6 +28,33 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	d2 := s2.BuildDashboard("udp", 2101, "test", "")
 	if len(d2.Records) != 1 || d2.Records[0].PayloadHex != "01 03 AA BB CC" {
 		t.Fatalf("payload_hex %q", d2.Records[0].PayloadHex)
+	}
+}
+
+func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	s := NewStats(false)
+	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	s.Update(1, buf)
+	time.Sleep(2 * time.Millisecond)
+	s.Update(2, buf)
+	time.Sleep(120 * time.Millisecond)
+	s.Update(3, buf)
+	d := s.BuildDashboard("udp", 2101, "", "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 1 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("missing type 1 row")
+	}
+	if strings.HasPrefix(row.Rate, "50") {
+		t.Fatalf("rate should not snap to 50 Hz after sub-5 ms burst; got %q", row.Rate)
 	}
 }
 
@@ -190,6 +218,34 @@ func TestStats_TangentHistoryFromType1And7(t *testing.T) {
 	}
 	p := row.TangentHistory[0]
 	if p.GPSTOWSec != 5.0 || p.DEm != 0.1 || p.DNm != -0.2 || p.DUm != 0.3 {
+		t.Fatalf("point %+v", p)
+	}
+}
+
+func TestStats_PositionTimeHistoryFromType1(t *testing.T) {
+	s := NewStats(false)
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x09, 0x0A, 0x1B, 0x03,
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "", "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 1 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 1 row")
+	}
+	if len(row.PositionTimeHistory) != 1 {
+		t.Fatalf("position_time_history len %d", len(row.PositionTimeHistory))
+	}
+	p := row.PositionTimeHistory[0]
+	if p.GPSTOWSec != 5 || p.SVsUsed != 9 || p.Flags1 != 0x0A || p.Flags2 != 0x1B || p.Axis1 != 3 {
 		t.Fatalf("point %+v", p)
 	}
 }

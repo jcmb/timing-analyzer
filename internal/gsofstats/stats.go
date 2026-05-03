@@ -13,6 +13,14 @@ import (
 
 const historySamplesMax = 2000
 
+// minWallDeltaForRateSample is the minimum wall-clock gap between successive
+// observations of a subtype before we refresh its inferred rate (Hz). Bursts
+// of multiple DCOL packets (e.g. TCP coalescing or channel backlog) can arrive
+// a few milliseconds apart while the true GNSS cadence is much slower; without
+// this floor, snapToNearestRate maps ~20 ms gaps to the 0.02 s bucket (50 Hz)
+// and stale detection (which uses hz) then marks a healthy 10 Hz stream stale.
+const minWallDeltaForRateSample = 0.005 // 5 ms — coalesce OS/network batching, keep ≤200 Hz measurable
+
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
 // (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
 func payloadBytesToSpacedHex(b []byte) string {
@@ -142,13 +150,16 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 		s.counts[recType]++
 
 		if !seenInThisPacket[recType] {
-			if lastTime, exists := s.lastSeen[recType]; exists {
-				delta := now.Sub(lastTime).Seconds()
-				hzVal, hzStr := snapToNearestRate(delta)
-				s.hz[recType] = hzVal
-				s.displayHz[recType] = hzStr
-			}
+			prev, hadPrev := s.lastSeen[recType]
 			s.lastSeen[recType] = now
+			if hadPrev {
+				delta := now.Sub(prev).Seconds()
+				if delta >= minWallDeltaForRateSample {
+					hzVal, hzStr := snapToNearestRate(delta)
+					s.hz[recType] = hzVal
+					s.displayHz[recType] = hzStr
+				}
+			}
 			seenInThisPacket[recType] = true
 		}
 
