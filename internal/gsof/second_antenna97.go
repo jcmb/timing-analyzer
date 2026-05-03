@@ -36,13 +36,13 @@ func ParseSecondAntenna97Point(payload []byte) (SecondAntenna97Point, bool) {
 	sU := float64(br.f32())
 	sh := math.Sqrt(sE*sE + sN*sN)
 	return SecondAntenna97Point{
-		LatDeg:           latRad * 180 / math.Pi,
-		LonDeg:           lonRad * 180 / math.Pi,
-		HeightM:          h,
-		SigmaEastM:       sE,
-		SigmaNorthM:      sN,
-		SigmaUpM:         sU,
-		SigmaHorizontalM: sh,
+		LatDeg:           JSONFloat(latRad * 180 / math.Pi),
+		LonDeg:           JSONFloat(lonRad * 180 / math.Pi),
+		HeightM:          JSONFloat(h),
+		SigmaEastM:       JSONFloat(sE),
+		SigmaNorthM:      JSONFloat(sN),
+		SigmaUpM:         JSONFloat(sU),
+		SigmaHorizontalM: JSONFloat(sh),
 	}, true
 }
 

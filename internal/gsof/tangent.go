@@ -17,7 +17,7 @@ func ParsePositionTimeTOWSec(payload []byte) (sec float64, ok bool) {
 		return 0, false
 	}
 	ms := br.u32()
-	return float64(ms) / 1000, true
+	return JSONFloat(float64(ms) / 1000), true
 }
 
 // ParseTangentPlaneENU parses GSOF type-0x07 tangent-plane deltas (metres).
@@ -29,5 +29,5 @@ func ParseTangentPlaneENU(payload []byte) (de, dn, du float64, ok bool) {
 	de = br.f64()
 	dn = br.f64()
 	du = br.f64()
-	return de, dn, du, true
+	return JSONFloat(de), JSONFloat(dn), JSONFloat(du), true
 }

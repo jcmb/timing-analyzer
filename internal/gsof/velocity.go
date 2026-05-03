@@ -18,11 +18,11 @@ func ParseVelocityGraphPoint(payload []byte) (p VelocityPoint, ok bool) {
 		return p, false
 	}
 	_ = br.u8()
-	p.VelocityMPS = float64(br.f32())
-	p.HeadingDeg = float64(br.f32())
-	p.VerticalVelocityMPS = float64(br.f32())
+	p.VelocityMPS = JSONFloat(float64(br.f32()))
+	p.HeadingDeg = JSONFloat(float64(br.f32()))
+	p.VerticalVelocityMPS = JSONFloat(float64(br.f32()))
 	if len(payload) >= 17 && br.ok(4) {
-		lh := float64(br.f32())
+		lh := JSONFloat(float64(br.f32()))
 		p.LocalHeadingDeg = &lh
 	}
 	return p, true

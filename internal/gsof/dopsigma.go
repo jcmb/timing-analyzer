@@ -18,10 +18,10 @@ func ParseDOPPoint(payload []byte) (DOPPoint, bool) {
 		return DOPPoint{}, false
 	}
 	return DOPPoint{
-		PDOP: float64(br.f32()),
-		HDOP: float64(br.f32()),
-		TDOP: float64(br.f32()),
-		VDOP: float64(br.f32()),
+		PDOP: JSONFloat(float64(br.f32())),
+		HDOP: JSONFloat(float64(br.f32())),
+		TDOP: JSONFloat(float64(br.f32())),
+		VDOP: JSONFloat(float64(br.f32())),
 	}, true
 }
 
@@ -54,10 +54,10 @@ func ParseSigmaPoint(payload []byte) (SigmaPoint, bool) {
 	se64 := float64(se)
 	sn64 := float64(sn)
 	return SigmaPoint{
-		PositionRMS: float64(prms),
-		SigmaEast:   se64,
-		SigmaNorth:  sn64,
-		SigmaUp:     float64(su),
-		SigmaH:      math.Sqrt(se64*se64 + sn64*sn64),
+		PositionRMS: JSONFloat(float64(prms)),
+		SigmaEast:   JSONFloat(se64),
+		SigmaNorth:  JSONFloat(sn64),
+		SigmaUp:     JSONFloat(float64(su)),
+		SigmaH:      JSONFloat(math.Sqrt(se64*se64 + sn64*sn64)),
 	}, true
 }

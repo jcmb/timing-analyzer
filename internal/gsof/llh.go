@@ -22,7 +22,7 @@ func ParseLLHDeg(payload []byte) (latDeg, lonDeg, heightM float64, ok bool) {
 	latRad := br.f64()
 	lonRad := br.f64()
 	heightM = br.f64()
-	return latRad * 180 / math.Pi, lonRad * 180 / math.Pi, heightM, true
+	return JSONFloat(latRad * 180 / math.Pi), JSONFloat(lonRad * 180 / math.Pi), JSONFloat(heightM), true
 }
 
 // ParseLatLonDeg parses the first two float64 fields of a type-0x02 payload (radians)
@@ -34,5 +34,5 @@ func ParseLatLonDeg(payload []byte) (latDeg, lonDeg float64, ok bool) {
 	}
 	latRad := br.f64()
 	lonRad := br.f64()
-	return latRad * 180 / math.Pi, lonRad * 180 / math.Pi, true
+	return JSONFloat(latRad * 180 / math.Pi), JSONFloat(lonRad * 180 / math.Pi), true
 }

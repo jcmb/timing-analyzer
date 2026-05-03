@@ -21,8 +21,8 @@ func ParseReceiverDiagnosticsPoint(payload []byte) (ReceiverDiagnosticsPoint, bo
 	commonL2 := int(payload[10])
 	datalinkLatencyTenths := payload[11]
 	diffSVs := int(payload[13])
-	linkPct := float64(link100) * 100.0 / 255.0
-	latencySec := float64(datalinkLatencyTenths) / 10.0
+	linkPct := JSONFloat(float64(link100) * 100.0 / 255.0)
+	latencySec := JSONFloat(float64(datalinkLatencyTenths) / 10.0)
 	return ReceiverDiagnosticsPoint{
 		LinkIntegrityPct:   linkPct,
 		CommonL1SVs:        commonL1,

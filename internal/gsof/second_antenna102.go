@@ -19,9 +19,9 @@ func ParseHeading102Point(payload []byte) (Heading102Point, bool) {
 	br := beReader{b: payload}
 	_ = br.u8()
 	return Heading102Point{
-		HeadingGeodeticDeg:   br.f64(),
-		HeadingDatumDeg:      br.f64(),
-		HeadingGridDeg:       br.f64(),
-		MagneticVariationDeg: br.f64(),
+		HeadingGeodeticDeg:   JSONFloat(br.f64()),
+		HeadingDatumDeg:      JSONFloat(br.f64()),
+		HeadingGridDeg:       JSONFloat(br.f64()),
+		MagneticVariationDeg: JSONFloat(br.f64()),
 	}, true
 }

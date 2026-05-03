@@ -2783,6 +2783,39 @@
     if (out.length < 2) out.push(lo, hi);
     return out;
   }
+  /** Horizontal grid / labels for count axes (e.g. SVs used): tick values are whole numbers. */
+  function niceIntegerTicks(lo, hi, n) {
+    n = Math.max(2, n | 0);
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) {
+      var ia = Math.round(lo);
+      var ib = Math.round(hi);
+      if (ib <= ia) ib = ia + 1;
+      return [ia, ib];
+    }
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-12))));
+    if (!isFinite(mag) || mag <= 0) mag = 1;
+    var norm = raw / mag;
+    var mult = 1;
+    if (norm > 5) mult = 10;
+    else if (norm > 2) mult = 5;
+    else if (norm > 1) mult = 2;
+    var step = Math.max(1, Math.round(mag * mult));
+    var start = Math.floor(lo / step) * step;
+    var end = Math.ceil(hi / step) * step;
+    var out = [];
+    for (var t = start; t <= end + 1e-9; t += step) {
+      out.push(t);
+    }
+    if (out.length < 2) {
+      var loI = Math.floor(lo);
+      var hiI = Math.ceil(hi);
+      if (hiI <= loI) hiI = loI + 1;
+      return [loI, hiI];
+    }
+    return out;
+  }
   function formatTimeOfDayHM(decimalHours) {
     var sec = Math.round(Number(decimalHours) * 3600);
     sec = ((sec % 86400) + 86400) % 86400;
@@ -2874,7 +2907,7 @@
     ctx.lineTo(padL + gw, padT);
     ctx.stroke();
     var xt = niceTicks(x0, x1, 10);
-    var gridY = leftVals.length ? niceTicks(yminL, ymaxL, 9) : niceTicks(yminR, ymaxR, 9);
+    var gridY = leftVals.length ? niceIntegerTicks(yminL, ymaxL, 9) : niceTicks(yminR, ymaxR, 9);
     ctx.strokeStyle = "#1a2430";
     ctx.lineWidth = 0.5;
     xt.forEach(function (tk) {
@@ -2909,8 +2942,8 @@
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     if (leftVals.length) {
-      niceTicks(yminL, ymaxL, 9).forEach(function (tk) {
-        ctx.fillText(Number.isInteger(tk) ? String(tk) : tk.toFixed(2), padL - 6, yScL(tk));
+      niceIntegerTicks(yminL, ymaxL, 9).forEach(function (tk) {
+        ctx.fillText(String(tk), padL - 6, yScL(tk));
       });
     }
     ctx.textAlign = "left";
@@ -3429,6 +3462,39 @@
     if (out.length < 2) out.push(lo, hi);
     return out;
   }
+  /** Y-axis ticks for SV counts (whole numbers only). */
+  function niceIntegerTicks(lo, hi, n) {
+    n = Math.max(2, n | 0);
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) {
+      var ia = Math.round(lo);
+      var ib = Math.round(hi);
+      if (ib <= ia) ib = ia + 1;
+      return [ia, ib];
+    }
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-12))));
+    if (!isFinite(mag) || mag <= 0) mag = 1;
+    var norm = raw / mag;
+    var mult = 1;
+    if (norm > 5) mult = 10;
+    else if (norm > 2) mult = 5;
+    else if (norm > 1) mult = 2;
+    var step = Math.max(1, Math.round(mag * mult));
+    var start = Math.floor(lo / step) * step;
+    var end = Math.ceil(hi / step) * step;
+    var out = [];
+    for (var t = start; t <= end + 1e-9; t += step) {
+      out.push(t);
+    }
+    if (out.length < 2) {
+      var loI = Math.floor(lo);
+      var hiI = Math.ceil(hi);
+      if (hiI <= loI) hiI = loI + 1;
+      return [loI, hiI];
+    }
+    return out;
+  }
   function formatTimeOfDayHM(decimalHours) {
     var sec = Math.round(Number(decimalHours) * 3600);
     sec = ((sec % 86400) + 86400) % 86400;
@@ -3516,7 +3582,7 @@
     ctx.lineTo(padL + gw, padT);
     ctx.stroke();
     var xt = niceTicks(x0, x1, 10);
-    var gridY = leftVals.length ? niceTicks(yminL, ymaxL, 9) : niceTicks(yminR, ymaxR, 9);
+    var gridY = leftVals.length ? niceTicks(yminL, ymaxL, 9) : niceIntegerTicks(yminR, ymaxR, 9);
     ctx.strokeStyle = "#1a2430";
     ctx.lineWidth = 0.5;
     xt.forEach(function (tk) {
@@ -3557,9 +3623,8 @@
     }
     ctx.textAlign = "left";
     if (rightVals.length) {
-      niceTicks(yminR, ymaxR, 9).forEach(function (tk) {
-        var labR = Math.abs(tk - Math.round(tk)) < 1e-6 ? String(Math.round(tk)) : tk.toFixed(2);
-        ctx.fillText(labR, padL + gw + 6, yScR(tk));
+      niceIntegerTicks(yminR, ymaxR, 9).forEach(function (tk) {
+        ctx.fillText(String(tk), padL + gw + 6, yScR(tk));
       });
     }
     ctx.save();

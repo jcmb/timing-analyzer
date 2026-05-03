@@ -126,6 +126,9 @@ var allowedPeriods = []float64{
 }
 
 func snapToNearestRate(delta float64) (float64, string) {
+	if math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return 0, "calc..."
+	}
 	closest := allowedPeriods[0]
 	minDiff := math.Abs(delta - closest)
 	for _, p := range allowedPeriods {
@@ -138,10 +141,10 @@ func snapToNearestRate(delta float64) (float64, string) {
 		}
 	}
 	if closest < 1.0 {
-		hz := 1.0 / closest
+		hz := gsof.JSONFloat(1.0 / closest)
 		return hz, fmt.Sprintf("%.0f Hz", hz)
 	}
-	return 1.0 / closest, fmt.Sprintf("%.0f sec", closest)
+	return gsof.JSONFloat(1.0 / closest), fmt.Sprintf("%.0f sec", closest)
 }
 
 // towDeltaSeconds returns the GPS week–wrapped advance cur−prev in (0, maxTowDeltaForEpoch].
@@ -165,7 +168,7 @@ func (s *Stats) epochMinHzFromTOWLocked() float64 {
 	if !s.hasEpochTowPeriodEMA || s.epochTowPeriodEMA <= 0 {
 		return 0
 	}
-	return 1.0 / s.epochTowPeriodEMA
+	return gsof.JSONFloat(1.0 / s.epochTowPeriodEMA)
 }
 
 // Update processes one reassembled GSOF payload and transport sequence number.
@@ -223,9 +226,10 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 					if hadEMA && prevEMA > 0 {
 						blend = ratePeriodEMAAlpha*effectiveDelta + (1.0-ratePeriodEMAAlpha)*prevEMA
 					}
+					blend = gsof.JSONFloat(blend)
 					s.ratePeriodEMA[recType] = blend
 					hzVal, hzStr := snapToNearestRate(blend)
-					s.hz[recType] = hzVal
+					s.hz[recType] = gsof.JSONFloat(hzVal)
 					s.displayHz[recType] = hzStr
 				}
 			}
@@ -240,9 +244,9 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				if s.hasPrevEpochTOWSec {
 					if d, okD := towDeltaSeconds(s.prevEpochTOWSec, sec); okD {
 						if s.hasEpochTowPeriodEMA {
-							s.epochTowPeriodEMA = ratePeriodEMAAlpha*d + (1.0-ratePeriodEMAAlpha)*s.epochTowPeriodEMA
+							s.epochTowPeriodEMA = gsof.JSONFloat(ratePeriodEMAAlpha*d + (1.0-ratePeriodEMAAlpha)*s.epochTowPeriodEMA)
 						} else {
-							s.epochTowPeriodEMA = d
+							s.epochTowPeriodEMA = gsof.JSONFloat(d)
 							s.hasEpochTowPeriodEMA = true
 						}
 					}
@@ -645,7 +649,7 @@ func (s *Stats) ExportNagios() (hz map[int]float64, counts map[int]int) {
 		if epochHz > out {
 			out = epochHz
 		}
-		hz[k] = out
+		hz[k] = gsof.JSONFloat(out)
 	}
 	counts = make(map[int]int, len(s.counts))
 	for k, v := range s.counts {

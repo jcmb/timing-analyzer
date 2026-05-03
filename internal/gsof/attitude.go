@@ -45,14 +45,14 @@ func ParseAttitudePoint(payload []byte) (AttitudePoint, bool) {
 	rngVar := float64(br.f32())
 	rad := 180.0 / math.Pi
 	return AttitudePoint{
-		GPSTOWSec:    tow,
-		PitchDeg:     pitch * rad,
-		YawDeg:       yaw * rad,
-		RollDeg:      roll * rad,
-		RangeM:       rng,
-		PitchVarRad2: pv,
-		YawVarRad2:   yv,
-		RollVarRad2:  rv,
-		RangeVarM2:   rngVar,
+		GPSTOWSec:    JSONFloat(tow),
+		PitchDeg:     JSONFloat(pitch * rad),
+		YawDeg:       JSONFloat(yaw * rad),
+		RollDeg:      JSONFloat(roll * rad),
+		RangeM:       JSONFloat(rng),
+		PitchVarRad2: JSONFloat(pv),
+		YawVarRad2:   JSONFloat(yv),
+		RollVarRad2:  JSONFloat(rv),
+		RangeVarM2:   JSONFloat(rngVar),
 	}, true
 }
