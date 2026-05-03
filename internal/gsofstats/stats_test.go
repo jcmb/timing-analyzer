@@ -83,6 +83,42 @@ func TestStats_RateUsesSeqAdvanceAfterUDPLoss(t *testing.T) {
 	}
 }
 
+func TestSnapToNearestRate_prefersShorterPeriodOnTie(t *testing.T) {
+	hz, label := snapToNearestRate(0.15)
+	if hz != 10 || label != "10 Hz" {
+		t.Fatalf("0.15 s equidistant from 0.1 and 0.2 s buckets: want 10 Hz; got %v %s", hz, label)
+	}
+}
+
+func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	s := NewStats(false)
+	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	s.Update(1, buf)
+	time.Sleep(105 * time.Millisecond)
+	s.Update(2, buf)
+	time.Sleep(105 * time.Millisecond)
+	s.Update(3, buf)
+	time.Sleep(215 * time.Millisecond)
+	s.Update(4, buf)
+	d := s.BuildDashboard("udp", 2101, "", "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 1 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("missing type 1 row")
+	}
+	if strings.HasPrefix(row.Rate, "5") && strings.Contains(row.Rate, "Hz") {
+		t.Fatalf("EMA should keep ~10 Hz after one ~2× gap; got %q", row.Rate)
+	}
+}
+
 func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 1 (TOW 5 s) then type 34: count=1, PRN=6, GPS, flags 0x0A/0x0B, elev=10, az=270, SNR bytes 4,8,12 → 1,2,3

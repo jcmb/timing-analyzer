@@ -27,6 +27,12 @@ const historySamplesMax = 2000
 // do not infer an unrealistically fast rate.
 const minWallDeltaForRateSample = 0.005 // 5 ms — coalesce OS/network batching, keep ≤200 Hz measurable
 
+// ratePeriodEMAAlpha weights each new effective-period sample in the EMA blend.
+// Output cadence is assumed stable for the whole session; real changes are rare and
+// may take several seconds to show in Hz/stale. A small α damps UDP batching jitter,
+// single long gaps, and TCP bursts without chasing every interval.
+const ratePeriodEMAAlpha = 0.04
+
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
 // (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
 func payloadBytesToSpacedHex(b []byte) string {
@@ -50,7 +56,9 @@ type Stats struct {
 	counts    map[int]int
 	hz        map[int]float64
 	displayHz map[int]string
-	lastSeen  map[int]time.Time
+	// ratePeriodEMA is an exponentially weighted mean period (s) per subtype for Hz inference.
+	ratePeriodEMA map[int]float64
+	lastSeen      map[int]time.Time
 	// lastSeenSeq is the DCOL sequence number when lastSeen[recType] was updated (per subtype).
 	lastSeenSeq    map[int]uint8
 	lastSeq        uint8
@@ -93,6 +101,7 @@ func NewStats(suppressSingle bool) *Stats {
 		counts:         make(map[int]int),
 		hz:             make(map[int]float64),
 		displayHz:      make(map[int]string),
+		ratePeriodEMA:  make(map[int]float64),
 		lastSeen:       make(map[int]time.Time),
 		lastSeenSeq:    make(map[int]uint8),
 		lastPayload:    make(map[int][]byte),
@@ -111,7 +120,9 @@ func snapToNearestRate(delta float64) (float64, string) {
 	minDiff := math.Abs(delta - closest)
 	for _, p := range allowedPeriods {
 		diff := math.Abs(delta - p)
-		if diff < minDiff {
+		// Prefer the shorter period (higher Hz) when distances tie so mild jitter
+		// around 0.15 s does not flip an otherwise 10 Hz stream toward 5 Hz.
+		if diff < minDiff || (math.Abs(diff-minDiff) <= 1e-12 && p < closest) {
 			minDiff = diff
 			closest = p
 		}
@@ -173,7 +184,13 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				}
 				effectiveDelta := wallDelta / float64(seqAdv)
 				if wallDelta >= minWallDeltaForRateSample && effectiveDelta >= minWallDeltaForRateSample {
-					hzVal, hzStr := snapToNearestRate(effectiveDelta)
+					prevEMA, hadEMA := s.ratePeriodEMA[recType]
+					blend := effectiveDelta
+					if hadEMA && prevEMA > 0 {
+						blend = ratePeriodEMAAlpha*effectiveDelta + (1.0-ratePeriodEMAAlpha)*prevEMA
+					}
+					s.ratePeriodEMA[recType] = blend
+					hzVal, hzStr := snapToNearestRate(blend)
 					s.hz[recType] = hzVal
 					s.displayHz[recType] = hzStr
 				}
