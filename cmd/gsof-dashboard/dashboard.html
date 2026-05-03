@@ -390,7 +390,8 @@
     button.tangent-graph-open-btn,
     button.llh-graph-open-btn,
     button.dop-graph-open-btn,
-    button.sigma-graph-open-btn {
+    button.sigma-graph-open-btn,
+    button.attitude-graph-open-btn {
       font-family: var(--sans);
       font-size: 0.72rem;
       font-weight: 600;
@@ -405,7 +406,8 @@
     button.tangent-graph-open-btn:hover,
     button.llh-graph-open-btn:hover,
     button.dop-graph-open-btn:hover,
-    button.sigma-graph-open-btn:hover {
+    button.sigma-graph-open-btn:hover,
+    button.attitude-graph-open-btn:hover {
       color: var(--accent);
       border-color: var(--accent);
     }
@@ -2512,6 +2514,337 @@
 </html>`;
     }
 
+    function attitudeGraphJsonForScript(initObj) {
+      return JSON.stringify(initObj).replace(/</g, "\\u003c");
+    }
+
+    /** Full HTML document for type-27 attitude graph: pitch/yaw/roll (°), range (m), variances (rad²) vs GPS TOW. */
+    function attitudeGraphStandaloneDoc(initObj) {
+      const j = attitudeGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · attitude</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.78rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.65rem; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .aP::before { background: #3d8bfd; }
+    .aY::before { background: #5bd48a; }
+    .aR::before { background: #e6a23a; }
+    .aG::before { background: #f56c6c; }
+    .vP::before { background: #a78bfa; }
+    .vY::before { background: #22d3ee; }
+    .vR::before { background: #fb7185; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg" title="Click to show/hide"><span class="aP">Pitch (°)</span><span class="aY">Yaw (°)</span><span class="aR">Roll (°)</span><span class="aG">Range (m)</span><span class="vP">Pitch var (rad²)</span><span class="vY">Yaw var (rad²)</span><span class="vR">Roll var (rad²)</span></div>
+  </div>
+` +
+        "\n  " +
+        so +
+        ' type="application/json" id="gsof-attitude-payload">' +
+        j +
+        sc +
+        "\n  " +
+        so +
+        ">\n" +
+        `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-attitude-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var seriesVis = { P: true, Y: true, R: true, G: true, vP: true, vY: true, vR: true };
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") return;
+    leg.dataset.bound = "1";
+    function sync() {
+      leg.querySelector(".aP").classList.toggle("off", !seriesVis.P);
+      leg.querySelector(".aY").classList.toggle("off", !seriesVis.Y);
+      leg.querySelector(".aR").classList.toggle("off", !seriesVis.R);
+      leg.querySelector(".aG").classList.toggle("off", !seriesVis.G);
+      leg.querySelector(".vP").classList.toggle("off", !seriesVis.vP);
+      leg.querySelector(".vY").classList.toggle("off", !seriesVis.vY);
+      leg.querySelector(".vR").classList.toggle("off", !seriesVis.vR);
+    }
+    leg.querySelector(".aP").addEventListener("click", function () { seriesVis.P = !seriesVis.P; sync(); draw(); });
+    leg.querySelector(".aY").addEventListener("click", function () { seriesVis.Y = !seriesVis.Y; sync(); draw(); });
+    leg.querySelector(".aR").addEventListener("click", function () { seriesVis.R = !seriesVis.R; sync(); draw(); });
+    leg.querySelector(".aG").addEventListener("click", function () { seriesVis.G = !seriesVis.G; sync(); draw(); });
+    leg.querySelector(".vP").addEventListener("click", function () { seriesVis.vP = !seriesVis.vP; sync(); draw(); });
+    leg.querySelector(".vY").addEventListener("click", function () { seriesVis.vY = !seriesVis.vY; sync(); draw(); });
+    leg.querySelector(".vR").addEventListener("click", function () { seriesVis.vR = !seriesVis.vR; sync(); draw(); });
+    sync();
+  }
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) return [lo, hi];
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) step *= 5;
+    else if (norm > 2) step *= 2;
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) out.push(x);
+    if (out.length < 2) out.push(lo, hi);
+    return out;
+  }
+  function yPad(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
+    if (hi === lo) { lo -= 1e-9; hi += 1e-9; }
+    var p = (hi - lo) * 0.08;
+    return { lo: lo - p, hi: hi + p };
+  }
+  function formatTimeOfDayHM(decimalHours) {
+    var sec = Math.round(Number(decimalHours) * 3600);
+    sec = ((sec % 86400) + 86400) % 86400;
+    var h = (sec / 3600) | 0;
+    var m = ((sec % 3600) / 60) | 0;
+    var ms = m < 10 ? "0" + String(m) : String(m);
+    return String(h) + ":" + ms;
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padT = 32;
+    var padB = 78;
+    var padL = 88;
+    var padR = 78;
+    var padT2 = padT;
+    var padB2 = padB;
+    var xs = pts.map(function (p) {
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) sec += 86400;
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
+    });
+    var degVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.P) degVals.push(p.pitch_deg);
+      if (seriesVis.Y) degVals.push(p.yaw_deg);
+      if (seriesVis.R) degVals.push(p.roll_deg);
+    });
+    var gVals = [];
+    if (seriesVis.G) pts.forEach(function (p) { gVals.push(p.range_m); });
+    var vVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.vP) vVals.push(p.pitch_var_rad2);
+      if (seriesVis.vY) vVals.push(p.yaw_var_rad2);
+      if (seriesVis.vR) vVals.push(p.roll_var_rad2);
+    });
+    if (!degVals.length && !gVals.length && !vVals.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — use the legend.", 24, cssH / 2);
+      return;
+    }
+    var dR = { lo: 0, hi: 1 };
+    if (degVals.length) {
+      dR = yPad(Math.min.apply(null, degVals), Math.max.apply(null, degVals));
+    }
+    var gR = { lo: 0, hi: 1 };
+    if (gVals.length) {
+      gR = yPad(Math.min.apply(null, gVals), Math.max.apply(null, gVals));
+    }
+    var vR = { lo: 0, hi: 1 };
+    if (vVals.length) {
+      vR = yPad(Math.min.apply(null, vVals), Math.max.apply(null, vVals));
+    }
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT2 - padB2;
+    function xSc(v) {
+      return padL + ((v - x0) / (x1 - x0)) * gw;
+    }
+    function yScD(v) {
+      return padT2 + (1 - (v - dR.lo) / (dR.hi - dR.lo)) * gh;
+    }
+    function yScG(v) {
+      return padT2 + (1 - (v - gR.lo) / (gR.hi - gR.lo)) * gh;
+    }
+    function yScV(v) {
+      return padT2 + (1 - (v - vR.lo) / (vR.hi - vR.lo)) * gh;
+    }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT2);
+    ctx.lineTo(padL, padT2 + gh);
+    ctx.lineTo(padL + gw, padT2 + gh);
+    ctx.stroke();
+    var gridY = degVals.length ? niceTicks(dR.lo, dR.hi, 9) : gVals.length ? niceTicks(gR.lo, gR.hi, 9) : niceTicks(vR.lo, vR.hi, 9);
+    var xt = niceTicks(x0, x1, 10);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT2);
+      ctx.lineTo(px, padT2 + gh);
+      ctx.stroke();
+    });
+    gridY.forEach(function (tk) {
+      var py = degVals.length ? yScD(tk) : gVals.length ? yScG(tk) : yScV(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab =
+        xUnit === "h"
+          ? formatTimeOfDayHM(tk)
+          : Math.abs(tk) >= 10000
+            ? tk.toFixed(0) + " s"
+            : Math.abs(tk) >= 1000
+              ? tk.toFixed(1) + " s"
+              : tk.toFixed(2) + " s";
+      ctx.save();
+      ctx.translate(px, padT2 + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    if (degVals.length) {
+      niceTicks(dR.lo, dR.hi, 9).forEach(function (tk) {
+        ctx.fillText(tk.toFixed(3) + "°", padL - 6, yScD(tk));
+      });
+    }
+    ctx.textAlign = "left";
+    if (gVals.length) {
+      var gx = degVals.length ? padL - 58 : padL - 6;
+      niceTicks(gR.lo, gR.hi, 9).forEach(function (tk) {
+        ctx.fillText(tk.toFixed(2) + " m", gx, yScG(tk));
+      });
+    }
+    if (vVals.length) {
+      niceTicks(vR.lo, vR.hi, 9).forEach(function (tk) {
+        ctx.fillText(tk.toExponential(2), padL + gw + 8, yScV(tk));
+      });
+    }
+    ctx.save();
+    ctx.translate(cssW - 14, padT2 + gh / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM)" : "GPS time of week (s)", 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(18, padT2 + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    var cap = "Left: ° & range (m)";
+    if (vVals.length) cap += " · Right: variance (rad²)";
+    ctx.fillText(cap, 0, 0);
+    ctx.restore();
+    function stroke(getter, yFn, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      for (var i = 0; i < pts.length; i++) {
+        var yv = getter(pts[i]);
+        if (!isFinite(yv)) { mv = false; continue; }
+        var px = xSc(xs[i]);
+        var py = yFn(yv);
+        if (!isFinite(py)) { mv = false; continue; }
+        if (!mv) { ctx.moveTo(px, py); mv = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        var y0 = getter(pts[0]);
+        if (isFinite(y0) && isFinite(yFn(y0))) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(xSc(xs[0]), yFn(y0), 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    if (seriesVis.P) stroke(function (p) { return p.pitch_deg; }, yScD, "#3d8bfd");
+    if (seriesVis.Y) stroke(function (p) { return p.yaw_deg; }, yScD, "#5bd48a");
+    if (seriesVis.R) stroke(function (p) { return p.roll_deg; }, yScD, "#e6a23a");
+    if (seriesVis.G) stroke(function (p) { return p.range_m; }, yScG, "#f56c6c");
+    if (seriesVis.vP) stroke(function (p) { return p.pitch_var_rad2; }, yScV, "#a78bfa");
+    if (seriesVis.vY) stroke(function (p) { return p.yaw_var_rad2; }, yScV, "#22d3ee");
+    if (seriesVis.vR) stroke(function (p) { return p.roll_var_rad2; }, yScV, "#fb7185");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-attitude-update" || !ev.data.payload) return;
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) document.getElementById("hdr").textContent = INIT.title;
+    draw();
+  });
+  window.addEventListener("resize", function () { requestAnimationFrame(draw); });
+  bindLegend();
+  draw();
+})();
+` +
+        sc +
+        `
+</body>
+</html>`;
+    }
+
 
     function llhGraphJsonForScript(initObj) {
       return JSON.stringify(initObj).replace(/</g, "\\u003c");
@@ -3215,6 +3548,74 @@
       });
     }
 
+    function syncAttitudeGraphPlotWindow(data) {
+      const w = window.__gsofAttitudePlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row27 = (data.records || []).find((r) => r.type === 27);
+      const payload = {
+        title: row27 ? String(row27.name || "GSOF type 27") : "GSOF type 27",
+        points: row27 && row27.attitude_history ? row27.attitude_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-attitude-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
+    function openAttitudeGraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 27"),
+        points: Array.isArray(r.attitude_history) ? r.attitude_history : [],
+      };
+      const existing = window.__gsofAttitudePlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-attitude-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
+      const html = attitudeGraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "width=980,height=760");
+      if (w) {
+        window.__gsofAttitudePlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-attitude-update", payload: init }, "*");
+        } catch (e) {}
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureAttitudeGraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".attitude-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "attitude-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title =
+        "Open pitch / yaw / roll (decimal °), range (m), and variances (rad²) vs GPS TOW in a new window";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openAttitudeGraphWindow(art._attitudeRecord);
+      });
+    }
+
     /** Create card once; same <details> node is kept across SSE updates. */
     function createCard(key) {
       const art = document.createElement("article");
@@ -3328,17 +3729,19 @@
       const isLL2 = r.type === 2;
       const isDOP9 = r.type === 9;
       const isSig12 = r.type === 12;
+      const isAtt27 = r.type === 27;
 
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34);
       art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (!isSV13 && !isSV33 && !isSV34 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12) {
+      if (!isSV13 && !isSV33 && !isSV34 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12 && !isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._attitudeRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -3365,6 +3768,10 @@
         if (sg) {
           sg.remove();
         }
+        const ag = art.querySelector(".attitude-graph-open-btn");
+        if (ag) {
+          ag.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -3377,6 +3784,7 @@
         art._llhRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._attitudeRecord = null;
         delete art.dataset.svDetailedView;
         const t2 = art.querySelector(".sv-detailed-view-toggle");
         if (t2) {
@@ -3397,6 +3805,10 @@
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
+        }
+        const agb = art.querySelector(".attitude-graph-open-btn");
+        if (agb) {
+          agb.remove();
         }
         svDetRoot.hidden = true;
         svDetRoot.replaceChildren();
@@ -3415,6 +3827,7 @@
         art._llhRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._attitudeRecord = null;
         delete art.dataset.svBriefView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
         if (t1) {
@@ -3435,6 +3848,10 @@
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
+        }
+        const agb14 = art.querySelector(".attitude-graph-open-btn");
+        if (agb14) {
+          agb14.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
@@ -3453,6 +3870,7 @@
         art._llhRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._attitudeRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -3474,6 +3892,10 @@
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
+        }
+        const agb7 = art.querySelector(".attitude-graph-open-btn");
+        if (agb7) {
+          agb7.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
@@ -3490,6 +3912,7 @@
         art._tangentRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._attitudeRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -3512,6 +3935,10 @@
         if (sgb) {
           sgb.remove();
         }
+        const agb2 = art.querySelector(".attitude-graph-open-btn");
+        if (agb2) {
+          agb2.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -3526,6 +3953,91 @@
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        const lg = art.querySelector(".llh-graph-open-btn");
+        if (lg) {
+          lg.remove();
+        }
+        const sgb = art.querySelector(".sigma-graph-open-btn");
+        if (sgb) {
+          sgb.remove();
+        }
+        const agb9 = art.querySelector(".attitude-graph-open-btn");
+        if (agb9) {
+          agb9.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._dopRecord = r;
+        ensureDOPGraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+      } else if (isSig12) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        art._attitudeRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1 = art.querySelector(".sv-brief-view-toggle");
+        if (t1) {
+          t1.remove();
+        }
+        const t2 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2) {
+          t2.remove();
+        }
+        const tg = art.querySelector(".tangent-graph-open-btn");
+        if (tg) {
+          tg.remove();
+        }
+        const lg = art.querySelector(".llh-graph-open-btn");
+        if (lg) {
+          lg.remove();
+        }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
+        const agb12 = art.querySelector(".attitude-graph-open-btn");
+        if (agb12) {
+          agb12.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._sigmaRecord = r;
+        ensureSigmaGraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+      } else if (isAtt27) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
         art._sigmaRecord = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
@@ -3545,6 +4057,10 @@
         if (lg) {
           lg.remove();
         }
+        const dg = art.querySelector(".dop-graph-open-btn");
+        if (dg) {
+          dg.remove();
+        }
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
@@ -3554,45 +4070,8 @@
         svDetRoot.hidden = true;
         svDetRoot.replaceChildren();
 
-        art._dopRecord = r;
-        ensureDOPGraphOpenButton(art);
-        dl.hidden = false;
-        fillFields(dl, r.fields);
-      } else if (isSig12) {
-        art._svBriefRecord = null;
-        art._svDetailedRecord = null;
-        art._tangentRecord = null;
-        art._llhRecord = null;
-        art._dopRecord = null;
-        delete art.dataset.svBriefView;
-        delete art.dataset.svDetailedView;
-        const t1 = art.querySelector(".sv-brief-view-toggle");
-        if (t1) {
-          t1.remove();
-        }
-        const t2 = art.querySelector(".sv-detailed-view-toggle");
-        if (t2) {
-          t2.remove();
-        }
-        const tg = art.querySelector(".tangent-graph-open-btn");
-        if (tg) {
-          tg.remove();
-        }
-        const lg = art.querySelector(".llh-graph-open-btn");
-        if (lg) {
-          lg.remove();
-        }
-        const dg = art.querySelector(".dop-graph-open-btn");
-        if (dg) {
-          dg.remove();
-        }
-        svRoot.hidden = true;
-        svRoot.replaceChildren();
-        svDetRoot.hidden = true;
-        svDetRoot.replaceChildren();
-
-        art._sigmaRecord = r;
-        ensureSigmaGraphOpenButton(art);
+        art._attitudeRecord = r;
+        ensureAttitudeGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
       }
@@ -3685,6 +4164,7 @@
       syncLLHGraphPlotWindow(data);
       syncDOPGraphPlotWindow(data);
       syncSigmaGraphPlotWindow(data);
+      syncAttitudeGraphPlotWindow(data);
     }
 
     function connect() {

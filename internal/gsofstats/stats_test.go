@@ -244,3 +244,48 @@ func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
 		t.Fatalf("sigma_h inconsistent %+v", s0)
 	}
 }
+
+func TestStats_AttitudeHistoryFromType1And27(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 27 attitude (this record carries its own TOW: 7000 ms → 7 s).
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x1B, 0x46,
+	}
+	var towMs [4]byte
+	binary.BigEndian.PutUint32(towMs[:], 7000)
+	buf = append(buf, towMs[:]...)
+	buf = append(buf, 0, 0, 0, 0)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(2.5)...)
+	buf = append(buf, 0, 0)
+	for i := 0; i < 7; i++ {
+		buf = append(buf, f32be(0)...)
+	}
+	if len(buf) != 10+2+70 {
+		t.Fatalf("packet len %d", len(buf))
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 27 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 27 row")
+	}
+	if len(row.AttitudeHistory) != 1 {
+		t.Fatalf("attitude_history len %d", len(row.AttitudeHistory))
+	}
+	p := row.AttitudeHistory[0]
+	if p.GPSTOWSec != 7 || math.Abs(p.RangeM-2.5) > 1e-12 {
+		t.Fatalf("point %+v", p)
+	}
+}
