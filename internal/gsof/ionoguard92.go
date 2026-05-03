@@ -2,44 +2,81 @@ package gsof
 
 import "fmt"
 
-// decodeIonoGuard92 decodes GSOF type 0x5C (92) IonoGuard info.
-// Layout: u16 GPS week, u32 GPS TOW (ms), u8 source, u8 geofence status, u8 station activity,
-// u8 SV count, then count × (u8 GNSS system, u8 PRN, u8 SV metric).
-func decodeIonoGuard92(payload []byte) []Field {
-	out := []Field{kv("Summary", Lookup(92).Function)}
+// IonoGuardSVEntry is one SV row for GSOF type 92 (IonoGuard info); used by dashboards and ParseIonoGuard92SVEntries.
+type IonoGuardSVEntry struct {
+	SystemName string `json:"system_name"`
+	PRN        int    `json:"prn"`
+	Status     string `json:"status"`
+}
+
+type iono92Parsed struct {
+	weekU16           uint16
+	towMs             uint32
+	src, geo, station int
+	nSats             int
+	rows              []IonoGuardSVEntry
+	parseNote         string
+}
+
+func parseIonoGuard92(payload []byte) (p iono92Parsed, headerOK bool) {
 	const need = 2 + 4 + 4
 	if len(payload) < need {
-		return shortFields(Lookup(92).Function, payload, need)
+		return p, false
 	}
 	br := beReader{b: payload}
-	week := br.u16()
-	towMs := br.u32()
-	src := int(br.u8())
-	geo := int(br.u8())
-	station := int(br.u8())
-	nSats := int(br.u8())
-	out = append(out,
-		kv("GPS week", fmt.Sprintf("%d", week)),
-		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(towMs)/1000.0)),
-		kv("Station IonoGuard activity", iono92ActivityLabel(station)),
-		kv("IonoGuard source", iono92SourceLabel(src)),
-		kv("IonoGuard geofence", iono92GeofenceLabel(geo)),
-		kv("SV count", fmt.Sprintf("%d", nSats)),
-	)
-	for i := 0; i < nSats; i++ {
+	p.weekU16 = br.u16()
+	p.towMs = br.u32()
+	p.src = int(br.u8())
+	p.geo = int(br.u8())
+	p.station = int(br.u8())
+	p.nSats = int(br.u8())
+	for i := 0; i < p.nSats; i++ {
 		if !br.ok(3) {
-			out = append(out, kv("Parse", fmt.Sprintf("truncated before SV row %d", i)))
-			return out
+			p.parseNote = fmt.Sprintf("truncated before SV row %d", i)
+			break
 		}
 		sys := int(br.u8())
 		prn := int(br.u8())
 		met := int(br.u8())
-		pfx := fmt.Sprintf("SV %d", i)
-		out = append(out,
-			kv(pfx+" system", gnssName(sys)),
-			kv(pfx+" PRN", fmt.Sprintf("%d", prn)),
-			kv(pfx+" IonoGuard activity", iono92ActivityLabel(met)),
-		)
+		p.rows = append(p.rows, IonoGuardSVEntry{
+			SystemName: gnssName(sys),
+			PRN:        prn,
+			Status:     iono92ActivityShort(met),
+		})
+	}
+	return p, true
+}
+
+// ParseIonoGuard92SVEntries returns the declared SV count from the payload and decoded SV rows
+// (a prefix if the payload is truncated mid-row). For len(payload) < 10, returns (0, nil).
+func ParseIonoGuard92SVEntries(payload []byte) (declaredCount int, rows []IonoGuardSVEntry) {
+	p, ok := parseIonoGuard92(payload)
+	if !ok {
+		return 0, nil
+	}
+	return p.nSats, p.rows
+}
+
+// decodeIonoGuard92 decodes GSOF type 0x5C (92) IonoGuard info.
+// Layout: u16 GPS week, u32 GPS TOW (ms), u8 source, u8 geofence status, u8 station activity,
+// u8 SV count, then count × (u8 GNSS system, u8 PRN, u8 SV metric). Per-SV rows are exposed via
+// ParseIonoGuard92SVEntries for table UIs (short activity labels without parenthetical notes).
+func decodeIonoGuard92(payload []byte) []Field {
+	out := []Field{kv("Summary", Lookup(92).Function)}
+	p, ok := parseIonoGuard92(payload)
+	if !ok {
+		return shortFields(Lookup(92).Function, payload, 2+4+4)
+	}
+	out = append(out,
+		kv("GPS week", fmt.Sprintf("%d", p.weekU16)),
+		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(p.towMs)/1000.0)),
+		kv("Station IonoGuard activity", iono92ActivityLabel(p.station)),
+		kv("IonoGuard source", iono92SourceLabel(p.src)),
+		kv("IonoGuard geofence", iono92GeofenceLabel(p.geo)),
+		kv("SV count", fmt.Sprintf("%d", p.nSats)),
+	)
+	if p.parseNote != "" {
+		out = append(out, kv("Parse", p.parseNote))
 	}
 	return out
 }
@@ -84,6 +121,22 @@ func iono92ActivityLabel(v int) string {
 		return "2 — Orange"
 	case 3:
 		return "3 — Red (high activity)"
+	default:
+		return fmt.Sprintf("%d — unknown", v)
+	}
+}
+
+// iono92ActivityShort is the SV-table status text (no parenthetical notes).
+func iono92ActivityShort(v int) string {
+	switch v {
+	case 0:
+		return "Green"
+	case 1:
+		return "Yellow"
+	case 2:
+		return "Orange"
+	case 3:
+		return "Red"
 	default:
 		return fmt.Sprintf("%d — unknown", v)
 	}

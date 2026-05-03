@@ -425,6 +425,14 @@
       font-size: 0.8rem;
       color: var(--muted);
     }
+    .ionoguard92-sv-root {
+      margin: 0;
+      padding: 0 0.85rem 0.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
     article.card.card--sv-brief .card-body > dl,
     article.card.card--sv-detailed .card-body > dl {
       display: none;
@@ -729,6 +737,17 @@
       if (r.fields && r.fields.length) {
         for (const f of r.fields) {
           appendFieldLinesTSV("", f, lines);
+        }
+      }
+      if (r.type === 92 && r.ionoguard_92_sv && r.ionoguard_92_sv.length) {
+        lines.push(["", ""].join("\t"));
+        lines.push(["SV System", "PRN", "Status"].join("\t"));
+        for (const row of r.ionoguard_92_sv) {
+          lines.push(
+            [String(row.system_name || ""), String(row.prn != null ? row.prn : ""), String(row.status || "")].join(
+              "\t"
+            )
+          );
         }
       }
       return lines.join("\n");
@@ -3738,6 +3757,10 @@
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
       body.appendChild(dl);
+      const ionoguard92Root = document.createElement("div");
+      ionoguard92Root.className = "ionoguard92-sv-root";
+      ionoguard92Root.hidden = true;
+      body.appendChild(ionoguard92Root);
       const svBriefRoot = document.createElement("div");
       svBriefRoot.className = "sv-brief-root";
       svBriefRoot.hidden = true;
@@ -3752,6 +3775,50 @@
 
       art.appendChild(det);
       return art;
+    }
+
+    function renderIonoGuard92SVTable(art, r) {
+      const root = art.querySelector(".ionoguard92-sv-root");
+      if (!root) {
+        return;
+      }
+      root.replaceChildren();
+      const rows = r.ionoguard_92_sv || [];
+      if (!rows.length) {
+        const p = document.createElement("p");
+        p.className = "sv-brief-empty";
+        p.textContent = "(no SV rows decoded)";
+        root.appendChild(p);
+        return;
+      }
+      const tbl = document.createElement("table");
+      tbl.className = "sv-brief-basic-table";
+      const thead = document.createElement("thead");
+      const trh = document.createElement("tr");
+      ["SV System", "PRN", "Status"].forEach((h) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      const tb = document.createElement("tbody");
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        const t0 = document.createElement("td");
+        t0.textContent = String(row.system_name || "");
+        const t1 = document.createElement("td");
+        t1.className = "mono";
+        t1.textContent = String(row.prn);
+        const t2 = document.createElement("td");
+        t2.textContent = String(row.status || "");
+        tr.appendChild(t0);
+        tr.appendChild(t1);
+        tr.appendChild(t2);
+        tb.appendChild(tr);
+      }
+      tbl.appendChild(tb);
+      root.appendChild(tbl);
     }
 
     function updateCard(art, r) {
@@ -3776,6 +3843,11 @@
       const dl = body.querySelector("dl");
       const svRoot = body.querySelector(".sv-brief-root");
       const svDetRoot = body.querySelector(".sv-detailed-root");
+      const iono92Root = body.querySelector(".ionoguard92-sv-root");
+      if (iono92Root) {
+        iono92Root.hidden = true;
+        iono92Root.replaceChildren();
+      }
       const isSV13 = r.type === 13;
       const isSV33 = r.type === 33;
       const isSV34 = r.type === 34;
@@ -3787,11 +3859,25 @@
       const isDOP9 = r.type === 9;
       const isSig12 = r.type === 12;
       const isAtt27 = r.type === 27;
+      const isIono92 = r.type === 92;
 
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
       art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (!isSV13 && !isSV33 && !isSV34 && !isSV48 && !isSV14 && !isTan7 && !isLL2 && !isLL70 && !isDOP9 && !isSig12 && !isAtt27) {
+      if (
+        !isSV13 &&
+        !isSV33 &&
+        !isSV34 &&
+        !isSV48 &&
+        !isSV14 &&
+        !isTan7 &&
+        !isLL2 &&
+        !isLL70 &&
+        !isDOP9 &&
+        !isSig12 &&
+        !isAtt27 &&
+        !isIono92
+      ) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
@@ -3835,6 +3921,54 @@
         svDetRoot.replaceChildren();
         dl.hidden = false;
         fillFields(dl, r.fields);
+      } else if (isIono92) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1i = art.querySelector(".sv-brief-view-toggle");
+        if (t1i) {
+          t1i.remove();
+        }
+        const t2i = art.querySelector(".sv-detailed-view-toggle");
+        if (t2i) {
+          t2i.remove();
+        }
+        const tgi = art.querySelector(".tangent-graph-open-btn");
+        if (tgi) {
+          tgi.remove();
+        }
+        const lgi = art.querySelector(".llh-graph-open-btn");
+        if (lgi) {
+          lgi.remove();
+        }
+        const dgi = art.querySelector(".dop-graph-open-btn");
+        if (dgi) {
+          dgi.remove();
+        }
+        const sgi = art.querySelector(".sigma-graph-open-btn");
+        if (sgi) {
+          sgi.remove();
+        }
+        const agi = art.querySelector(".attitude-graph-open-btn");
+        if (agi) {
+          agi.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+        if (iono92Root) {
+          renderIonoGuard92SVTable(art, r);
+          iono92Root.hidden = false;
+        }
       } else if (isSV13 || isSV33 || isSV34 || isSV48) {
         art._svDetailedRecord = null;
         art._tangentRecord = null;

@@ -6,16 +6,16 @@ import (
 )
 
 // decodeNMA91 decodes GSOF type 0x5B (91) Navigation Message Authentication (NMA) info.
-// Layout per OEM spec (Google Doc linked from catalog): u32 GPS week, u32 GPS TOW (ms), u8 count,
-// then count × (u8 source, u8 signal, u8 mask bytes N, N bytes authenticated mask, N bytes failed mask).
+// Layout: u16 GPS week, u32 GPS TOW (ms), u8 count, then count × (u8 source, u8 signal, u8 mask bytes N,
+// N bytes authenticated mask, N bytes failed mask).
 func decodeNMA91(payload []byte) []Field {
 	out := []Field{kv("Summary", Lookup(91).Function)}
-	const need = 4 + 4 + 1
+	const need = 2 + 4 + 1
 	if len(payload) < need {
 		return shortFields(Lookup(91).Function, payload, need)
 	}
 	br := beReader{b: payload}
-	week := br.u32()
+	week := br.u16()
 	towMs := br.u32()
 	nmaCount := int(br.u8())
 	out = append(out,

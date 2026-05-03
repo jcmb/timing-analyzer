@@ -155,7 +155,7 @@ func TestCatalogDocURLs129(t *testing.T) {
 func TestDecode91NMALayout(t *testing.T) {
 	// Week 7, TOW 2000 ms, 1 NMA: OSNMA, GPS LNAV, N=1, auth=0x03, fail=0x01
 	payload := []byte{
-		0x00, 0x00, 0x00, 0x07,
+		0x00, 0x07,
 		0x00, 0x00, 0x07, 0xd0,
 		0x01,
 		0x00, 0x00, 0x01,
@@ -185,7 +185,8 @@ func TestDecode91NMALayout(t *testing.T) {
 }
 
 func TestDecode91NMATruncated(t *testing.T) {
-	fields := Decode(91, []byte{0, 0, 0, 1, 0, 0, 0, 0, 2, 0})
+	// Week 1, TOW 0, NMA count 2 — payload ends right after header (no block bytes).
+	fields := Decode(91, []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02})
 	got := make(map[string]string)
 	for _, f := range fields {
 		got[f.Label] = f.Value
@@ -228,11 +229,9 @@ func TestDecode92IonoGuardLayout(t *testing.T) {
 	if got["SV count"] != "1" {
 		t.Fatalf("count: %#v", got)
 	}
-	if got["SV 0 system"] != "GPS" || got["SV 0 PRN"] != "12" {
-		t.Fatalf("sv0: %#v", got)
-	}
-	if !strings.Contains(got["SV 0 IonoGuard activity"], "Yellow") {
-		t.Fatalf("sv0 metric: %q", got["SV 0 IonoGuard activity"])
+	n, rows := ParseIonoGuard92SVEntries(payload)
+	if n != 1 || len(rows) != 1 || rows[0].SystemName != "GPS" || rows[0].PRN != 12 || rows[0].Status != "Yellow" {
+		t.Fatalf("parse rows: n=%d %#v", n, rows)
 	}
 }
 
