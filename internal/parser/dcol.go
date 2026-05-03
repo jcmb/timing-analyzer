@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 	"timing-analyzer/internal/core"
+	"timing-analyzer/internal/gsof"
 )
 
 // hexBytesSpaced returns each byte as two uppercase hex digits, separated by spaces (e.g. "1A 2B FF").
@@ -25,6 +26,7 @@ func hexBytesSpaced(b []byte) string {
 
 // printGSOFSubRecordsVerbose2 logs each sub-record in a reassembled GSOF buffer: type, length byte, and full record bytes as spaced hex.
 func printGSOFSubRecordsVerbose2(gsofBuffer []byte) {
+	gsofBuffer = gsof.FlattenGSOFBuffer(gsofBuffer)
 	ptr := 0
 	for ptr < len(gsofBuffer) {
 		if ptr+2 > len(gsofBuffer) {
@@ -169,16 +171,17 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 				}
 				if verbose >= 3 {
 					fmt.Printf("[DEBUG] GSOF FULL BUFFER: %X\n", gsofBuffer)
+					flat := gsof.FlattenGSOFBuffer(gsofBuffer)
 					ptr := 0
-					for ptr < len(gsofBuffer)-1 {
-						recType := gsofBuffer[ptr]
-						recLen := gsofBuffer[ptr+1]
+					for ptr < len(flat)-1 {
+						recType := flat[ptr]
+						recLen := flat[ptr+1]
 						endIdx := ptr + 2 + int(recLen)
-						if endIdx > len(gsofBuffer) {
-							fmt.Printf("[DEBUG]   - SUB-MESSAGE OVERRUN: Type 0x%02X needs %d bytes, but only %d remain\n", recType, recLen, len(gsofBuffer)-ptr-2)
+						if endIdx > len(flat) {
+							fmt.Printf("[DEBUG]   - SUB-MESSAGE OVERRUN: Type 0x%02X needs %d bytes, but only %d remain\n", recType, recLen, len(flat)-ptr-2)
 							break
 						}
-						fmt.Printf("[DEBUG]   - SUB-MESSAGE: Type 0x%02X, Len %d, Data [%X]\n", recType, recLen, gsofBuffer[ptr+2:endIdx])
+						fmt.Printf("[DEBUG]   - SUB-MESSAGE: Type 0x%02X, Len %d, Data [%X]\n", recType, recLen, flat[ptr+2:endIdx])
 						ptr = endIdx
 					}
 				}

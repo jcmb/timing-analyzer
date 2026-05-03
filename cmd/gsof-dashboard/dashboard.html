@@ -3769,7 +3769,7 @@
   var INIT = JSON.parse(document.getElementById("gsof-ant97-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
-  var seriesVis = { lat: false, lon: false, hm: true, sE: true, sN: true, sU: true, sH: true };
+  var seriesVis = { lat: false, lon: false, hm: true, sE: false, sN: false, sU: true, sH: false };
   function bindLegend() {
     var leg = document.querySelector(".leg");
     if (!leg || leg.dataset.bound === "1") return;

@@ -114,6 +114,14 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeSecondAntennaPosition97(payload)
 	case 98:
 		return decodeAntenna2ErrorEstimates98(payload)
+	case 99:
+		return decodeType99Wrapper(payload)
+	case 100:
+		return decodeSecondAntennaLocalDatum100(payload)
+	case 101:
+		return decodeSecondAntennaLocalZone101(payload)
+	case 102:
+		return decodeSecondAntennaHeading102(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}
