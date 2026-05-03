@@ -132,7 +132,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 		if err != nil {
 			return fmt.Errorf("udp resolve %s: %w", address, err)
 		}
-		conn, err := net.ListenUDP("udp", addr)
+		conn, err := net.ListenUDP("udp4", addr)
 		if err != nil {
 			return fmt.Errorf("udp listen %s: %w", address, err)
 		}
@@ -151,44 +151,37 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 			slog.Info("Listening for UDP packets", "port", cfg.Port)
 		}
 
-		rawConn, err := conn.SyscallConn()
-		if err == nil {
-			rawConn.Control(func(fd uintptr) {
-				if err := enableKernelTimestamps(fd); err == nil {
-					slog.Info("Hardware/Kernel timestamping enabled")
-				}
-			})
-		}
-
-		buf := make([]byte, 2048)
-		oob := make([]byte, 1024)
+		// Kernel SCM timestamps require recvmsg (ReadMsgUDP). On several platforms that path
+		// returns immediate errors while ReadFromUDP works; we prefer reliable delivery for
+		// DCOL/GSOF and use wall-clock time for UDP (same as TCP path).
+		buf := make([]byte, 65536)
 		parsers := make(map[string]*parser.DCOLParser)
 
 		for {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				return nil
-			default:
 			}
-			n, oobn, _, remoteAddr, err := conn.ReadMsgUDP(buf, oob)
+			n, remoteAddr, err := conn.ReadFromUDP(buf)
 			goTime := time.Now()
 			if err != nil {
 				if ctx.Err() != nil {
 					return nil
 				}
+				slog.Warn("UDP read failed", "error", err)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(50 * time.Millisecond):
+				}
+				continue
+			}
+			if n <= 0 || remoteAddr == nil {
 				continue
 			}
 
 			ip := remoteAddr.String()
 			var kernelTime time.Time
 			bestTime := goTime
-
-			if oobn > 0 {
-				if kt, ok := extractKernelTimestamp(oob[:oobn]); ok {
-					kernelTime = kt
-					bestTime = kernelTime
-				}
-			}
 
 			if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
 				if parsers[ip] == nil {
