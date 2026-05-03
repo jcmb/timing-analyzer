@@ -543,6 +543,17 @@ func TestDecode74SigmaSecondAntennaLayout(t *testing.T) {
 	if got["COVAR_EAST_NORTH (dimensionless)"] != "-1.00000" {
 		t.Fatalf("COVAR: %q", got["COVAR_EAST_NORTH (dimensionless)"])
 	}
+	if got["POSITION_RMS (m)"] != "\u00a02.00000" {
+		t.Fatalf("POSITION_RMS value should omit unit suffix: %q", got["POSITION_RMS (m)"])
+	}
+	if strings.Contains(got["SIGMA_EAST (m)"], " m") {
+		t.Fatalf("SIGMA_EAST should not include trailing unit: %q", got["SIGMA_EAST (m)"])
+	}
+	for _, k := range []string{"Applicability", "ORIENTATION note", "UNIT_VARIANCE note"} {
+		if _, ok := got[k]; ok {
+			t.Fatalf("unexpected field %q", k)
+		}
+	}
 	if got["NUMBER_EPOCHS"] != "0" {
 		t.Fatalf("epochs: %q", got["NUMBER_EPOCHS"])
 	}
