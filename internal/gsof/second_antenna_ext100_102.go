@@ -58,7 +58,7 @@ func decodeSecondAntennaLocalZone101(payload []byte) []Field {
 
 // decodeSecondAntennaHeading102 decodes GSOF type 0x66 (102): second-antenna
 // heading (after type-99 expansion). Layout: u8 status flags, four big-endian
-// doubles — geodetic, datum, and grid headings and magnetic variation (radians).
+// doubles — geodetic, datum, and grid headings and magnetic variation (degrees).
 func decodeSecondAntennaHeading102(payload []byte) []Field {
 	const need = 1 + 8 + 8 + 8 + 8
 	if len(payload) < need {
@@ -70,8 +70,8 @@ func decodeSecondAntennaHeading102(payload []byte) []Field {
 	datum := br.f64()
 	grid := br.f64()
 	mag := br.f64()
-	radToDeg := func(r float64) string {
-		return fmt.Sprintf("%.8g °", r*180/math.Pi)
+	degStr := func(d float64) string {
+		return fmt.Sprintf("%.8g °", d)
 	}
 	return []Field{
 		kv("Summary", Lookup(102).Function),
@@ -80,10 +80,10 @@ func decodeSecondAntennaHeading102(payload []byte) []Field {
 			Value:  fmt.Sprintf("0x%02X · %08b", st, st),
 			Detail: decodeSecondAntenna102StatusFlags(st),
 		},
-		kv("Heading geodetic north", radToDeg(geo)),
-		kv("Heading datum north", radToDeg(datum)),
-		kv("Heading grid north", radToDeg(grid)),
-		kv("Magnetic variation", radToDeg(mag)),
+		kv("Heading geodetic north", degStr(geo)),
+		kv("Heading datum north", degStr(datum)),
+		kv("Heading grid north", degStr(grid)),
+		kv("Magnetic variation", degStr(mag)),
 	}
 }
 

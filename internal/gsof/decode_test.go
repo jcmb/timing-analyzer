@@ -180,6 +180,14 @@ func TestCatalogDocURLs129(t *testing.T) {
 	}
 }
 
+func TestDecode243GSOF99ExtendedUnknown(t *testing.T) {
+	fields := Decode(243, []byte{0xDE, 0xAD})
+	got := fieldText(fields)
+	if !strings.Contains(got, "Unparsed bytes") || !strings.Contains(strings.ToLower(got), "dead") {
+		t.Fatalf("%s", got)
+	}
+}
+
 func TestDecode101SecondAntennaLocalZoneLayout(t *testing.T) {
 	payload := make([]byte, 40)
 	copy(payload[0:8], []byte("DATUM12\x00"))

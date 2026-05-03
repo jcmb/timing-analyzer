@@ -18,14 +18,14 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	if d.Records[0].Type != 1 || d.Records[0].Count != 1 {
 		t.Fatalf("row %+v", d.Records[0])
 	}
-	if d.Records[0].PayloadHex != "" {
-		t.Fatalf("empty payload should yield empty payload_hex, got %q", d.Records[0].PayloadHex)
+	if d.Records[0].PayloadHex != "01 00" {
+		t.Fatalf("payload_hex should be full sub-record type+len+body, got %q", d.Records[0].PayloadHex)
 	}
 	s2 := NewStats(false)
 	// GSOF sub-record: type 1, 3-byte body 0xAA 0xBB 0xCC
 	s2.Update(1, []byte{0x01, 0x03, 0xAA, 0xBB, 0xCC})
 	d2 := s2.BuildDashboard("udp", 2101, "test")
-	if len(d2.Records) != 1 || d2.Records[0].PayloadHex != "AA BB CC" {
+	if len(d2.Records) != 1 || d2.Records[0].PayloadHex != "01 03 AA BB CC" {
 		t.Fatalf("payload_hex %q", d2.Records[0].PayloadHex)
 	}
 }
@@ -233,6 +233,33 @@ func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
 	}
 }
 
+func TestStats_Type99InvalidExtendedEmits243FullWireHex(t *testing.T) {
+	s := NewStats(false)
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	pl := []byte{0x00, 0x05, 0x00} // extended type 5 (<100)
+	buf = append(buf, 0x63, byte(len(pl)))
+	buf = append(buf, pl...)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row243 *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 243 {
+			row243 = &d.Records[i]
+			break
+		}
+	}
+	if row243 == nil || row243.Count != 1 {
+		t.Fatalf("243 row %+v", row243)
+	}
+	if !strings.HasPrefix(row243.PayloadHex, "63 ") {
+		t.Fatalf("payload_hex should include type 99: %q", row243.PayloadHex)
+	}
+}
+
 func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
 	s := NewStats(false)
 	buf := []byte{
@@ -270,6 +297,9 @@ func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
 	}
 	if !strings.Contains(joined.String(), "LOCAL123") {
 		t.Fatalf("fields %s", joined.String())
+	}
+	if !strings.HasPrefix(row100.PayloadHex, "63 ") {
+		t.Fatalf("type 100 payload_hex should include enclosing type 99: %q", row100.PayloadHex)
 	}
 }
 

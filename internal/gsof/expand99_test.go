@@ -104,7 +104,7 @@ func TestDecode102SecondAntennaHeading(t *testing.T) {
 	binary.BigEndian.PutUint64(pl[25:33], math.Float64bits(0.05))
 	fields := Decode(102, pl)
 	got := fieldText(fields)
-	if !strings.Contains(got, "Heading geodetic north") || !strings.Contains(got, "0x0A") {
+	if !strings.Contains(got, "Heading geodetic north") || !strings.Contains(got, "0x0A") || !strings.Contains(got, "0.02") {
 		t.Fatalf("%s", got)
 	}
 }
