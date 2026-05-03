@@ -362,6 +362,7 @@ type DashboardPayload struct {
 	LastSeq                  int         `json:"last_seq"`
 	Mode                     string      `json:"mode"`
 	Port                     int         `json:"port"`
+	RemoteHost               string      `json:"remote_host,omitempty"`
 	Records                  []RecordRow `json:"records"`
 	Warnings                 []string    `json:"warnings"`
 	StreamOK                 bool        `json:"stream_ok"`
@@ -371,7 +372,8 @@ type DashboardPayload struct {
 
 // BuildDashboard returns a snapshot for JSON/SSE (sorted by record type).
 // dashboardVersion is the gsof-dashboard binary build (empty if not applicable).
-func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *DashboardPayload {
+// remoteHost is the TCP peer when mode is tcp (e.g. from -host); omit with "" for listen/UDP.
+func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, remoteHost string) *DashboardPayload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -487,6 +489,7 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		LastSeq:                  int(s.lastSeq),
 		Mode:                     mode,
 		Port:                     port,
+		RemoteHost:               remoteHost,
 		Records:                  rows,
 		Warnings:                 warn,
 		StreamOK:                 streamOK,

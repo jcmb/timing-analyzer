@@ -5,44 +5,74 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"timing-analyzer/internal/core"
 	"timing-analyzer/internal/parser"
 )
 
+// runTCPOutboundClient dials cfg.Host:cfg.Port forever: backoff on dial errors, reconnect
+// after each session ends (EOF, reset, close). Uses TCP keepalives so dead peers are
+// detected without relying only on application reads.
+func runTCPOutboundClient(cfg core.Config, packetChan chan<- core.PacketEvent) {
+	host := strings.TrimSpace(cfg.Host)
+	address := fmt.Sprintf("%s:%d", host, cfg.Port)
+	slog.Info("Starting TCP client mode (auto-reconnect)", "target", address)
+
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	backoff := time.Second
+	const maxBackoff = 30 * time.Second
+	const reconnectPause = time.Second
+
+	for {
+		conn, err := dialer.Dial("tcp", address)
+		if err != nil {
+			slog.Warn("TCP dial failed; retrying", "target", address, "error", err, "backoff", backoff)
+			time.Sleep(backoff)
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+			continue
+		}
+		backoff = time.Second
+
+		if tc, ok := conn.(*net.TCPConn); ok {
+			_ = tc.SetKeepAlive(true)
+			_ = tc.SetKeepAlivePeriod(30 * time.Second)
+		}
+
+		handleTCPConn(conn, cfg, packetChan)
+		slog.Warn("TCP session ended; reconnecting", "target", address)
+		time.Sleep(reconnectPause)
+	}
+}
+
 func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
-	switch cfg.IP {
+	proto := strings.ToLower(strings.TrimSpace(cfg.IP))
+	switch proto {
 	case "tcp":
 		if cfg.Host != "" {
-			address := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
-			slog.Info("Starting TCP client mode", "target", address)
-			for {
-				conn, err := net.DialTimeout("tcp", address, 3*time.Second)
-				if err != nil {
-					slog.Warn("Failed to connect to TCP host, retrying in 5s...", "error", err)
-					time.Sleep(5 * time.Second)
-					continue
-				}
-				handleTCPConn(conn, cfg, packetChan)
-				slog.Warn("TCP connection lost, attempting to reconnect...")
-				time.Sleep(1 * time.Second)
-			}
-		} else {
-			address := fmt.Sprintf(":%d", cfg.Port)
-			l, err := net.Listen("tcp", address)
+			runTCPOutboundClient(cfg, packetChan)
+			return
+		}
+		address := fmt.Sprintf(":%d", cfg.Port)
+		l, err := net.Listen("tcp", address)
+		if err != nil {
+			slog.Error("Failed to bind TCP port", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("Listening for TCP connections", "port", cfg.Port)
+		for {
+			conn, err := l.Accept()
 			if err != nil {
-				slog.Error("Failed to bind TCP port", "error", err)
-				os.Exit(1)
+				continue
 			}
-			slog.Info("Listening for TCP connections", "port", cfg.Port)
-			for {
-				conn, err := l.Accept()
-				if err != nil {
-					continue
-				}
-				go handleTCPConn(conn, cfg, packetChan)
-			}
+			go handleTCPConn(conn, cfg, packetChan)
 		}
 
 	case "udp":
@@ -107,6 +137,9 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 				}
 			}
 		}
+	default:
+		slog.Error("invalid -ip protocol (use tcp or udp)", "ip", cfg.IP)
+		os.Exit(1)
 	}
 }
 

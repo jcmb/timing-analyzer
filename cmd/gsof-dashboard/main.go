@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -47,8 +48,8 @@ func main() {
 	gsof.ShowExpectedReservedBits = *showExpectedReserved
 
 	cfg := core.Config{
-		IP:      *ipFlag,
-		Host:    *host,
+		IP:      strings.ToLower(strings.TrimSpace(*ipFlag)),
+		Host:    strings.TrimSpace(*host),
 		Port:    *port,
 		Decode:  "dcol",
 		Verbose: *verbose,
@@ -74,7 +75,7 @@ func main() {
 		t := time.NewTicker(500 * time.Millisecond)
 		defer t.Stop()
 		for range t.C {
-			dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version)
+			dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host)
 			data, err := json.Marshal(dash)
 			if err != nil {
 				continue
@@ -99,11 +100,15 @@ func main() {
 	addr := fmt.Sprintf("127.0.0.1:%d", *webPort)
 	srv := &http.Server{Addr: addr, Handler: mux}
 
-	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s port %d\n",
-		Version, addr, cfg.IP, cfg.Port)
+	streamDesc := fmt.Sprintf("%s port %d", cfg.IP, cfg.Port)
+	if cfg.Host != "" {
+		streamDesc = fmt.Sprintf("tcp -> %s:%d", cfg.Host, cfg.Port)
+	}
+	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s\n",
+		Version, addr, streamDesc)
 
 	go func() {
-		slog.Info("GSOF dashboard listening", "version", Version, "url", "http://"+addr, "stream", fmt.Sprintf("%s:%d", cfg.IP, cfg.Port))
+		slog.Info("GSOF dashboard listening", "version", Version, "url", "http://"+addr, "stream", streamDesc)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server", "error", err)
 			os.Exit(1)
