@@ -195,20 +195,61 @@ func TestDecode91NMATruncated(t *testing.T) {
 	}
 }
 
-func TestDecode92IonoGuardStub(t *testing.T) {
+func TestDecode92IonoGuardShortPayload(t *testing.T) {
 	fields := Decode(92, []byte{0x01, 0x02, 0x03})
 	got := make(map[string]string)
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if !strings.Contains(got["Summary"], "IonoGuard") {
-		t.Fatalf("summary: %q", got["Summary"])
+	if !strings.Contains(got["Parse"], "12") {
+		t.Fatalf("parse: %#v", got)
 	}
-	if got["Payload length (bytes)"] != "3" {
-		t.Fatalf("len: %#v", got)
+}
+
+func TestDecode92IonoGuardLayout(t *testing.T) {
+	// Week 2, TOW 0, RTK base, inside geofence, station orange, 1 SV: GPS PRN 12 yellow
+	payload := []byte{
+		0x00, 0x00, 0x00, 0x02,
+		0x00, 0x00, 0x00, 0x00,
+		0x01, 0x00, 0x02, 0x01,
+		0x00, 12, 0x01,
 	}
-	if !strings.Contains(got["Payload (hex)"], "010203") {
-		t.Fatalf("hex: %q", got["Payload (hex)"])
+	fields := Decode(92, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["GPS week"] != "2" || got["GPS time of week"] != "0.000 s" {
+		t.Fatalf("time header: %#v", got)
+	}
+	if !strings.Contains(got["IonoGuard source"], "RTK base") {
+		t.Fatalf("source: %q", got["IonoGuard source"])
+	}
+	if got["SV count"] != "1" {
+		t.Fatalf("count: %#v", got)
+	}
+	if got["SV 0 system"] != "GPS" || got["SV 0 PRN"] != "12" {
+		t.Fatalf("sv0: %#v", got)
+	}
+	if !strings.Contains(got["SV 0 IonoGuard activity"], "Yellow") {
+		t.Fatalf("sv0 metric: %q", got["SV 0 IonoGuard activity"])
+	}
+}
+
+func TestDecode92IonoGuardTruncatedSV(t *testing.T) {
+	payload := []byte{
+		0x00, 0x00, 0x00, 0x01,
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0xFF, 0x00, 0x01,
+		0x00, 0x07,
+	}
+	fields := Decode(92, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "truncated") {
+		t.Fatalf("expected parse note: %#v", got)
 	}
 }
 
