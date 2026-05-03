@@ -8,6 +8,29 @@ import (
 	"time"
 )
 
+func TestTowDeltaSeconds_nominal(t *testing.T) {
+	d, ok := towDeltaSeconds(100.0, 100.1)
+	if !ok || math.Abs(d-0.1) > 1e-9 {
+		t.Fatalf("want 0.1 got %v ok=%v", d, ok)
+	}
+}
+
+func TestTowDeltaSeconds_weekWrap(t *testing.T) {
+	d, ok := towDeltaSeconds(604799.5, 0.2)
+	if !ok || math.Abs(d-0.7) > 1e-3 {
+		t.Fatalf("want ~0.7 got %v ok=%v", d, ok)
+	}
+}
+
+func TestTowDeltaSeconds_rejectNonPositiveOrHuge(t *testing.T) {
+	if _, ok := towDeltaSeconds(5.0, 5.0); ok {
+		t.Fatal("expected false for zero advance")
+	}
+	if _, ok := towDeltaSeconds(0, 50); ok {
+		t.Fatal("expected false for gap > maxTowDeltaForEpoch")
+	}
+}
+
 func TestStats_UpdateAndDashboard(t *testing.T) {
 	s := NewStats(false)
 	// One GSOF record: type 1, len 0 (no payload bytes)

@@ -1,21 +1,23 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"timing-analyzer/internal/core"
 	"timing-analyzer/internal/parser"
 )
 
-// runTCPOutboundClient dials cfg.Host:cfg.Port forever: backoff on dial errors, reconnect
-// after each session ends (EOF, reset, close). Uses TCP keepalives so dead peers are
+// runTCPOutboundClient dials cfg.Host:cfg.Port until ctx is cancelled: backoff on dial errors,
+// reconnect after each session ends (EOF, reset, close). Uses TCP keepalives so dead peers are
 // detected without relying only on application reads.
-func runTCPOutboundClient(cfg core.Config, packetChan chan<- core.PacketEvent) {
+func runTCPOutboundClient(ctx context.Context, cfg core.Config, packetChan chan<- core.PacketEvent) error {
 	host := strings.TrimSpace(cfg.Host)
 	address := fmt.Sprintf("%s:%d", host, cfg.Port)
 	slog.Info("Starting TCP client mode (auto-reconnect)", "target", address)
@@ -28,11 +30,35 @@ func runTCPOutboundClient(cfg core.Config, packetChan chan<- core.PacketEvent) {
 	const maxBackoff = 30 * time.Second
 	const reconnectPause = time.Second
 
+	var mu sync.Mutex
+	var cur net.Conn
+	go func() {
+		<-ctx.Done()
+		mu.Lock()
+		if cur != nil {
+			_ = cur.Close()
+		}
+		mu.Unlock()
+	}()
+
 	for {
-		conn, err := dialer.Dial("tcp", address)
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+
+		conn, err := dialer.DialContext(ctx, "tcp", address)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			slog.Warn("TCP dial failed; retrying", "target", address, "error", err, "backoff", backoff)
-			time.Sleep(backoff)
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil
+			}
 			backoff *= 2
 			if backoff > maxBackoff {
 				backoff = maxBackoff
@@ -46,30 +72,51 @@ func runTCPOutboundClient(cfg core.Config, packetChan chan<- core.PacketEvent) {
 			_ = tc.SetKeepAlivePeriod(30 * time.Second)
 		}
 
+		mu.Lock()
+		cur = conn
+		mu.Unlock()
+
 		handleTCPConn(conn, cfg, packetChan)
+
+		mu.Lock()
+		cur = nil
+		mu.Unlock()
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(reconnectPause):
+		}
 		slog.Warn("TCP session ended; reconnecting", "target", address)
-		time.Sleep(reconnectPause)
 	}
 }
 
-func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
+// StartListenerContext runs the same transports as StartListener until ctx is cancelled.
+// It returns nil when ctx is done. A non-nil error means setup failed (e.g. bind).
+// If onUDPLocalPort is non-nil, it is called once with the bound UDP port immediately after ListenUDP succeeds.
+func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<- core.PacketEvent, onUDPLocalPort func(port int)) error {
 	proto := strings.ToLower(strings.TrimSpace(cfg.IP))
 	switch proto {
 	case "tcp":
 		if cfg.Host != "" {
-			runTCPOutboundClient(cfg, packetChan)
-			return
+			return runTCPOutboundClient(ctx, cfg, packetChan)
 		}
 		address := fmt.Sprintf(":%d", cfg.Port)
 		l, err := net.Listen("tcp", address)
 		if err != nil {
-			slog.Error("Failed to bind TCP port", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("tcp listen %s: %w", address, err)
 		}
+		go func() {
+			<-ctx.Done()
+			_ = l.Close()
+		}()
 		slog.Info("Listening for TCP connections", "port", cfg.Port)
 		for {
 			conn, err := l.Accept()
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
 				continue
 			}
 			go handleTCPConn(conn, cfg, packetChan)
@@ -79,15 +126,26 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 		address := fmt.Sprintf(":%d", cfg.Port)
 		addr, err := net.ResolveUDPAddr("udp", address)
 		if err != nil {
-			slog.Error("Failed to resolve UDP address", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("udp resolve %s: %w", address, err)
 		}
 		conn, err := net.ListenUDP("udp", addr)
 		if err != nil {
-			slog.Error("Failed to bind UDP port", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("udp listen %s: %w", address, err)
 		}
-		slog.Info("Listening for UDP packets", "port", cfg.Port)
+		go func() {
+			<-ctx.Done()
+			_ = conn.Close()
+		}()
+		if la := conn.LocalAddr(); la != nil {
+			slog.Info("Listening for UDP packets", "addr", la.String())
+			if onUDPLocalPort != nil {
+				if u, ok := la.(*net.UDPAddr); ok && u != nil {
+					onUDPLocalPort(u.Port)
+				}
+			}
+		} else {
+			slog.Info("Listening for UDP packets", "port", cfg.Port)
+		}
 
 		rawConn, err := conn.SyscallConn()
 		if err == nil {
@@ -103,9 +161,17 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 		parsers := make(map[string]*parser.DCOLParser)
 
 		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+			}
 			n, oobn, _, remoteAddr, err := conn.ReadMsgUDP(buf, oob)
 			goTime := time.Now()
 			if err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
 				continue
 			}
 
@@ -137,10 +203,22 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 				}
 			}
 		}
+
 	default:
-		slog.Error("invalid -ip protocol (use tcp or udp)", "ip", cfg.IP)
-		os.Exit(1)
+		return fmt.Errorf("invalid -ip protocol (use tcp or udp): %q", cfg.IP)
 	}
+}
+
+// StartListener runs until process exit on fatal bind errors (same as historical behavior).
+// Cancel is not supported; use StartListenerContext for cancellable sessions.
+func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
+	go func() {
+		err := StartListenerContext(context.Background(), cfg, packetChan, nil)
+		if err != nil {
+			slog.Error("stream listener failed", "error", err)
+			os.Exit(1)
+		}
+	}()
 }
 
 func handleTCPConn(conn net.Conn, cfg core.Config, packetChan chan<- core.PacketEvent) {

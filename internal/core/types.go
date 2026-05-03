@@ -23,7 +23,6 @@ type Config struct {
 	SessionID  string
 }
 
-// ... the rest of the file (PacketEvent, TelemetryEvent, LogEntry, GetNiceName) stays EXACTLY the same.
 type PacketEvent struct {
 	BestTime      time.Time
 	GoTime        time.Time

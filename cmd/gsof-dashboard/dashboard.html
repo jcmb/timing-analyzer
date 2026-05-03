@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en" data-gsof-build="__GSOF_DASHBOARD_VERSION__">
 <head>
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("gsof-dashboard-theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -19,6 +29,77 @@
       --bad: #f85149;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      --layer-field: rgba(0, 0, 0, 0.12);
+      --layer-table: rgba(0, 0, 0, 0.18);
+      --layer-table-strong: rgba(0, 0, 0, 0.2);
+      --layer-legend: rgba(0, 0, 0, 0.14);
+      --btn-bg-weak: rgba(15, 20, 25, 0.55);
+      --btn-bg-strong: rgba(15, 20, 25, 0.65);
+      --accent-bg: rgba(61, 139, 253, 0.12);
+      --warn-panel-bg: rgba(248, 81, 73, 0.08);
+      color-scheme: dark;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme]) {
+        --bg: #f6f8fa;
+        --card: #ffffff;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #59636e;
+        --accent: #0969da;
+        --ok: #1a7f37;
+        --warn: #9a6700;
+        --bad: #cf222e;
+        --layer-field: rgba(0, 0, 0, 0.04);
+        --layer-table: rgba(0, 0, 0, 0.06);
+        --layer-table-strong: rgba(0, 0, 0, 0.08);
+        --layer-legend: rgba(0, 0, 0, 0.05);
+        --btn-bg-weak: rgba(255, 255, 255, 0.92);
+        --btn-bg-strong: rgba(255, 255, 255, 1);
+        --accent-bg: rgba(9, 105, 218, 0.12);
+        --warn-panel-bg: rgba(207, 34, 46, 0.08);
+        color-scheme: light;
+      }
+    }
+    html[data-theme="light"] {
+      --bg: #f6f8fa;
+      --card: #ffffff;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #59636e;
+      --accent: #0969da;
+      --ok: #1a7f37;
+      --warn: #9a6700;
+      --bad: #cf222e;
+      --layer-field: rgba(0, 0, 0, 0.04);
+      --layer-table: rgba(0, 0, 0, 0.06);
+      --layer-table-strong: rgba(0, 0, 0, 0.08);
+      --layer-legend: rgba(0, 0, 0, 0.05);
+      --btn-bg-weak: rgba(255, 255, 255, 0.92);
+      --btn-bg-strong: rgba(255, 255, 255, 1);
+      --accent-bg: rgba(9, 105, 218, 0.12);
+      --warn-panel-bg: rgba(207, 34, 46, 0.08);
+      color-scheme: light;
+    }
+    html[data-theme="dark"] {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --border: #2d3a4d;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --ok: #3fb950;
+      --warn: #d29922;
+      --bad: #f85149;
+      --layer-field: rgba(0, 0, 0, 0.12);
+      --layer-table: rgba(0, 0, 0, 0.18);
+      --layer-table-strong: rgba(0, 0, 0, 0.2);
+      --layer-legend: rgba(0, 0, 0, 0.14);
+      --btn-bg-weak: rgba(15, 20, 25, 0.55);
+      --btn-bg-strong: rgba(15, 20, 25, 0.65);
+      --accent-bg: rgba(61, 139, 253, 0.12);
+      --warn-panel-bg: rgba(248, 81, 73, 0.08);
+      color-scheme: dark;
     }
     * { box-sizing: border-box; }
     body {
@@ -85,6 +166,91 @@
     .pill.bad { background: rgba(248, 81, 73, 0.15); color: var(--bad); }
     .pill.wait { background: rgba(210, 153, 34, 0.15); color: var(--warn); }
     #status { font-size: 0.8rem; color: var(--muted); }
+    .theme-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-family: var(--sans);
+    }
+    .theme-control label {
+      margin: 0;
+      font-weight: 500;
+    }
+    .theme-control select {
+      font-family: var(--sans);
+      font-size: 0.75rem;
+      padding: 0.2rem 0.45rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--btn-bg-weak);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .theme-control select:hover {
+      border-color: var(--accent);
+    }
+    #connPanel {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem 0.65rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      max-width: min(100%, 52rem);
+    }
+    #connPanel[hidden] { display: none !important; }
+    #connPanel label { margin: 0; font-weight: 500; color: var(--text); }
+    #connPanel input[type="text"],
+    #connPanel input[type="number"] {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      padding: 0.2rem 0.4rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--btn-bg-weak);
+      color: var(--text);
+      width: 9rem;
+    }
+    #connPanel input#connPort { width: 5rem; }
+    #connPanel select {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.35rem;
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      background: var(--btn-bg-weak);
+      color: var(--text);
+    }
+    #connPanel button#connBtn {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--accent);
+      background: var(--accent-bg);
+      color: var(--accent);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #connPanel button#connBtn:hover {
+      filter: brightness(1.08);
+    }
+    #connHint {
+      flex-basis: 100%;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin: 0;
+    }
+    #connErr {
+      flex-basis: 100%;
+      font-size: 0.72rem;
+      color: var(--bad);
+      margin: 0;
+    }
     main {
       padding: 1rem 1.25rem 2rem;
       margin: 0 auto;
@@ -248,7 +414,7 @@
       border: 1px solid var(--border);
       border-radius: 6px;
       padding: 0.3rem 0.45rem;
-      background: rgba(0, 0, 0, 0.12);
+      background: var(--layer-field);
     }
     details.field-expand > summary {
       cursor: pointer;
@@ -337,7 +503,7 @@
       padding: 0.15rem 0.45rem;
       border-radius: 4px;
       border: 1px solid var(--border);
-      background: rgba(15, 20, 25, 0.65);
+      background: var(--btn-bg-strong);
       color: var(--muted);
       cursor: pointer;
       line-height: 1.2;
@@ -360,7 +526,7 @@
       padding: 0.2rem 0.55rem;
       border-radius: 5px;
       border: 1px solid var(--border);
-      background: rgba(15, 20, 25, 0.55);
+      background: var(--btn-bg-weak);
       color: var(--muted);
       cursor: pointer;
       line-height: 1.2;
@@ -368,7 +534,7 @@
     .sv-brief-view-toggle button[aria-pressed="true"] {
       color: var(--accent);
       border-color: var(--accent);
-      background: rgba(61, 139, 253, 0.12);
+      background: var(--accent-bg);
     }
     .sv-brief-view-toggle button:hover {
       color: var(--text);
@@ -387,7 +553,7 @@
       padding: 0.2rem 0.55rem;
       border-radius: 5px;
       border: 1px solid var(--border);
-      background: rgba(15, 20, 25, 0.55);
+      background: var(--btn-bg-weak);
       color: var(--muted);
       cursor: pointer;
       line-height: 1.2;
@@ -395,7 +561,7 @@
     .sv-detailed-view-toggle button[aria-pressed="true"] {
       color: var(--accent);
       border-color: var(--accent);
-      background: rgba(61, 139, 253, 0.12);
+      background: var(--accent-bg);
     }
     .sv-detailed-view-toggle button:hover {
       color: var(--text);
@@ -417,7 +583,7 @@
       padding: 0.2rem 0.55rem;
       border-radius: 5px;
       border: 1px solid var(--border);
-      background: rgba(15, 20, 25, 0.55);
+      background: var(--btn-bg-weak);
       color: var(--muted);
       cursor: pointer;
       line-height: 1.2;
@@ -516,7 +682,7 @@
     }
     .sv-brief-basic-table th,
     .sv-brief-detail-table th {
-      background: rgba(0, 0, 0, 0.18);
+      background: var(--layer-table);
       color: var(--muted);
       font-weight: 600;
       font-family: var(--sans);
@@ -546,7 +712,7 @@
       vertical-align: middle;
     }
     .sv-brief-detail-wide-table thead th {
-      background: rgba(0, 0, 0, 0.2);
+      background: var(--layer-table-strong);
       color: var(--muted);
       font-weight: 650;
       font-family: var(--sans);
@@ -589,7 +755,7 @@
       padding: 0.65rem 0.75rem;
       border: 1px solid var(--border);
       border-radius: 6px;
-      background: rgba(0, 0, 0, 0.14);
+      background: var(--layer-legend);
       font-size: 0.78rem;
       color: var(--text);
     }
@@ -658,7 +824,7 @@
     #warnings {
       margin-top: 1.5rem;
       padding: 0.75rem 1rem;
-      background: rgba(248, 81, 73, 0.08);
+      background: var(--warn-panel-bg);
       border: 1px solid var(--border);
       border-radius: 8px;
       display: none;
@@ -689,7 +855,30 @@
     <div class="meta" id="meta"></div>
     <span id="localTime" class="header-local-time" aria-live="polite"></span>
     <span id="status"></span>
+    <div class="theme-control">
+      <label for="themeSelect">Theme</label>
+      <select id="themeSelect" title="Match system uses light or dark from your OS / browser setting">
+        <option value="system">Match system</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </div>
     <button type="button" id="copyAllRecords" class="header-copy-all" title="Copy every visible GSOF record (tab-separated; each block includes decoded sub-record payload as spaced hex)">Copy all records</button>
+    <button type="button" id="disconnectSession" class="header-copy-all" title="Stop this server-side stream and return to the connection screen" hidden>End stream</button>
+    <div id="connPanel" hidden>
+      <label for="connTransport">Stream</label>
+      <select id="connTransport" aria-label="Stream transport">
+        <option value="tcp">TCP → receiver</option>
+        <option value="udp">UDP listen (this server)</option>
+      </select>
+      <label for="connHost">Host</label>
+      <input id="connHost" type="text" inputmode="text" autocomplete="off" placeholder="e.g. 192.0.2.10" title="TCP hostname or IP of the GSOF source" />
+      <label for="connPort">Port</label>
+      <input id="connPort" type="number" min="0" max="65535" value="2101" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
+      <button type="button" id="connBtn">Connect</button>
+      <p id="connHint" class="meta"></p>
+      <p id="connErr" class="meta" hidden></p>
+    </div>
   </header>
   <main>
     <div id="cards"></div>
@@ -710,6 +899,47 @@
     /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
+    const THEME_STORAGE_KEY = "gsof-dashboard-theme";
+    const themeSelect = document.getElementById("themeSelect");
+
+    function applyThemeChoice(mode) {
+      if (mode === "light" || mode === "dark") {
+        document.documentElement.setAttribute("data-theme", mode);
+      } else {
+        document.documentElement.removeAttribute("data-theme");
+      }
+    }
+
+    function persistTheme(mode) {
+      try {
+        if (mode === "system") {
+          localStorage.removeItem(THEME_STORAGE_KEY);
+        } else {
+          localStorage.setItem(THEME_STORAGE_KEY, mode);
+        }
+      } catch (e) {}
+    }
+
+    function initThemeUi() {
+      if (!themeSelect) {
+        return;
+      }
+      let stored = "system";
+      try {
+        const v = localStorage.getItem(THEME_STORAGE_KEY);
+        if (v === "light" || v === "dark") {
+          stored = v;
+        }
+      } catch (e) {}
+      themeSelect.value = stored;
+      applyThemeChoice(stored === "system" ? "system" : stored);
+      themeSelect.addEventListener("change", () => {
+        const mode = themeSelect.value;
+        persistTheme(mode);
+        applyThemeChoice(mode);
+      });
+    }
+    initThemeUi();
 
     function tickLocalClock() {
       if (!localTimeEl) {
@@ -7257,10 +7487,142 @@
       syncVelocity8GraphPlotWindow(data);
     }
 
-    function connect() {
+    function applyCliStreamHints(cfg) {
+      if (!cfg) {
+        return;
+      }
+      const tr = document.getElementById("connTransport");
+      if (tr && (cfg.cli_stream_transport === "tcp" || cfg.cli_stream_transport === "udp")) {
+        tr.value = cfg.cli_stream_transport;
+      }
+      const hostEl = document.getElementById("connHost");
+      if (hostEl && typeof cfg.cli_stream_host === "string" && cfg.cli_stream_host.trim()) {
+        hostEl.value = cfg.cli_stream_host.trim();
+      }
+      const portEl = document.getElementById("connPort");
+      if (portEl && cfg.cli_stream_port != null) {
+        const p = parseInt(String(cfg.cli_stream_port), 10);
+        if (!Number.isNaN(p) && p >= 0 && p <= 65535) {
+          portEl.value = String(p);
+        }
+      }
+    }
+
+    function syncConnTransportUi() {
+      const tr = document.getElementById("connTransport");
+      const host = document.getElementById("connHost");
+      const hint = document.getElementById("connHint");
+      if (!tr || !host || !hint) {
+        return;
+      }
+      if (tr.value === "udp") {
+        host.disabled = true;
+        host.style.opacity = "0.45";
+        hint.textContent =
+          "This server listens for GSOF/DCOL UDP. Use port 0 for an automatic port; aim your receiver at the host running gsof-dashboard (see -advertise-host on the server).";
+      } else {
+        host.disabled = false;
+        host.style.opacity = "";
+        hint.textContent =
+          "Dial outbound TCP to your receiver or serial device server (same as gsof-dashboard -host … -port …).";
+      }
+    }
+
+    function wireSessionDisconnect(sessionId) {
+      const btn = document.getElementById("disconnectSession");
+      if (!btn) {
+        return;
+      }
+      btn.hidden = false;
+      btn.addEventListener("click", () => {
+        fetch("/api/sessions/" + encodeURIComponent(sessionId), { method: "DELETE" }).finally(() => {
+          window.location.href = "/";
+        });
+      });
+    }
+
+    function showConnError(msg) {
+      const el = document.getElementById("connErr");
+      if (!el) {
+        return;
+      }
+      if (!msg) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = msg;
+    }
+
+    function showStreamSetupPanel() {
+      const panel = document.getElementById("connPanel");
+      const tr = document.getElementById("connTransport");
+      if (!panel || !tr) {
+        connectSSE("/events");
+        return;
+      }
+      panel.hidden = false;
+      streamPill.className = "pill wait";
+      streamPill.textContent = "not connected";
+      statusEl.textContent = "Configure stream below, then Connect.";
+      tr.addEventListener("change", syncConnTransportUi);
+      syncConnTransportUi();
+      document.getElementById("connBtn").addEventListener("click", () => {
+        showConnError("");
+        const transport = tr.value;
+        const host = (document.getElementById("connHost").value || "").trim();
+        const portRaw = document.getElementById("connPort").value;
+        const port = parseInt(portRaw, 10);
+        if (transport === "tcp") {
+          if (!host) {
+            showConnError("Host is required for TCP.");
+            return;
+          }
+          if (!(port >= 1 && port <= 65535)) {
+            showConnError("TCP port must be 1–65535.");
+            return;
+          }
+        } else if (transport === "udp") {
+          if (!(port >= 0 && port <= 65535) || Number.isNaN(port)) {
+            showConnError("UDP port must be 0–65535 (0 = auto).");
+            return;
+          }
+        }
+        const body = { transport: transport, host: host, port: port };
+        statusEl.textContent = "Starting stream…";
+        fetch("/api/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then(async (r) => {
+            const text = await r.text();
+            if (!r.ok) {
+              throw new Error(text || r.statusText);
+            }
+            return JSON.parse(text);
+          })
+          .then((data) => {
+            if (data.listen && data.advertise_host) {
+              statusEl.textContent =
+                "UDP " + data.advertise_host + ":" + data.listen.port + " — opening dashboard…";
+            }
+            window.location.href = data.dashboard_path || "/";
+          })
+          .catch((e) => {
+            statusEl.textContent = "Could not start stream.";
+            showConnError(String(e.message || e));
+          });
+      });
+    }
+
+    function connectSSE(eventsPath) {
       statusEl.textContent = "Opening SSE…";
-      const es = new EventSource("/events");
-      es.onopen = () => { statusEl.textContent = "SSE connected"; };
+      const es = new EventSource(eventsPath);
+      es.onopen = () => {
+        statusEl.textContent = "SSE connected";
+      };
       es.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
@@ -7274,10 +7636,35 @@
         es.close();
         streamPill.className = "pill wait";
         streamPill.textContent = "reconnecting…";
-        setTimeout(connect, 2000);
+        setTimeout(() => connectSSE(eventsPath), 2000);
       };
     }
-    connect();
+
+    function initConnection() {
+      const sm = location.pathname.match(/^\/s\/([a-f0-9]{32})\/?$/i);
+      if (sm) {
+        const sid = sm[1];
+        streamPill.className = "pill wait";
+        streamPill.textContent = "session";
+        wireSessionDisconnect(sid);
+        connectSSE("/s/" + sid + "/events");
+        return;
+      }
+      fetch("/api/config")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error("config " + r.status))))
+        .then((cfg) => {
+          if (cfg.ui_sessions_enabled) {
+            applyCliStreamHints(cfg);
+            showStreamSetupPanel();
+            return;
+          }
+          connectSSE("/events");
+        })
+        .catch(() => {
+          connectSSE("/events");
+        });
+    }
+    initConnection();
     document.getElementById("copyAllRecords").addEventListener("click", () => {
       copyAllRecordsTSV();
     });
