@@ -1887,14 +1887,16 @@
     }
     return out;
   }
-  /** Tick value is decimal hours (GPS TOW s mod 24 h) / 3600; label shown as H:MM. */
+  /** Tick value is decimal hours (GPS TOW s mod 24 h) / 3600; label shown as H:MM:SS. */
   function formatTimeOfDayHM(decimalHours) {
     var sec = Math.round(Number(decimalHours) * 3600);
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function draw() {
     var pts = INIT.points || [];
@@ -2032,7 +2034,7 @@
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(
       xUnit === "h"
-        ? "Time of day (H:MM) from GPS TOW s mod 24 h"
+        ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h"
         : "GPS time of week (s)",
       padL + gw / 2,
       padT + gh + 58
@@ -2212,8 +2214,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function draw() {
     var pts = INIT.points || [];
@@ -2323,7 +2327,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
@@ -2472,8 +2476,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function yPadRange(lo, hi) {
     if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
@@ -2601,7 +2607,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(16, padT + gh / 2);
@@ -2766,8 +2772,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function draw() {
     var pts = INIT.points || [];
@@ -2878,7 +2886,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
@@ -3045,8 +3053,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function draw() {
     var pts = INIT.points || [];
@@ -3205,7 +3215,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM)" : "GPS time of week (s)", padL + gw / 2, padT2 + gh + 58);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT2 + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT2 + gh / 2);
@@ -3397,8 +3407,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function yPadRange(lo, hi) {
     if (!isFinite(lo) || !isFinite(hi)) {
@@ -3592,7 +3604,7 @@
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(
       xUnit === "h"
-        ? "Time of day (H:MM) from GPS TOW s mod 24 h"
+        ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h"
         : "GPS time of week (s)",
       padL + gw / 2,
       padT + gh + 58
@@ -3814,8 +3826,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function yPadRange(lo, hi) {
     if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
@@ -3963,7 +3977,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
@@ -4064,7 +4078,7 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Left: geodetic / datum / grid headings (°). Right: magnetic variation (°).">
+    <div class="leg" title="Geodetic, datum, and grid headings use the left Y axis (°). Magnetic variation uses the right Y axis (°). Toggle series below.">
       <span class="gGeo">Heading geodetic north (°)</span><span class="gDat">Heading datum north (°)</span><span class="gGrid">Heading grid north (°)</span>
       <span class="gMag">Magnetic variation (°)</span>
     </div>
@@ -4082,7 +4096,7 @@
   var INIT = JSON.parse(document.getElementById("gsof-ant102-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
-  var seriesVis = { geo: true, datum: true, grid: true, mag: true };
+  var seriesVis = { geo: true, datum: false, grid: false, mag: true };
   function bindLegend() {
     var leg = document.querySelector(".leg");
     if (!leg || leg.dataset.bound === "1") return;
@@ -4124,8 +4138,10 @@
     sec = ((sec % 86400) + 86400) % 86400;
     var h = (sec / 3600) | 0;
     var m = ((sec % 3600) / 60) | 0;
+    var s = sec % 60;
     var ms = m < 10 ? "0" + String(m) : String(m);
-    return String(h) + ":" + ms;
+    var ss = s < 10 ? "0" + String(s) : String(s);
+    return String(h) + ":" + ms + ":" + ss;
   }
   function yPadRange(lo, hi) {
     if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
@@ -4182,7 +4198,7 @@
     }
     var headR = useHeadL ? yPadRange(Math.min.apply(null, headVals), Math.max.apply(null, headVals)) : { lo: 0, hi: 1 };
     var magRR = useMagR ? yPadRange(Math.min.apply(null, magVals), Math.max.apply(null, magVals)) : { lo: 0, hi: 1 };
-    var padL = useHeadL ? 72 : useMagR ? 56 : 72;
+    var padL = useHeadL ? (useMagR ? 118 : 92) : useMagR ? 56 : 72;
     var padR = useMagR ? 72 : 52;
     var gw = cssW - padL - padR;
     var gh = cssH - padT - padB;
@@ -4252,17 +4268,7 @@
     ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
-    ctx.restore();
-    ctx.save();
-    ctx.translate(18, padT + gh / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#8a9aa8";
-    ctx.font = "11px system-ui, sans-serif";
-    var cap = "Left: headings (°)";
-    if (useMagR) cap += " · Right: magnetic variation (°)";
-    ctx.fillText(cap, 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     function stroke(getter, yFn, col) {
       ctx.strokeStyle = col;
@@ -4591,7 +4597,7 @@
       btn.className = "second-ant-102-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open second-antenna headings (geodetic / datum / grid, °) and magnetic variation (°) vs GPS TOW. Magnetic variation uses the right axis.";
+        "Open headings (°) vs GPS TOW: geodetic / datum / grid on the left axis, magnetic variation on the right. Default on: geodetic heading and magnetic variation.";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
