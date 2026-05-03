@@ -201,7 +201,7 @@ func TestDecode92IonoGuardShortPayload(t *testing.T) {
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if !strings.Contains(got["Parse"], "12") {
+	if !strings.Contains(got["Parse"], "10") {
 		t.Fatalf("parse: %#v", got)
 	}
 }
@@ -209,7 +209,7 @@ func TestDecode92IonoGuardShortPayload(t *testing.T) {
 func TestDecode92IonoGuardLayout(t *testing.T) {
 	// Week 2, TOW 0, RTK base, inside geofence, station orange, 1 SV: GPS PRN 12 yellow
 	payload := []byte{
-		0x00, 0x00, 0x00, 0x02,
+		0x00, 0x02,
 		0x00, 0x00, 0x00, 0x00,
 		0x01, 0x00, 0x02, 0x01,
 		0x00, 12, 0x01,
@@ -238,7 +238,7 @@ func TestDecode92IonoGuardLayout(t *testing.T) {
 
 func TestDecode92IonoGuardTruncatedSV(t *testing.T) {
 	payload := []byte{
-		0x00, 0x00, 0x00, 0x01,
+		0x00, 0x01,
 		0x00, 0x00, 0x00, 0x00,
 		0x00, 0xFF, 0x00, 0x01,
 		0x00, 0x07,
@@ -253,20 +253,51 @@ func TestDecode92IonoGuardTruncatedSV(t *testing.T) {
 	}
 }
 
-func TestDecode96IonoGuardSummaryStub(t *testing.T) {
-	fields := Decode(96, []byte{0xAA, 0xBB})
+func TestDecode96IonoGuardShortPayload(t *testing.T) {
+	fields := Decode(96, []byte{0x01, 0x02, 0x03})
 	got := make(map[string]string)
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if !strings.Contains(got["Summary"], "IonoGuard") {
-		t.Fatalf("summary: %q", got["Summary"])
+	if !strings.Contains(got["Parse"], "7") {
+		t.Fatalf("parse: %#v", got)
 	}
-	if got["Payload length (bytes)"] != "2" {
-		t.Fatalf("len: %#v", got)
+}
+
+func TestDecode96IonoGuardLayout(t *testing.T) {
+	// Wire: source, geofence, station, green, yellow, orange, red
+	payload := []byte{255, 255, 1, 5, 2, 1, 0}
+	fields := Decode(96, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
 	}
-	if !strings.Contains(strings.ToUpper(got["Payload (hex)"]), "AABB") {
-		t.Fatalf("hex: %q", got["Payload (hex)"])
+	if !strings.Contains(got["IonoGuard source"], "Invalid") {
+		t.Fatalf("source: %q", got["IonoGuard source"])
+	}
+	if !strings.Contains(got["IonoGuard geofence"], "255") || !strings.Contains(got["IonoGuard geofence"], "Unknown") {
+		t.Fatalf("geofence: %q", got["IonoGuard geofence"])
+	}
+	if !strings.Contains(got["Station IonoGuard activity"], "Yellow") {
+		t.Fatalf("station: %q", got["Station IonoGuard activity"])
+	}
+	if got["Green SV count (all constellations)"] != "5" ||
+		got["Yellow SV count (all constellations)"] != "2" ||
+		got["Orange SV count (all constellations)"] != "1" ||
+		got["Red SV count (all constellations)"] != "0" {
+		t.Fatalf("counts: %#v", got)
+	}
+}
+
+func TestDecode96IonoGuardTrailingBytes(t *testing.T) {
+	payload := []byte{0, 0, 0, 0, 0, 0, 0, 0xFF}
+	fields := Decode(96, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "trailing") {
+		t.Fatalf("parse: %#v", got)
 	}
 }
 

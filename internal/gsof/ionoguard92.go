@@ -21,9 +21,9 @@ func decodeIonoGuard92(payload []byte) []Field {
 	out = append(out,
 		kv("GPS week", fmt.Sprintf("%d", week)),
 		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(towMs)/1000.0)),
+		kv("Station IonoGuard activity", iono92ActivityLabel(station)),
 		kv("IonoGuard source", iono92SourceLabel(src)),
 		kv("IonoGuard geofence", iono92GeofenceLabel(geo)),
-		kv("Station IonoGuard activity", iono92ActivityLabel(station)),
 		kv("SV count", fmt.Sprintf("%d", nSats)),
 	)
 	for i := 0; i < nSats; i++ {
@@ -90,12 +90,33 @@ func iono92ActivityLabel(v int) string {
 }
 
 // decodeIonoGuard96 decodes GSOF type 0x60 (96) IonoGuard summary.
-// Field layout is defined in the linked specification; until wired here, the payload is shown as hex.
+// Layout per OEM spec (Google Doc linked from catalog): u8 source, u8 geofence, u8 station activity,
+// u8 green SV count, u8 yellow SV count, u8 orange SV count, u8 red SV count (all constellations).
 func decodeIonoGuard96(payload []byte) []Field {
-	return []Field{
-		kv("Summary", Lookup(96).Function),
-		kv("Payload length (bytes)", fmt.Sprintf("%d", len(payload))),
-		kv("Payload (hex)", hexPreview(payload, 96)),
-		kv("Note", "Structured decode not implemented yet; see the type 96 specification at Doc URL."),
+	out := []Field{kv("Summary", Lookup(96).Function)}
+	const need = 7
+	if len(payload) < need {
+		return shortFields(Lookup(96).Function, payload, need)
 	}
+	br := beReader{b: payload}
+	src := int(br.u8())
+	geo := int(br.u8())
+	station := int(br.u8())
+	green := int(br.u8())
+	yellow := int(br.u8())
+	orange := int(br.u8())
+	red := int(br.u8())
+	out = append(out,
+		kv("Station IonoGuard activity", iono92ActivityLabel(station)),
+		kv("IonoGuard source", iono92SourceLabel(src)),
+		kv("IonoGuard geofence", iono92GeofenceLabel(geo)),
+		kv("Green SV count (all constellations)", fmt.Sprintf("%d", green)),
+		kv("Yellow SV count (all constellations)", fmt.Sprintf("%d", yellow)),
+		kv("Orange SV count (all constellations)", fmt.Sprintf("%d", orange)),
+		kv("Red SV count (all constellations)", fmt.Sprintf("%d", red)),
+	)
+	if br.i < len(payload) {
+		out = append(out, kv("Parse", fmt.Sprintf("%d trailing byte(s) after 7-byte layout", len(payload)-br.i)))
+	}
+	return out
 }
