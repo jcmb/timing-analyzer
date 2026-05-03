@@ -173,14 +173,15 @@ func TestDecode91NMALayout(t *testing.T) {
 	if got["GPS week"] != "7" || got["GPS time of week"] != "2.000 s" || got["NMA count"] != "1" {
 		t.Fatalf("header: %#v", got)
 	}
-	if got["NMA 0 source"] != "0 — OSNMA" {
-		t.Fatalf("source: %q", got["NMA 0 source"])
+	n, rows := ParseNMA91Entries(payload)
+	if n != 1 || len(rows) != 1 {
+		t.Fatalf("parse count/rows: n=%d len=%d", n, len(rows))
 	}
-	if !strings.Contains(got["NMA 0 authenticated mask (hex)"], "03") {
-		t.Fatalf("auth mask: %q", got["NMA 0 authenticated mask (hex)"])
+	if rows[0].Source != "0 — OSNMA" || rows[0].Signal != "0 — GPS LNAV (L1 C/A)" {
+		t.Fatalf("row labels: %#v", rows[0])
 	}
-	if !strings.Contains(got["NMA 0 failed mask (hex)"], "01") {
-		t.Fatalf("fail mask: %q", got["NMA 0 failed mask (hex)"])
+	if rows[0].MaskSize != 1 || rows[0].AuthenticatedBinary != "00000011" || rows[0].FailedBinary != "00000001" {
+		t.Fatalf("row masks: %#v", rows[0])
 	}
 }
 

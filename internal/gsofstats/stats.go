@@ -279,6 +279,8 @@ type RecordRow struct {
 	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
 	// IonoGuard92SV is populated for GSOF type 92 (IonoGuard info) for structured SV tables in the dashboard.
 	IonoGuard92SV []gsof.IonoGuardSVEntry `json:"ionoguard_92_sv,omitempty"`
+	// NMA91Rows is populated for GSOF type 91 (NMA info) for structured NMA block tables in the dashboard.
+	NMA91Rows []gsof.NMA91Entry `json:"nma91_rows,omitempty"`
 	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
 	TangentHistory []gsof.TangentPlanePoint `json:"tangent_history,omitempty"`
 	// LLHHistory is populated for GSOF type 2 (latitude / longitude / ellipsoidal height) or type 70 (lat/lon / MSL height) for dashboard graphing.
@@ -347,6 +349,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 13 {
 			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)
+		}
+		if subType == 91 {
+			_, row.NMA91Rows = gsof.ParseNMA91Entries(payload)
 		}
 		if subType == 92 {
 			_, row.IonoGuard92SV = gsof.ParseIonoGuard92SVEntries(payload)

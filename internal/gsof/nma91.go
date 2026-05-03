@@ -5,39 +5,47 @@ import (
 	"strings"
 )
 
-// decodeNMA91 decodes GSOF type 0x5B (91) Navigation Message Authentication (NMA) info.
-// Layout: u16 GPS week, u32 GPS TOW (ms), u8 count, then count × (u8 source, u8 signal, u8 mask bytes N,
-// N bytes authenticated mask, N bytes failed mask).
-func decodeNMA91(payload []byte) []Field {
-	out := []Field{kv("Summary", Lookup(91).Function)}
+// NMA91Entry is one NMA block for GSOF type 91; used by dashboards and ParseNMA91Entries.
+type NMA91Entry struct {
+	Source              string `json:"source"`
+	Signal              string `json:"signal"`
+	MaskSize            int    `json:"mask_size"`
+	AuthenticatedBinary string `json:"authenticated_binary"`
+	FailedBinary        string `json:"failed_binary"`
+}
+
+type nma91Parsed struct {
+	week      uint16
+	towMs     uint32
+	nmaCount  int
+	rows      []NMA91Entry
+	parseNote string
+}
+
+func parseNMA91(payload []byte) (p nma91Parsed, headerOK bool) {
 	const need = 2 + 4 + 1
 	if len(payload) < need {
-		return shortFields(Lookup(91).Function, payload, need)
+		return p, false
 	}
 	br := beReader{b: payload}
-	week := br.u16()
-	towMs := br.u32()
-	nmaCount := int(br.u8())
-	out = append(out,
-		kv("GPS week", fmt.Sprintf("%d", week)),
-		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(towMs)/1000.0)),
-		kv("NMA count", fmt.Sprintf("%d", nmaCount)),
-	)
-	for k := 0; k < nmaCount; k++ {
+	p.week = br.u16()
+	p.towMs = br.u32()
+	p.nmaCount = int(br.u8())
+	for k := 0; k < p.nmaCount; k++ {
 		if !br.ok(3) {
-			out = append(out, kv("Parse", fmt.Sprintf("truncated before NMA block %d", k)))
-			return out
+			p.parseNote = fmt.Sprintf("truncated before NMA block %d", k)
+			break
 		}
 		src := int(br.u8())
 		sig := int(br.u8())
 		n := int(br.u8())
 		if n < 0 || n > len(payload) {
-			out = append(out, kv("Parse", fmt.Sprintf("invalid mask size %d in NMA block %d", n, k)))
-			return out
+			p.parseNote = fmt.Sprintf("invalid mask size %d in NMA block %d", n, k)
+			break
 		}
 		if !br.ok(2 * n) {
-			out = append(out, kv("Parse", fmt.Sprintf("truncated in NMA block %d (need %d mask bytes)", k, 2*n)))
-			return out
+			p.parseNote = fmt.Sprintf("truncated in NMA block %d (need %d mask bytes)", k, 2*n)
+			break
 		}
 		auth := make([]byte, n)
 		fail := make([]byte, n)
@@ -47,31 +55,56 @@ func decodeNMA91(payload []byte) []Field {
 		for i := 0; i < n; i++ {
 			fail[i] = br.u8()
 		}
-		pfx := fmt.Sprintf("NMA %d", k)
-		out = append(out,
-			kv(pfx+" source", nma91SourceLabel(src)),
-			kv(pfx+" signal", nma91SignalLabel(sig)),
-			kv(pfx+" mask size (bytes)", fmt.Sprintf("%d", n)),
-			kv(pfx+" authenticated mask (hex)", spacedHexUpper(auth)),
-			kv(pfx+" failed mask (hex)", spacedHexUpper(fail)),
-		)
+		p.rows = append(p.rows, NMA91Entry{
+			Source:              nma91SourceLabel(src),
+			Signal:              nma91SignalLabel(sig),
+			MaskSize:            n,
+			AuthenticatedBinary: nma91MaskBytesBinary(auth),
+			FailedBinary:        nma91MaskBytesBinary(fail),
+		})
+	}
+	return p, true
+}
+
+// ParseNMA91Entries returns the declared NMA count and decoded rows (a prefix if truncated or invalid).
+func ParseNMA91Entries(payload []byte) (declaredCount int, rows []NMA91Entry) {
+	p, ok := parseNMA91(payload)
+	if !ok {
+		return 0, nil
+	}
+	return p.nmaCount, p.rows
+}
+
+// decodeNMA91 decodes GSOF type 0x5B (91) Navigation Message Authentication (NMA) info.
+// Layout: u16 GPS week, u32 GPS TOW (ms), u8 count, then count × (u8 source, u8 signal, u8 mask bytes N,
+// N bytes authenticated mask, N bytes failed mask). Per-block detail is in ParseNMA91Entries for table UIs.
+func decodeNMA91(payload []byte) []Field {
+	out := []Field{kv("Summary", Lookup(91).Function)}
+	p, ok := parseNMA91(payload)
+	if !ok {
+		return shortFields(Lookup(91).Function, payload, 2+4+1)
+	}
+	out = append(out,
+		kv("GPS week", fmt.Sprintf("%d", p.week)),
+		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(p.towMs)/1000.0)),
+		kv("NMA count", fmt.Sprintf("%d", p.nmaCount)),
+	)
+	if p.parseNote != "" {
+		out = append(out, kv("Parse", p.parseNote))
 	}
 	return out
 }
 
-func spacedHexUpper(b []byte) string {
+// nma91MaskBytesBinary renders each mask byte as 8 bits (MSB first), bytes separated by a space.
+func nma91MaskBytesBinary(b []byte) string {
 	if len(b) == 0 {
 		return "—"
 	}
-	var sb strings.Builder
-	sb.Grow(len(b)*3 - 1)
+	parts := make([]string, len(b))
 	for i, c := range b {
-		if i > 0 {
-			sb.WriteByte(' ')
-		}
-		sb.WriteString(fmt.Sprintf("%02X", c))
+		parts[i] = fmt.Sprintf("%08b", c)
 	}
-	return sb.String()
+	return strings.Join(parts, " ")
 }
 
 func nma91SourceLabel(v int) string {

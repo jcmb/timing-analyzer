@@ -433,6 +433,14 @@
       font-size: 0.82rem;
       color: var(--text);
     }
+    .nma91-rows-root {
+      margin: 0;
+      padding: 0 0.85rem 0.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
     article.card.card--sv-brief .card-body > dl,
     article.card.card--sv-detailed .card-body > dl {
       display: none;
@@ -747,6 +755,21 @@
             [String(row.system_name || ""), String(row.prn != null ? row.prn : ""), String(row.status || "")].join(
               "\t"
             )
+          );
+        }
+      }
+      if (r.type === 91 && r.nma91_rows && r.nma91_rows.length) {
+        lines.push(["", ""].join("\t"));
+        lines.push(["Source", "Signal", "Mask size", "Authenticated mask", "Failed mask"].join("\t"));
+        for (const row of r.nma91_rows) {
+          lines.push(
+            [
+              String(row.source || ""),
+              String(row.signal || ""),
+              String(row.mask_size != null ? row.mask_size : ""),
+              String(row.authenticated_binary || ""),
+              String(row.failed_binary || ""),
+            ].join("\t")
           );
         }
       }
@@ -3757,6 +3780,10 @@
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
       body.appendChild(dl);
+      const nma91RowsRoot = document.createElement("div");
+      nma91RowsRoot.className = "nma91-rows-root";
+      nma91RowsRoot.hidden = true;
+      body.appendChild(nma91RowsRoot);
       const ionoguard92Root = document.createElement("div");
       ionoguard92Root.className = "ionoguard92-sv-root";
       ionoguard92Root.hidden = true;
@@ -3821,6 +3848,58 @@
       root.appendChild(tbl);
     }
 
+    function renderNMA91RowsTable(art, r) {
+      const root = art.querySelector(".nma91-rows-root");
+      if (!root) {
+        return;
+      }
+      root.replaceChildren();
+      const rows = r.nma91_rows || [];
+      if (!rows.length) {
+        const p = document.createElement("p");
+        p.className = "sv-brief-empty";
+        p.textContent = "(no NMA blocks decoded)";
+        root.appendChild(p);
+        return;
+      }
+      const tbl = document.createElement("table");
+      tbl.className = "sv-brief-basic-table";
+      const thead = document.createElement("thead");
+      const trh = document.createElement("tr");
+      ["Source", "Signal", "Mask size", "Authenticated mask", "Failed mask"].forEach((h) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      const tb = document.createElement("tbody");
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        const t0 = document.createElement("td");
+        t0.textContent = String(row.source || "");
+        const t1 = document.createElement("td");
+        t1.textContent = String(row.signal || "");
+        const t2 = document.createElement("td");
+        t2.className = "mono";
+        t2.textContent = String(row.mask_size != null ? row.mask_size : "");
+        const t3 = document.createElement("td");
+        t3.className = "mono";
+        t3.textContent = String(row.authenticated_binary || "");
+        const t4 = document.createElement("td");
+        t4.className = "mono";
+        t4.textContent = String(row.failed_binary || "");
+        tr.appendChild(t0);
+        tr.appendChild(t1);
+        tr.appendChild(t2);
+        tr.appendChild(t3);
+        tr.appendChild(t4);
+        tb.appendChild(tr);
+      }
+      tbl.appendChild(tb);
+      root.appendChild(tbl);
+    }
+
     function updateCard(art, r) {
       art.querySelector("h2.card-title").textContent = r.name;
       art.querySelector(".card-line").textContent =
@@ -3848,6 +3927,11 @@
         iono92Root.hidden = true;
         iono92Root.replaceChildren();
       }
+      const nma91Root = body.querySelector(".nma91-rows-root");
+      if (nma91Root) {
+        nma91Root.hidden = true;
+        nma91Root.replaceChildren();
+      }
       const isSV13 = r.type === 13;
       const isSV33 = r.type === 33;
       const isSV34 = r.type === 34;
@@ -3860,6 +3944,7 @@
       const isSig12 = r.type === 12;
       const isAtt27 = r.type === 27;
       const isIono92 = r.type === 92;
+      const isNMA91 = r.type === 91;
 
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
       art.classList.toggle("card--sv-detailed", isSV14);
@@ -3876,7 +3961,8 @@
         !isDOP9 &&
         !isSig12 &&
         !isAtt27 &&
-        !isIono92
+        !isIono92 &&
+        !isNMA91
       ) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -3921,6 +4007,54 @@
         svDetRoot.replaceChildren();
         dl.hidden = false;
         fillFields(dl, r.fields);
+      } else if (isNMA91) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1n = art.querySelector(".sv-brief-view-toggle");
+        if (t1n) {
+          t1n.remove();
+        }
+        const t2n = art.querySelector(".sv-detailed-view-toggle");
+        if (t2n) {
+          t2n.remove();
+        }
+        const tgn = art.querySelector(".tangent-graph-open-btn");
+        if (tgn) {
+          tgn.remove();
+        }
+        const lgn = art.querySelector(".llh-graph-open-btn");
+        if (lgn) {
+          lgn.remove();
+        }
+        const dgn = art.querySelector(".dop-graph-open-btn");
+        if (dgn) {
+          dgn.remove();
+        }
+        const sgn = art.querySelector(".sigma-graph-open-btn");
+        if (sgn) {
+          sgn.remove();
+        }
+        const agn = art.querySelector(".attitude-graph-open-btn");
+        if (agn) {
+          agn.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+        if (nma91Root) {
+          renderNMA91RowsTable(art, r);
+          nma91Root.hidden = false;
+        }
       } else if (isIono92) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
