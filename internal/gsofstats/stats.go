@@ -19,6 +19,12 @@ const historySamplesMax = 2000
 // a few milliseconds apart while the true GNSS cadence is much slower; without
 // this floor, snapToNearestRate maps ~20 ms gaps to the 0.02 s bucket (50 Hz)
 // and stale detection (which uses hz) then marks a healthy 10 Hz stream stale.
+//
+// For UDP loss, wall time spans many missed DCOL frames; we divide that wall time
+// by the sequence advance since the subtype was last seen so each missed packet
+// still counts toward cadence. We still require effectiveDelta (below) ≥ this
+// floor so many distinct seq numbers delivered in one wall-clock burst (TCP)
+// do not infer an unrealistically fast rate.
 const minWallDeltaForRateSample = 0.005 // 5 ms — coalesce OS/network batching, keep ≤200 Hz measurable
 
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
@@ -40,11 +46,13 @@ func payloadBytesToSpacedHex(b []byte) string {
 
 // Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
 type Stats struct {
-	mu             sync.Mutex
-	counts         map[int]int
-	hz             map[int]float64
-	displayHz      map[int]string
-	lastSeen       map[int]time.Time
+	mu        sync.Mutex
+	counts    map[int]int
+	hz        map[int]float64
+	displayHz map[int]string
+	lastSeen  map[int]time.Time
+	// lastSeenSeq is the DCOL sequence number when lastSeen[recType] was updated (per subtype).
+	lastSeenSeq    map[int]uint8
 	lastSeq        uint8
 	lastSeqTime    time.Time
 	hasSeenType01  bool
@@ -76,6 +84,8 @@ type Stats struct {
 	rxDiag28History []gsof.ReceiverDiagnosticsPoint
 	// positionTimeHistory holds recent type-0x01 position-time samples (each carries its own GPS TOW).
 	positionTimeHistory []gsof.PositionTimePoint
+	// velocityHistory holds recent type-0x08 velocity samples paired with lastGPSTOWSec at decode time.
+	velocityHistory []gsof.VelocityPoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -84,6 +94,7 @@ func NewStats(suppressSingle bool) *Stats {
 		hz:             make(map[int]float64),
 		displayHz:      make(map[int]string),
 		lastSeen:       make(map[int]time.Time),
+		lastSeenSeq:    make(map[int]uint8),
 		lastPayload:    make(map[int][]byte),
 		lastRecordWire: make(map[int][]byte),
 		suppressSingle: suppressSingle,
@@ -151,11 +162,18 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 
 		if !seenInThisPacket[recType] {
 			prev, hadPrev := s.lastSeen[recType]
+			prevSeq := s.lastSeenSeq[recType]
 			s.lastSeen[recType] = now
+			s.lastSeenSeq[recType] = seq
 			if hadPrev {
-				delta := now.Sub(prev).Seconds()
-				if delta >= minWallDeltaForRateSample {
-					hzVal, hzStr := snapToNearestRate(delta)
+				wallDelta := now.Sub(prev).Seconds()
+				seqAdv := (int(seq) + 256 - int(prevSeq)) % 256
+				if seqAdv < 1 {
+					seqAdv = 1
+				}
+				effectiveDelta := wallDelta / float64(seqAdv)
+				if wallDelta >= minWallDeltaForRateSample && effectiveDelta >= minWallDeltaForRateSample {
+					hzVal, hzStr := snapToNearestRate(effectiveDelta)
 					s.hz[recType] = hzVal
 					s.displayHz[recType] = hzStr
 				}
@@ -245,6 +263,12 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendReceiverDiagnostics28Point(pt)
 			}
 		}
+		if recType == 8 {
+			if vpt, ok := gsof.ParseVelocityGraphPoint(pld); ok {
+				vpt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendVelocityPoint(vpt)
+			}
+		}
 	}
 
 	if isType01Present {
@@ -332,6 +356,13 @@ func (s *Stats) appendPositionTimePoint(pt gsof.PositionTimePoint) {
 	}
 }
 
+func (s *Stats) appendVelocityPoint(pt gsof.VelocityPoint) {
+	s.velocityHistory = append(s.velocityHistory, pt)
+	if len(s.velocityHistory) > historySamplesMax {
+		s.velocityHistory = s.velocityHistory[len(s.velocityHistory)-historySamplesMax:]
+	}
+}
+
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
 	Type     int          `json:"type"`
@@ -379,6 +410,8 @@ type RecordRow struct {
 	ReceiverDiagnostics28History []gsof.ReceiverDiagnosticsPoint `json:"receiver_diag_28_history,omitempty"`
 	// PositionTimeHistory is populated for GSOF type 1 (position time) for dashboard graphing.
 	PositionTimeHistory []gsof.PositionTimePoint `json:"position_time_history,omitempty"`
+	// VelocityHistory is populated for GSOF type 8 (velocity) for dashboard graphing.
+	VelocityHistory []gsof.VelocityPoint `json:"velocity_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -503,6 +536,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 		}
 		if subType == 1 && len(s.positionTimeHistory) > 0 {
 			row.PositionTimeHistory = append([]gsof.PositionTimePoint(nil), s.positionTimeHistory...)
+		}
+		if subType == 8 && len(s.velocityHistory) > 0 {
+			row.VelocityHistory = append([]gsof.VelocityPoint(nil), s.velocityHistory...)
 		}
 		rows = append(rows, row)
 	}

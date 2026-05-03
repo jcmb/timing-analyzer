@@ -58,6 +58,31 @@ func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
 	}
 }
 
+func TestStats_RateUsesSeqAdvanceAfterUDPLoss(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	s := NewStats(false)
+	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	s.Update(1, buf)
+	time.Sleep(520 * time.Millisecond)
+	s.Update(6, buf)
+	d := s.BuildDashboard("udp", 2101, "", "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 1 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("missing type 1 row")
+	}
+	if row.Rate != "10 Hz" {
+		t.Fatalf("with seq advance 5 and ~520 ms wall, want 10 Hz (missed packets in rate); got %q", row.Rate)
+	}
+}
+
 func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 1 (TOW 5 s) then type 34: count=1, PRN=6, GPS, flags 0x0A/0x0B, elev=10, az=270, SNR bytes 4,8,12 → 1,2,3
