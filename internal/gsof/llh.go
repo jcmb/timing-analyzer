@@ -13,6 +13,7 @@ type LLHPoint struct {
 
 // ParseLLHDeg parses a type-0x02 payload (three big-endian float64: lat, lon, height in radians, radians, metres)
 // and returns latitude and longitude in decimal degrees and height in metres.
+// The same first 24 bytes apply to GSOF type 0x46 (70) lat/long/MSL height before the geoid name suffix.
 func ParseLLHDeg(payload []byte) (latDeg, lonDeg, heightM float64, ok bool) {
 	br := beReader{b: payload}
 	if !br.ok(24) {

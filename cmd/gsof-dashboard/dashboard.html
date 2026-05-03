@@ -3390,10 +3390,12 @@
       if (!w || w.closed) {
         return;
       }
-      const row2 = (data.records || []).find((r) => r.type === 2);
+      const srcType = typeof w.__gsofLLHSourceType === "number" ? w.__gsofLLHSourceType : 2;
+      const row = (data.records || []).find((r) => r.type === srcType);
+      const fallback = srcType === 70 ? "GSOF type 70" : "GSOF type 2";
       const payload = {
-        title: row2 ? String(row2.name || "GSOF type 2") : "GSOF type 2",
-        points: row2 && row2.llh_history ? row2.llh_history : [],
+        title: row ? String(row.name || fallback) : fallback,
+        points: row && row.llh_history ? row.llh_history : [],
       };
       try {
         w.postMessage({ type: "gsof-llh-update", payload: payload }, "*");
@@ -3404,13 +3406,15 @@
       if (!r) {
         return;
       }
+      const srcType = r.type === 70 ? 70 : 2;
       const init = {
-        title: String(r.name || "GSOF type 2"),
+        title: String(r.name || (srcType === 70 ? "GSOF type 70" : "GSOF type 2")),
         points: Array.isArray(r.llh_history) ? r.llh_history : [],
       };
       const existing = window.__gsofLLHPlotWin;
       if (existing && !existing.closed) {
         try {
+          existing.__gsofLLHSourceType = srcType;
           existing.postMessage({ type: "gsof-llh-update", payload: init }, "*");
           existing.focus();
         } catch (e) {}
@@ -3422,6 +3426,7 @@
       const w = window.open(url, "_blank", "width=980,height=760");
       if (w) {
         window.__gsofLLHPlotWin = w;
+        w.__gsofLLHSourceType = srcType;
         try {
           w.postMessage({ type: "gsof-llh-update", payload: init }, "*");
         } catch (e) {}
@@ -3436,15 +3441,25 @@
     function ensureLLHGraphOpenButton(art) {
       const headTop = art.querySelector(".card-head-top");
       const copyBtn = art.querySelector(".card-copy-all");
-      if (!headTop || !copyBtn || headTop.querySelector(".llh-graph-open-btn")) {
+      if (!headTop || !copyBtn) {
         return;
       }
-      const btn = document.createElement("button");
+      const rec = art._llhRecord;
+      const titleLL2 =
+        "Open latitude / longitude (°) and height (m) vs GPS TOW in a new window (seconds or time-of-day on X)";
+      const titleLL70 =
+        "Open latitude / longitude (°) and MSL height (m) vs GPS TOW — same chart as type 2 (seconds or time-of-day on X)";
+      const tip = rec && rec.type === 70 ? titleLL70 : titleLL2;
+      let btn = headTop.querySelector(".llh-graph-open-btn");
+      if (btn) {
+        btn.title = tip;
+        return;
+      }
+      btn = document.createElement("button");
       btn.type = "button";
       btn.className = "llh-graph-open-btn";
       btn.textContent = "Graph";
-      btn.title =
-        "Open latitude / longitude (°) and height (m) vs GPS TOW in a new window (seconds or time-of-day on X)";
+      btn.title = tip;
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -3768,6 +3783,7 @@
       const isSV14 = r.type === 14;
       const isTan7 = r.type === 7;
       const isLL2 = r.type === 2;
+      const isLL70 = r.type === 70;
       const isDOP9 = r.type === 9;
       const isSig12 = r.type === 12;
       const isAtt27 = r.type === 27;
@@ -3775,7 +3791,7 @@
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
       art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (!isSV13 && !isSV33 && !isSV34 && !isSV48 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12 && !isAtt27) {
+      if (!isSV13 && !isSV33 && !isSV34 && !isSV48 && !isSV14 && !isTan7 && !isLL2 && !isLL70 && !isDOP9 && !isSig12 && !isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
@@ -3947,7 +3963,7 @@
         ensureTangentGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
-      } else if (isLL2) {
+      } else if (isLL2 || isLL70) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;

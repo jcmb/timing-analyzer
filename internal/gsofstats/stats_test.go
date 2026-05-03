@@ -225,6 +225,39 @@ func TestStats_LLHHistoryFromType1And2(t *testing.T) {
 	}
 }
 
+func TestStats_LLHMSLHistoryFromType1And70(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 70: 24-byte body (lat/lon rad, MSL height m) — same numeric layout as type 2 for history.
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x46, 0x18,
+	}
+	buf = append(buf, f64be(math.Pi/2)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(100.0)...)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 70 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 70 row")
+	}
+	if len(row.LLHHistory) != 1 {
+		t.Fatalf("llh_history len %d", len(row.LLHHistory))
+	}
+	p := row.LLHHistory[0]
+	if p.GPSTOWSec != 5.0 || math.Abs(p.LatDeg-90) > 1e-9 || p.LonDeg != 0 || math.Abs(p.HeightM-100) > 1e-9 {
+		t.Fatalf("point %+v", p)
+	}
+}
+
 func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
 	s := NewStats(false)
 	// Type 1 TOW 5 s, type 9 DOP 1..4, type 12 sigma (E=3 N=4 → σ_H=5)

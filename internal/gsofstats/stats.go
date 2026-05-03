@@ -48,6 +48,8 @@ type Stats struct {
 	tangentHistory []gsof.TangentPlanePoint
 	// llhHistory holds recent type-0x02 lat/lon samples paired with lastGPSTOWSec at decode time.
 	llhHistory []gsof.LLHPoint
+	// llhMSLHistory holds recent type-0x46 (70) lat/lon/MSL height samples paired with lastGPSTOWSec (same point shape as type 2 for plotting).
+	llhMSLHistory []gsof.LLHPoint
 	// dopHistory holds recent type-0x09 DOP samples paired with lastGPSTOWSec.
 	dopHistory []gsof.DOPPoint
 	// sigmaHistory holds recent type-0x0C sigma samples paired with lastGPSTOWSec.
@@ -171,6 +173,16 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				})
 			}
 		}
+		if recType == 70 {
+			if lat, lon, h, ok := gsof.ParseLLHDeg(pld); ok {
+				s.appendLLHMSLPoint(gsof.LLHPoint{
+					GPSTOWSec: s.lastGPSTOWSec,
+					LatDeg:    lat,
+					LonDeg:    lon,
+					HeightM:   h,
+				})
+			}
+		}
 		if recType == 9 {
 			if pt, ok := gsof.ParseDOPPoint(pld); ok {
 				pt.GPSTOWSec = s.lastGPSTOWSec
@@ -211,6 +223,13 @@ func (s *Stats) appendLLHPoint(pt gsof.LLHPoint) {
 	s.llhHistory = append(s.llhHistory, pt)
 	if len(s.llhHistory) > historySamplesMax {
 		s.llhHistory = s.llhHistory[len(s.llhHistory)-historySamplesMax:]
+	}
+}
+
+func (s *Stats) appendLLHMSLPoint(pt gsof.LLHPoint) {
+	s.llhMSLHistory = append(s.llhMSLHistory, pt)
+	if len(s.llhMSLHistory) > historySamplesMax {
+		s.llhMSLHistory = s.llhMSLHistory[len(s.llhMSLHistory)-historySamplesMax:]
 	}
 }
 
@@ -260,7 +279,7 @@ type RecordRow struct {
 	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
 	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
 	TangentHistory []gsof.TangentPlanePoint `json:"tangent_history,omitempty"`
-	// LLHHistory is populated for GSOF type 2 (latitude / longitude) for dashboard graphing.
+	// LLHHistory is populated for GSOF type 2 (latitude / longitude / ellipsoidal height) or type 70 (lat/lon / MSL height) for dashboard graphing.
 	LLHHistory []gsof.LLHPoint `json:"llh_history,omitempty"`
 	// DOPHistory is populated for GSOF type 9 (DOP) for dashboard graphing.
 	DOPHistory []gsof.DOPPoint `json:"dop_history,omitempty"`
@@ -349,6 +368,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 2 && len(s.llhHistory) > 0 {
 			row.LLHHistory = append([]gsof.LLHPoint(nil), s.llhHistory...)
+		}
+		if subType == 70 && len(s.llhMSLHistory) > 0 {
+			row.LLHHistory = append([]gsof.LLHPoint(nil), s.llhMSLHistory...)
 		}
 		if subType == 9 && len(s.dopHistory) > 0 {
 			row.DOPHistory = append([]gsof.DOPPoint(nil), s.dopHistory...)
