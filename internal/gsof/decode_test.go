@@ -62,7 +62,7 @@ func fieldText(fields []Field) string {
 }
 
 func TestCatalogOverviewURL(t *testing.T) {
-	if Lookup(99).DocURL() != OverviewURL {
+	if Lookup(199).DocURL() != OverviewURL {
 		t.Fatal("unknown should link to overview")
 	}
 }
@@ -161,6 +161,51 @@ func TestCatalogDocURLs129(t *testing.T) {
 	const ant98 = "https://docs.google.com/document/d/1QDThFOoOE2KSvbEaMNZGwnPK16jEwmCe1Se7YgywvJo/edit?usp=sharing"
 	if Lookup(98).DocURL() != ant98 {
 		t.Fatalf("type 98 doc: %s", Lookup(98).DocURL())
+	}
+	const ext99 = "https://docs.google.com/document/d/1QB-CwxMv0bkDW2hsJG7RIZe8BEFrXeKdjXKhpUPUv6Y/edit?usp=sharing"
+	if Lookup(99).DocURL() != ext99 {
+		t.Fatalf("type 99 doc: %s", Lookup(99).DocURL())
+	}
+	const ext100 = "https://docs.google.com/document/d/1p6qFy3sbqg-xMDmUPvtGHQTtru7re8ArT47uEeD49zM/edit?usp=sharing"
+	if Lookup(100).DocURL() != ext100 {
+		t.Fatalf("type 100 doc: %s", Lookup(100).DocURL())
+	}
+	const ext101 = "https://docs.google.com/document/d/1JbEdxVyk0RgvOBiClKE4NRtFAgGhQozvNegjp0MiPMU/edit?usp=sharing"
+	if Lookup(101).DocURL() != ext101 {
+		t.Fatalf("type 101 doc: %s", Lookup(101).DocURL())
+	}
+	const ext102 = "https://docs.google.com/document/d/1su8Zbq5Tgf4CEixTyg58F4xDAcjiSaMsDssEO-H9otc/edit?usp=sharing"
+	if Lookup(102).DocURL() != ext102 {
+		t.Fatalf("type 102 doc: %s", Lookup(102).DocURL())
+	}
+}
+
+func TestDecode101SecondAntennaLocalZoneLayout(t *testing.T) {
+	payload := make([]byte, 40)
+	copy(payload[0:8], []byte("DATUM12\x00"))
+	copy(payload[8:16], []byte("ZONE1234"))
+	binary.BigEndian.PutUint64(payload[16:24], math.Float64bits(10.5))
+	binary.BigEndian.PutUint64(payload[24:32], math.Float64bits(-20.25))
+	binary.BigEndian.PutUint64(payload[32:40], math.Float64bits(100))
+	fields := Decode(101, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Local datum ID (8 chars)"], "DATUM12") {
+		t.Fatalf("datum: %q", got["Local datum ID (8 chars)"])
+	}
+	if !strings.Contains(got["Local zone ID (8 chars)"], "ZONE1234") {
+		t.Fatalf("zone: %q", got["Local zone ID (8 chars)"])
+	}
+	if !strings.Contains(got["Local zone east (m)"], "10.500") {
+		t.Fatalf("east: %q", got["Local zone east (m)"])
+	}
+	if !strings.Contains(got["Local zone north (m)"], "-20.250") {
+		t.Fatalf("north: %q", got["Local zone north (m)"])
+	}
+	if !strings.Contains(got["Local datum height (m)"], "100.000") {
+		t.Fatalf("height: %q", got["Local datum height (m)"])
 	}
 }
 
@@ -391,6 +436,9 @@ func TestDecode97SecondAntennaLayout(t *testing.T) {
 	}
 	if !strings.Contains(got["Height (m)"], "12.5") {
 		t.Fatalf("h: %q", got["Height (m)"])
+	}
+	if !strings.Contains(got["Sigma horizontal (m)"], "0.22361") {
+		t.Fatalf("sigma horizontal: %q", got["Sigma horizontal (m)"])
 	}
 }
 

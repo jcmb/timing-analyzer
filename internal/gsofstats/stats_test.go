@@ -3,6 +3,7 @@ package gsofstats
 import (
 	"encoding/binary"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -190,6 +191,85 @@ func TestStats_TangentHistoryFromType1And7(t *testing.T) {
 	p := row.TangentHistory[0]
 	if p.GPSTOWSec != 5.0 || p.DEm != 0.1 || p.DNm != -0.2 || p.DUm != 0.3 {
 		t.Fatalf("point %+v", p)
+	}
+}
+
+func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 97: week 1, TOW 0, pos 0, source 1, lat=0, lon=0, h=10, sigmas 3,4,5 → σ_H=5
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x61, 0x2C,
+		0x00, 0x01, // GPS week 1 (BE)
+		0x00, 0x00, 0x00, 0x00,
+		0x00, 0x01, // position type, source
+	}
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(10)...)
+	buf = append(buf, f32be(3)...)
+	buf = append(buf, f32be(4)...)
+	buf = append(buf, f32be(5)...)
+	if want := 12 + 2 + 44; len(buf) != want {
+		t.Fatalf("packet len %d want %d", len(buf), want)
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row97 *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 97 {
+			row97 = &d.Records[i]
+			break
+		}
+	}
+	if row97 == nil || len(row97.SecondAntenna97History) != 1 {
+		t.Fatalf("row97 history: %+v", row97)
+	}
+	p := row97.SecondAntenna97History[0]
+	if p.GPSTOWSec != 5 || p.HeightM != 10 || math.Abs(p.SigmaHorizontalM-5) > 1e-6 {
+		t.Fatalf("point %+v", p)
+	}
+}
+
+func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
+	s := NewStats(false)
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+	}
+	pl := make([]byte, 35)
+	binary.BigEndian.PutUint16(pl[0:2], 100)
+	pl[2] = 32
+	copy(pl[3:11], []byte("LOCAL123"))
+	binary.BigEndian.PutUint64(pl[11:19], math.Float64bits(math.Pi/2))
+	binary.BigEndian.PutUint64(pl[19:27], math.Float64bits(0))
+	binary.BigEndian.PutUint64(pl[27:35], math.Float64bits(42))
+	buf = append(buf, 0x63, byte(len(pl)))
+	buf = append(buf, pl...)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row100 *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 99 {
+			t.Fatalf("type 99 should not appear after expansion, got %+v", d.Records[i])
+		}
+		if d.Records[i].Type == 100 {
+			row100 = &d.Records[i]
+		}
+	}
+	if row100 == nil || row100.Count != 1 {
+		t.Fatalf("type 100 row: %+v", row100)
+	}
+	var joined strings.Builder
+	for _, f := range row100.Fields {
+		joined.WriteString(f.Label)
+		joined.WriteString(f.Value)
+	}
+	if !strings.Contains(joined.String(), "LOCAL123") {
+		t.Fatalf("fields %s", joined.String())
 	}
 }
 
