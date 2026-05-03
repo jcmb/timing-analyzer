@@ -8,4 +8,4 @@ package main
 // improves behavior across many GSOF / WGS-related messages (graphs, decoding surfaced
 // in the UI, or stats that feed multiple subtype cards). Bump major only for breaking
 // operator-visible behavior.
-const Version = "1.1.2"
+const Version = "1.1.4"
