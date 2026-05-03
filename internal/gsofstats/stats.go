@@ -66,6 +66,8 @@ type Stats struct {
 	attitudeHistory []gsof.AttitudePoint
 	// rxDiag28History holds recent type-0x1C (28) receiver diagnostics paired with lastGPSTOWSec.
 	rxDiag28History []gsof.ReceiverDiagnosticsPoint
+	// positionTimeHistory holds recent type-0x01 position-time samples (each carries its own GPS TOW).
+	positionTimeHistory []gsof.PositionTimePoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -156,6 +158,9 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 		if recType == 1 {
 			if sec, ok := gsof.ParsePositionTimeTOWSec(pld); ok {
 				s.lastGPSTOWSec = sec
+			}
+			if pt, ok := gsof.ParsePositionTimeGraphPoint(pld); ok {
+				s.appendPositionTimePoint(pt)
 			}
 		}
 		if recType == 7 {
@@ -309,6 +314,13 @@ func (s *Stats) appendReceiverDiagnostics28Point(pt gsof.ReceiverDiagnosticsPoin
 	}
 }
 
+func (s *Stats) appendPositionTimePoint(pt gsof.PositionTimePoint) {
+	s.positionTimeHistory = append(s.positionTimeHistory, pt)
+	if len(s.positionTimeHistory) > historySamplesMax {
+		s.positionTimeHistory = s.positionTimeHistory[len(s.positionTimeHistory)-historySamplesMax:]
+	}
+}
+
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
 	Type     int          `json:"type"`
@@ -354,6 +366,8 @@ type RecordRow struct {
 	AttitudeHistory []gsof.AttitudePoint `json:"attitude_history,omitempty"`
 	// ReceiverDiagnostics28History is populated for GSOF type 28 (receiver diagnostics) for dashboard graphing.
 	ReceiverDiagnostics28History []gsof.ReceiverDiagnosticsPoint `json:"receiver_diag_28_history,omitempty"`
+	// PositionTimeHistory is populated for GSOF type 1 (position time) for dashboard graphing.
+	PositionTimeHistory []gsof.PositionTimePoint `json:"position_time_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -475,6 +489,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 		}
 		if subType == 28 && len(s.rxDiag28History) > 0 {
 			row.ReceiverDiagnostics28History = append([]gsof.ReceiverDiagnosticsPoint(nil), s.rxDiag28History...)
+		}
+		if subType == 1 && len(s.positionTimeHistory) > 0 {
+			row.PositionTimeHistory = append([]gsof.PositionTimePoint(nil), s.positionTimeHistory...)
 		}
 		rows = append(rows, row)
 	}
