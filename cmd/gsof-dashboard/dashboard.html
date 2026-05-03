@@ -2671,7 +2671,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>GSOF · position sigma (type 12)</title>
+  <title>GSOF · position sigma</title>
   <style>
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -4000,29 +4000,34 @@
     }
 
     function syncSigmaGraphPlotWindow(data) {
-      const w = window.__gsofSigmaPlotWin;
-      if (!w || w.closed) {
-        return;
+      function post(winKey, row, fallbackTitle) {
+        const w = window[winKey];
+        if (!w || w.closed) {
+          return;
+        }
+        const payload = {
+          title: row ? String(row.name || fallbackTitle) : fallbackTitle,
+          points: row && row.sigma_history ? row.sigma_history : [],
+        };
+        try {
+          w.postMessage({ type: "gsof-sigma-update", payload: payload }, "*");
+        } catch (e) {}
       }
-      const row12 = (data.records || []).find((r) => r.type === 12);
-      const payload = {
-        title: row12 ? String(row12.name || "GSOF type 12") : "GSOF type 12",
-        points: row12 && row12.sigma_history ? row12.sigma_history : [],
-      };
-      try {
-        w.postMessage({ type: "gsof-sigma-update", payload: payload }, "*");
-      } catch (e) {}
+      const recs = data.records || [];
+      post("__gsofSigmaPlotWin", recs.find((r) => r.type === 12), "GSOF type 12");
+      post("__gsofSigma74PlotWin", recs.find((r) => r.type === 74), "GSOF type 74");
     }
 
     function openSigmaGraphWindow(r) {
       if (!r) {
         return;
       }
+      const winKey = r.type === 74 ? "__gsofSigma74PlotWin" : "__gsofSigmaPlotWin";
       const init = {
-        title: String(r.name || "GSOF type 12"),
+        title: String(r.name || (r.type === 74 ? "GSOF type 74" : "GSOF type 12")),
         points: Array.isArray(r.sigma_history) ? r.sigma_history : [],
       };
-      const existing = window.__gsofSigmaPlotWin;
+      const existing = window[winKey];
       if (existing && !existing.closed) {
         try {
           existing.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
@@ -4035,7 +4040,7 @@
       const url = URL.createObjectURL(blob);
       const w = window.open(url, "_blank", "width=980,height=760");
       if (w) {
-        window.__gsofSigmaPlotWin = w;
+        window[winKey] = w;
         try {
           w.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
         } catch (e) {}
@@ -4058,7 +4063,7 @@
       btn.className = "sigma-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open position RMS and σ_E / σ_N / σ_U / σ_H vs GPS TOW in a new window (seconds or time-of-day on X)";
+        "Open position RMS and σ_E / σ_N / σ_U / σ_H vs GPS TOW in a new window (seconds or time-of-day on X). Type 12 and type 74 each use their own plot window.";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -4452,6 +4457,7 @@
       const isLL70 = r.type === 70;
       const isDOP9 = r.type === 9;
       const isSig12 = r.type === 12;
+      const isSig74 = r.type === 74;
       const isAtt27 = r.type === 27;
       const isIono92 = r.type === 92;
       const isNMA91 = r.type === 91;
@@ -4472,6 +4478,7 @@
         !isLL70 &&
         !isDOP9 &&
         !isSig12 &&
+        !isSig74 &&
         !isAtt27 &&
         !isIono92 &&
         !isNMA91 &&
@@ -4887,13 +4894,14 @@
         ensureDOPGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
-      } else if (isSig12) {
+      } else if (isSig12 || isSig74) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
         art._dopRecord = null;
         art._attitudeRecord = null;
+        art._rx28Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -4919,6 +4927,10 @@
         const agb12 = art.querySelector(".attitude-graph-open-btn");
         if (agb12) {
           agb12.remove();
+        }
+        const rx28bSig = art.querySelector(".rx28-graph-open-btn");
+        if (rx28bSig) {
+          rx28bSig.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();

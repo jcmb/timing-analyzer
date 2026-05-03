@@ -54,6 +54,8 @@ type Stats struct {
 	dopHistory []gsof.DOPPoint
 	// sigmaHistory holds recent type-0x0C sigma samples paired with lastGPSTOWSec.
 	sigmaHistory []gsof.SigmaPoint
+	// sigma74History holds recent type-0x4A (74) second-antenna sigma samples paired with lastGPSTOWSec (same point shape as type 12).
+	sigma74History []gsof.SigmaPoint
 	// attitudeHistory holds recent type-0x1B (27) attitude samples (time from each record).
 	attitudeHistory []gsof.AttitudePoint
 	// rxDiag28History holds recent type-0x1C (28) receiver diagnostics paired with lastGPSTOWSec.
@@ -197,6 +199,12 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendSigmaPoint(pt)
 			}
 		}
+		if recType == 74 {
+			if pt, ok := gsof.ParseSigmaPoint(pld); ok {
+				pt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendSigma74Point(pt)
+			}
+		}
 		if recType == 27 {
 			if pt, ok := gsof.ParseAttitudePoint(pld); ok {
 				s.appendAttitudePoint(pt)
@@ -255,6 +263,13 @@ func (s *Stats) appendSigmaPoint(pt gsof.SigmaPoint) {
 	}
 }
 
+func (s *Stats) appendSigma74Point(pt gsof.SigmaPoint) {
+	s.sigma74History = append(s.sigma74History, pt)
+	if len(s.sigma74History) > historySamplesMax {
+		s.sigma74History = s.sigma74History[len(s.sigma74History)-historySamplesMax:]
+	}
+}
+
 func (s *Stats) appendAttitudePoint(pt gsof.AttitudePoint) {
 	s.attitudeHistory = append(s.attitudeHistory, pt)
 	if len(s.attitudeHistory) > historySamplesMax {
@@ -304,7 +319,7 @@ type RecordRow struct {
 	LLHHistory []gsof.LLHPoint `json:"llh_history,omitempty"`
 	// DOPHistory is populated for GSOF type 9 (DOP) for dashboard graphing.
 	DOPHistory []gsof.DOPPoint `json:"dop_history,omitempty"`
-	// SigmaHistory is populated for GSOF type 12 (position RMS / sigmas) for dashboard graphing.
+	// SigmaHistory is populated for GSOF type 12 or 74 (position RMS / sigmas) for dashboard graphing (same JSON shape).
 	SigmaHistory []gsof.SigmaPoint `json:"sigma_history,omitempty"`
 	// AttitudeHistory is populated for GSOF type 27 (attitude) for dashboard graphing.
 	AttitudeHistory []gsof.AttitudePoint `json:"attitude_history,omitempty"`
@@ -409,6 +424,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 12 && len(s.sigmaHistory) > 0 {
 			row.SigmaHistory = append([]gsof.SigmaPoint(nil), s.sigmaHistory...)
+		}
+		if subType == 74 && len(s.sigma74History) > 0 {
+			row.SigmaHistory = append([]gsof.SigmaPoint(nil), s.sigma74History...)
 		}
 		if subType == 27 && len(s.attitudeHistory) > 0 {
 			row.AttitudeHistory = append([]gsof.AttitudePoint(nil), s.attitudeHistory...)

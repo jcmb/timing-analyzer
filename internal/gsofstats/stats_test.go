@@ -313,6 +313,43 @@ func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
 	}
 }
 
+func TestStats_Sigma74HistoryPairedWithType1TOW(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 74 second-antenna sigma (same 38-byte layout as type 12: E=3 N=4 → σ_H=5).
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x4A, 0x26,
+	}
+	buf = append(buf, f32be(0.1)...)
+	buf = append(buf, f32be(3)...)
+	buf = append(buf, f32be(4)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0.05)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, f32be(0)...)
+	buf = append(buf, 0x00, 0x01)
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row74 *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 74 {
+			row74 = &d.Records[i]
+			break
+		}
+	}
+	if row74 == nil || len(row74.SigmaHistory) != 1 {
+		t.Fatalf("sigma74 row/history: %+v", row74)
+	}
+	p := row74.SigmaHistory[0]
+	if p.GPSTOWSec != 5 || math.Abs(p.SigmaH-5) > 1e-6 {
+		t.Fatalf("sigma74 point %+v", p)
+	}
+}
+
 func TestStats_AttitudeHistoryFromType1And27(t *testing.T) {
 	s := NewStats(false)
 	// Type 1 TOW 5 s, type 27 attitude (this record carries its own TOW: 7000 ms → 7 s).

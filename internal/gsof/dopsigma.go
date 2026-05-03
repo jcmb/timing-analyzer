@@ -35,7 +35,7 @@ type SigmaPoint struct {
 	SigmaH      float64 `json:"sigma_h_m"`
 }
 
-// ParseSigmaPoint parses GSOF type-12 payload (same layout as decodeSigma).
+// ParseSigmaPoint parses GSOF type-12 or type-74 payload (same binary layout as decodeSigma / second-antenna sigma).
 func ParseSigmaPoint(payload []byte) (SigmaPoint, bool) {
 	br := beReader{b: payload}
 	if !br.ok(9*4+2) {
