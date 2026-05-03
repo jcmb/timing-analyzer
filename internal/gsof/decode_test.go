@@ -185,6 +185,83 @@ func TestDecode91NMALayout(t *testing.T) {
 	}
 }
 
+func TestDecode57RadioLayout(t *testing.T) {
+	// Week 3, TOW 1500 ms, one radio: length 9 (8 body), 900 MHz, channel 2,
+	// signal −95 dBm, 4 bars, noise not available, 0 noise bars.
+	payload := []byte{
+		0x00, 0x03,
+		0x00, 0x00, 0x05, 0xDC,
+		0x01,
+		0x09,
+		0x02, 0x02,
+		0xFF, 0xA1,
+		0x04,
+		0x7F, 0xFF,
+		0x00,
+	}
+	fields := Decode(57, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["GPS week"] != "3" || got["GPS time of week"] != "1.500 s" {
+		t.Fatalf("time header: %#v", got)
+	}
+	if got["Radio count"] != "1" {
+		t.Fatalf("count: %#v", got)
+	}
+	if !strings.Contains(got["Radio 0 band"], "900 MHz") {
+		t.Fatalf("band: %q", got["Radio 0 band"])
+	}
+	if got["Radio 0 channel"] != "2" {
+		t.Fatalf("channel: %#v", got)
+	}
+	if !strings.Contains(got["Radio 0 signal strength"], "-95") {
+		t.Fatalf("signal: %q", got["Radio 0 signal strength"])
+	}
+	if got["Radio 0 signal bars"] != "4 / 5" {
+		t.Fatalf("sig bars: %#v", got)
+	}
+	if !strings.Contains(got["Radio 0 noise strength"], "not available") {
+		t.Fatalf("noise: %q", got["Radio 0 noise strength"])
+	}
+}
+
+func TestDecode57RadioExtension(t *testing.T) {
+	payload := []byte{
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x0A,
+		0x04, 0x01,
+		0x00, 0x00,
+		0x03,
+		0x00, 0x00,
+		0x02,
+		0xAB,
+	}
+	fields := Decode(57, payload)
+	var ext string
+	for _, f := range fields {
+		if f.Label == "Radio 0 extension (hex)" {
+			ext = f.Value
+			break
+		}
+	}
+	if ext != "AB" {
+		t.Fatalf("extension hex: %q", ext)
+	}
+}
+
+func TestDecode57Truncated(t *testing.T) {
+	fields := Decode(57, []byte{0x00, 0x01, 0x00, 0x00})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "≥7") {
+		t.Fatalf("expected short parse note: %#v", got)
+	}
+}
+
 func TestDecode91NMATruncated(t *testing.T) {
 	// Week 1, TOW 0, NMA count 2 — payload ends right after header (no block bytes).
 	fields := Decode(91, []byte{0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x02})

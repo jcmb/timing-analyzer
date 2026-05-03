@@ -52,6 +52,7 @@ var Catalog = map[int]Message{
 	49: {49, "INS navigation", "INS navigation information.", ""},
 	50: {50, "INS RMS", "INS RMS information.", ""},
 	51: {51, "Event marker", "Event marker information.", ""},
+	57: {57, "Radio info", "Radio band, channel, signal and noise strength per datalink.", "https://docs.google.com/document/d/1H5RPgu3INoZ0NA1Pd48GDKvsqNaCHJgsjhKVxZi4lG4/edit?usp=sharing"},
 	62: {62, "Code LLH", "Latitude, longitude, height from the code (pseudorange) solution.", "gsof-messages-code-position-llh.html"},
 	70: {70, "Lat, long, MSL height", "Latitude, longitude, MSL height.", "gsof-messages-llmsl.html"},
 	91: {91, "NMA info", "Navigation Message Authentication (NMA) information.", "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?tab=t.0"},

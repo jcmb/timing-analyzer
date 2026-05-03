@@ -98,6 +98,8 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeBasePositionQuality(payload)
 	case 48:
 		return decodeMultiPageAllSV(payload)
+	case 57:
+		return decodeRadio57(payload)
 	case 70:
 		return decodeLLMSL(payload)
 	case 91:
