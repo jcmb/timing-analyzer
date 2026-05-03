@@ -1,6 +1,9 @@
 package gsof
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // OverviewURL is the Trimble OEM GNSS help page summarizing supported GSOF messages.
 // Source: https://receiverhelp.trimble.com/oem-gnss/gsof-messages-overview.html
@@ -13,7 +16,9 @@ type Message struct {
 	ID       int
 	Title    string // Short title for UI
 	Function string // One-line function from overview table
-	DocPath  string // Relative to docBase; empty means overview only
+	// DocPath is normally a path under docBase (e.g. "gsof-messages-time.html").
+	// If it starts with http:// or https://, DocURL returns it unchanged (external documentation).
+	DocPath string
 }
 
 // Catalog is every message # listed on the GSOF messages overview (Trimble OEM GNSS).
@@ -49,6 +54,9 @@ var Catalog = map[int]Message{
 	51: {51, "Event marker", "Event marker information.", ""},
 	62: {62, "Code LLH", "Latitude, longitude, height from the code (pseudorange) solution.", "gsof-messages-code-position-llh.html"},
 	70: {70, "Lat, long, MSL height", "Latitude, longitude, MSL height.", "gsof-messages-llmsl.html"},
+	91: {91, "NMA info", "Navigation Message Authentication (NMA) information.", "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?usp=sharing"},
+	92: {92, "IonoGuard info", "IonoGuard ionospheric monitoring information.", "https://docs.google.com/document/d/1aIc38r95I3LCiIycIj_VmDws7jat2ed55j0Ve6U8tjM/edit?usp=sharing"},
+	96: {96, "IonoGuard summary", "IonoGuard ionospheric summary information.", "https://docs.google.com/document/d/1FEliQDO_vcX1KZqz8pjy0DcXZNEfA1hXipYMjvKWbF4/edit?usp=sharing"},
 }
 
 // Lookup returns catalog metadata, or a synthetic entry for unknown record types.
@@ -67,6 +75,9 @@ func Lookup(id int) Message {
 // DocURL returns the best help URL for this message (specific page or overview).
 func (m Message) DocURL() string {
 	if m.DocPath != "" {
+		if strings.HasPrefix(m.DocPath, "http://") || strings.HasPrefix(m.DocPath, "https://") {
+			return m.DocPath
+		}
 		return docBase + m.DocPath
 	}
 	return OverviewURL

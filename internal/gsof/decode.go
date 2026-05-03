@@ -100,6 +100,12 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeMultiPageAllSV(payload)
 	case 70:
 		return decodeLLMSL(payload)
+	case 91:
+		return decodeNMA91(payload)
+	case 92:
+		return decodeIonoGuard92(payload)
+	case 96:
+		return decodeIonoGuard96(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}

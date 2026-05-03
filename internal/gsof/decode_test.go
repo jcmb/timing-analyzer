@@ -138,6 +138,69 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(70).DocURL() != base+"gsof-messages-llmsl.html" {
 		t.Fatalf("type 70 doc: %s", Lookup(70).DocURL())
 	}
+	const nma91 = "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?usp=sharing"
+	if Lookup(91).DocURL() != nma91 {
+		t.Fatalf("type 91 doc: %s", Lookup(91).DocURL())
+	}
+	const iono92 = "https://docs.google.com/document/d/1aIc38r95I3LCiIycIj_VmDws7jat2ed55j0Ve6U8tjM/edit?usp=sharing"
+	if Lookup(92).DocURL() != iono92 {
+		t.Fatalf("type 92 doc: %s", Lookup(92).DocURL())
+	}
+	const iono96 = "https://docs.google.com/document/d/1FEliQDO_vcX1KZqz8pjy0DcXZNEfA1hXipYMjvKWbF4/edit?usp=sharing"
+	if Lookup(96).DocURL() != iono96 {
+		t.Fatalf("type 96 doc: %s", Lookup(96).DocURL())
+	}
+}
+
+func TestDecode91NMAStub(t *testing.T) {
+	fields := Decode(91, []byte{0x01, 0x02, 0x03})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Summary"], "Authentication") && !strings.Contains(got["Summary"], "NMA") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if got["Payload length (bytes)"] != "3" {
+		t.Fatalf("len: %#v", got)
+	}
+	if !strings.Contains(got["Payload (hex)"], "010203") {
+		t.Fatalf("hex: %q", got["Payload (hex)"])
+	}
+}
+
+func TestDecode92IonoGuardStub(t *testing.T) {
+	fields := Decode(92, []byte{0x01, 0x02, 0x03})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Summary"], "IonoGuard") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if got["Payload length (bytes)"] != "3" {
+		t.Fatalf("len: %#v", got)
+	}
+	if !strings.Contains(got["Payload (hex)"], "010203") {
+		t.Fatalf("hex: %q", got["Payload (hex)"])
+	}
+}
+
+func TestDecode96IonoGuardSummaryStub(t *testing.T) {
+	fields := Decode(96, []byte{0xAA, 0xBB})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Summary"], "IonoGuard") {
+		t.Fatalf("summary: %q", got["Summary"])
+	}
+	if got["Payload length (bytes)"] != "2" {
+		t.Fatalf("len: %#v", got)
+	}
+	if !strings.Contains(strings.ToUpper(got["Payload (hex)"]), "AABB") {
+		t.Fatalf("hex: %q", got["Payload (hex)"])
+	}
 }
 
 func TestDecode70LLMSL(t *testing.T) {
