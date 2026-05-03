@@ -6,51 +6,75 @@ import (
 	"strings"
 )
 
-// decodeRadio57 decodes GSOF type 0x39 (57) radio info.
-// Payload layout per OEM doc: u16 GPS week, u32 GPS time (ms), u8 number of radios, then per radio:
-// u8 radio data length (bytes in this group including this byte; typically 9), then (length−1) bytes:
-// u8 band, u8 channel, i16 signal (dBm), u8 signal bars, i16 noise (dBm), u8 noise bars, optional TBD/extension.
-func decodeRadio57(payload []byte) []Field {
-	out := []Field{kv("Summary", Lookup(57).Function)}
+// Radio57Row is one radio block from GSOF type 57 for table UIs (e.g. gsof-dashboard).
+// Channel is populated only when ShowExpectedReservedBits is true at parse time.
+type Radio57Row struct {
+	Band           string `json:"band"`
+	Channel        string `json:"channel,omitempty"`
+	SignalStrength string `json:"signal_strength"`
+	SignalBars     string `json:"signal_bars"`
+	NoiseStrength  string `json:"noise_strength"`
+	NoiseBars      string `json:"noise_bars"`
+	ExtensionHex   string `json:"extension_hex,omitempty"`
+	ShortBodyHex   string `json:"short_body_hex,omitempty"`
+}
+
+type radio57ParseResult struct {
+	headerOK  bool
+	week      uint16
+	towMs     uint32
+	nRadios   int
+	rows      []Radio57Row
+	parseNote string
+}
+
+func parseRadio57Result(payload []byte) radio57ParseResult {
+	var r radio57ParseResult
 	const header = 2 + 4 + 1
 	if len(payload) < header {
-		return shortFields(Lookup(57).Function, payload, header)
+		return r
 	}
+	includeChannel := ShowExpectedReservedBits
 	br := beReader{b: payload}
-	week := br.u16()
-	towMs := br.u32()
-	nRadios := int(br.u8())
-	out = append(out,
-		kv("GPS week", fmt.Sprintf("%d", week)),
-		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(towMs)/1000.0)),
-	)
-	if week == 0 && towMs == 0 {
-		out = append(out, kv("GPS time availability", "Unavailable (week and ms are zero per specification)"))
-	}
-	out = append(out, kv("Radio count", fmt.Sprintf("%d", nRadios)))
-	for i := 0; i < nRadios; i++ {
+	r.week = br.u16()
+	r.towMs = br.u32()
+	r.nRadios = int(br.u8())
+	r.headerOK = true
+	for i := 0; i < r.nRadios; i++ {
 		if !br.ok(1) {
-			out = append(out, kv("Parse", fmt.Sprintf("truncated before radio %d length byte", i)))
-			return out
+			r.parseNote = fmt.Sprintf("truncated before radio %d length byte", i)
+			break
 		}
 		radLen := int(br.u8())
 		if radLen < 1 {
-			out = append(out, kv("Parse", fmt.Sprintf("invalid radio data length %d for radio %d", radLen, i)))
-			return out
+			r.parseNote = fmt.Sprintf("invalid radio data length %d for radio %d", radLen, i)
+			break
 		}
 		bodyLen := radLen - 1
 		if !br.ok(bodyLen) {
-			out = append(out, kv("Parse", fmt.Sprintf("truncated in radio %d group (need %d bytes after length)", i, bodyLen)))
-			return out
+			r.parseNote = fmt.Sprintf("truncated in radio %d group (need %d bytes after length)", i, bodyLen)
+			break
 		}
-		pfx := fmt.Sprintf("Radio %d", i)
 		if bodyLen < 8 {
 			raw := make([]byte, bodyLen)
 			for j := 0; j < bodyLen; j++ {
 				raw[j] = br.u8()
 			}
-			out = append(out, kv(pfx+" raw (hex)", radio57Hex(raw)))
-			out = append(out, kv("Parse", fmt.Sprintf("radio %d body shorter than 8 bytes (%d); raw shown as hex", i, bodyLen)))
+			row := Radio57Row{
+				Band:           "—",
+				SignalStrength: "—",
+				SignalBars:     "—",
+				NoiseStrength:  "—",
+				NoiseBars:      "—",
+				ShortBodyHex:   radio57Hex(raw),
+			}
+			if includeChannel {
+				row.Channel = "—"
+			}
+			r.rows = append(r.rows, row)
+			if r.parseNote == "" {
+				r.parseNote = fmt.Sprintf("radio %d body shorter than 8 bytes (%d); see short_body_hex", i, bodyLen)
+			}
 			continue
 		}
 		band := br.u8()
@@ -67,18 +91,52 @@ func decodeRadio57(payload []byte) []Field {
 				ext[j] = br.u8()
 			}
 		}
-		out = append(out,
-			kv(pfx+" data length (bytes)", fmt.Sprintf("%d", radLen)),
-			kv(pfx+" band", radio57BandLabel(band)),
-			kv(pfx+" channel", fmt.Sprintf("%d", ch)),
-			kv(pfx+" signal strength", radio57StrengthLabel(band, sig)),
-			kv(pfx+" signal bars", fmt.Sprintf("%d / 5", sigBars)),
-			kv(pfx+" noise strength", radio57NoiseLabel(noise)),
-			kv(pfx+" noise bars", fmt.Sprintf("%d / 5", noiseBars)),
-		)
-		if len(ext) > 0 {
-			out = append(out, kv(pfx+" extension (hex)", radio57Hex(ext)))
+		row := Radio57Row{
+			Band:           radio57BandLabel(band),
+			SignalStrength: radio57StrengthLabel(band, sig),
+			SignalBars:     fmt.Sprintf("%d / 5", sigBars),
+			NoiseStrength:  radio57NoiseLabel(noise),
+			NoiseBars:      fmt.Sprintf("%d / 5", noiseBars),
 		}
+		if includeChannel {
+			row.Channel = fmt.Sprintf("%d", ch)
+		}
+		if len(ext) > 0 {
+			row.ExtensionHex = radio57Hex(ext)
+		}
+		r.rows = append(r.rows, row)
+	}
+	return r
+}
+
+// ParseRadio57Rows returns table rows for GSOF type 57; Channel is filled only when
+// ShowExpectedReservedBits is true (same as gsof-dashboard -show-expected-reserved-bits).
+func ParseRadio57Rows(payload []byte) ([]Radio57Row, string) {
+	pr := parseRadio57Result(payload)
+	return pr.rows, pr.parseNote
+}
+
+// decodeRadio57 decodes GSOF type 0x39 (57) radio info.
+// Per-radio details are exposed as JSON rows via ParseRadio57Rows for table UIs.
+func decodeRadio57(payload []byte) []Field {
+	out := []Field{kv("Summary", Lookup(57).Function)}
+	pr := parseRadio57Result(payload)
+	if !pr.headerOK {
+		return shortFields(Lookup(57).Function, payload, 2+4+1)
+	}
+	out = append(out,
+		kv("GPS week", fmt.Sprintf("%d", pr.week)),
+		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(pr.towMs)/1000.0)),
+	)
+	if pr.week == 0 && pr.towMs == 0 {
+		out = append(out, kv("GPS time availability", "Unavailable (week and ms are zero per specification)"))
+	}
+	out = append(out, kv("Radio count", fmt.Sprintf("%d", pr.nRadios)))
+	if pr.nRadios > 0 {
+		out = append(out, kv("Radios", "Table: radio_57 in JSON / dashboard below"))
+	}
+	if pr.parseNote != "" {
+		out = append(out, kv("Parse", pr.parseNote))
 	}
 	return out
 }

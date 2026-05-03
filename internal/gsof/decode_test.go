@@ -214,20 +214,39 @@ func TestDecode57RadioLayout(t *testing.T) {
 	if got["Radio count"] != "1" {
 		t.Fatalf("count: %#v", got)
 	}
-	if !strings.Contains(got["Radio 0 band"], "900 MHz") {
-		t.Fatalf("band: %q", got["Radio 0 band"])
+	if !strings.Contains(got["Radios"], "radio_57") {
+		t.Fatalf("radios pointer: %#v", got)
 	}
-	if got["Radio 0 channel"] != "2" {
-		t.Fatalf("channel: %#v", got)
+	old := ShowExpectedReservedBits
+	ShowExpectedReservedBits = false
+	rows, note := ParseRadio57Rows(payload)
+	ShowExpectedReservedBits = old
+	if note != "" {
+		t.Fatalf("parse note: %q", note)
 	}
-	if !strings.Contains(got["Radio 0 signal strength"], "-95") {
-		t.Fatalf("signal: %q", got["Radio 0 signal strength"])
+	if len(rows) != 1 {
+		t.Fatalf("rows: %#v", rows)
 	}
-	if got["Radio 0 signal bars"] != "4 / 5" {
-		t.Fatalf("sig bars: %#v", got)
+	if rows[0].Channel != "" {
+		t.Fatalf("channel should be omitted when ShowExpectedReservedBits is false: %#v", rows[0])
 	}
-	if !strings.Contains(got["Radio 0 noise strength"], "not available") {
-		t.Fatalf("noise: %q", got["Radio 0 noise strength"])
+	if !strings.Contains(rows[0].Band, "900 MHz") {
+		t.Fatalf("band: %q", rows[0].Band)
+	}
+	if !strings.Contains(rows[0].SignalStrength, "-95") {
+		t.Fatalf("signal: %q", rows[0].SignalStrength)
+	}
+	if rows[0].SignalBars != "4 / 5" {
+		t.Fatalf("sig bars: %#v", rows[0])
+	}
+	if !strings.Contains(rows[0].NoiseStrength, "not available") {
+		t.Fatalf("noise: %q", rows[0].NoiseStrength)
+	}
+	ShowExpectedReservedBits = true
+	rowsCh, _ := ParseRadio57Rows(payload)
+	ShowExpectedReservedBits = old
+	if len(rowsCh) != 1 || rowsCh[0].Channel != "2" {
+		t.Fatalf("channel with reserved bits: %#v", rowsCh)
 	}
 }
 
@@ -242,16 +261,12 @@ func TestDecode57RadioExtension(t *testing.T) {
 		0x02,
 		0xAB,
 	}
-	fields := Decode(57, payload)
-	var ext string
-	for _, f := range fields {
-		if f.Label == "Radio 0 extension (hex)" {
-			ext = f.Value
-			break
-		}
+	rows, note := ParseRadio57Rows(payload)
+	if note != "" {
+		t.Fatalf("parse: %q", note)
 	}
-	if ext != "AB" {
-		t.Fatalf("extension hex: %q", ext)
+	if len(rows) != 1 || rows[0].ExtensionHex != "AB" {
+		t.Fatalf("extension: %#v note=%q", rows, note)
 	}
 }
 

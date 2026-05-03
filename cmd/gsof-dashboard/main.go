@@ -41,7 +41,7 @@ func main() {
 	port := flag.Int("port", 2101, "Port to listen on or connect to")
 	webPort := flag.Int("web-port", 8080, "Local HTTP port for the dashboard")
 	verbose := flag.Int("verbose", 0, "DCOL / stream verbosity: 0=off, 1=checksum/page warnings, 2=each GSOF sub-record payload as spaced hex (types 0x01/len/payload…), 3=full parser debug")
-	showExpectedReserved := flag.Bool("show-expected-reserved-bits", false, "In GSOF flag decodes (types 1/8/10), include reserved bits that match the spec; default hides them")
+	showExpectedReserved := flag.Bool("show-expected-reserved-bits", false, "Include spec-cleared reserved flag rows (types 1/8/10) and the GSOF type 57 radio channel column; default hides them")
 	flag.Parse()
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved

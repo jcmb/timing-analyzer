@@ -440,6 +440,10 @@
       font-size: 0.82rem;
       color: var(--text);
     }
+    .radio57-rows-root {
+      margin-top: 0.75rem;
+    }
+
     .nma91-rows-root {
       margin: 0;
       padding: 0 0.85rem 0.75rem;
@@ -798,6 +802,43 @@
               String(row.failed_binary || ""),
             ].join("\t")
           );
+        }
+      }
+      if (r.type === 57 && r.radio_57 && r.radio_57.length) {
+        lines.push(["", ""].join("\t"));
+        const ch = !!r.show_expected_reserved_bits;
+        const hdr = ch
+          ? ["Band", "Channel", "Signal strength", "Signal bars", "Noise strength", "Noise bars"]
+          : ["Band", "Signal strength", "Signal bars", "Noise strength", "Noise bars"];
+        lines.push(hdr.join("\t"));
+        for (const row of r.radio_57) {
+          const cells = ch
+            ? [
+                String(row.band || ""),
+                String(row.channel != null ? row.channel : ""),
+                String(row.signal_strength || ""),
+                String(row.signal_bars || ""),
+                String(row.noise_strength || ""),
+                String(row.noise_bars || ""),
+              ]
+            : [
+                String(row.band || ""),
+                String(row.signal_strength || ""),
+                String(row.signal_bars || ""),
+                String(row.noise_strength || ""),
+                String(row.noise_bars || ""),
+              ];
+          lines.push(cells.join("\t"));
+          if (row.short_body_hex || row.extension_hex) {
+            const x = [];
+            if (row.short_body_hex) {
+              x.push("short_body_hex=" + String(row.short_body_hex));
+            }
+            if (row.extension_hex) {
+              x.push("extension_hex=" + String(row.extension_hex));
+            }
+            lines.push(["(extra)", x.join(" · ")].join("\t"));
+          }
         }
       }
       return lines.join("\n");
@@ -4165,6 +4206,10 @@
       nma91RowsRoot.className = "nma91-rows-root";
       nma91RowsRoot.hidden = true;
       body.appendChild(nma91RowsRoot);
+      const radio57RowsRoot = document.createElement("div");
+      radio57RowsRoot.className = "radio57-rows-root";
+      radio57RowsRoot.hidden = true;
+      body.appendChild(radio57RowsRoot);
       const ionoguard92Root = document.createElement("div");
       ionoguard92Root.className = "ionoguard92-sv-root";
       ionoguard92Root.hidden = true;
@@ -4226,6 +4271,85 @@
         tb.appendChild(tr);
       }
       tbl.appendChild(tb);
+      root.appendChild(tbl);
+    }
+
+    function renderRadio57Table(art, r) {
+      const root = art.querySelector(".radio57-rows-root");
+      if (!root) {
+        return;
+      }
+      root.replaceChildren();
+      const rows = r.radio_57 || [];
+      if (!rows.length) {
+        const p = document.createElement("p");
+        p.className = "sv-brief-empty";
+        p.textContent = "(no radio rows in this snapshot)";
+        root.appendChild(p);
+        return;
+      }
+      const showChannel = !!r.show_expected_reserved_bits;
+      const tbl = document.createElement("table");
+      tbl.className = "sv-brief-basic-table";
+      const thead = document.createElement("thead");
+      const trh = document.createElement("tr");
+      const headers = ["Band", "Signal strength", "Signal bars", "Noise strength", "Noise bars"];
+      if (showChannel) {
+        headers.splice(1, 0, "Channel");
+      }
+      headers.forEach((h) => {
+        const th = document.createElement("th");
+        th.textContent = h;
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
+      const tb = document.createElement("tbody");
+      for (const row of rows) {
+        const tr = document.createElement("tr");
+        const cells = [
+          String(row.band || ""),
+          String(row.signal_strength || ""),
+          String(row.signal_bars || ""),
+          String(row.noise_strength || ""),
+          String(row.noise_bars || ""),
+        ];
+        if (showChannel) {
+          cells.splice(1, 0, String(row.channel != null ? row.channel : ""));
+        }
+        for (const text of cells) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        }
+        if (row.extension_hex || row.short_body_hex) {
+          const td = document.createElement("td");
+          td.colSpan = headers.length;
+          td.className = "mono";
+          const bits = [];
+          if (row.short_body_hex) {
+            bits.push("short body: " + String(row.short_body_hex));
+          }
+          if (row.extension_hex) {
+            bits.push("extension: " + String(row.extension_hex));
+          }
+          td.textContent = bits.join(" · ");
+          const tr2 = document.createElement("tr");
+          tr2.appendChild(td);
+          tb.appendChild(tr);
+          tb.appendChild(tr2);
+        } else {
+          tb.appendChild(tr);
+        }
+      }
+      tbl.appendChild(tb);
+      const cap = document.createElement("p");
+      cap.className = "sv-brief-legend-note";
+      cap.style.marginBottom = "0.35rem";
+      cap.textContent = showChannel
+        ? "Type 57: channel column shown (-show-expected-reserved-bits)."
+        : "Type 57: channel column hidden; start gsof-dashboard with -show-expected-reserved-bits to show it.";
+      root.appendChild(cap);
       root.appendChild(tbl);
     }
 
@@ -4313,6 +4437,11 @@
         nma91Root.hidden = true;
         nma91Root.replaceChildren();
       }
+      const radio57Root = body.querySelector(".radio57-rows-root");
+      if (radio57Root) {
+        radio57Root.hidden = true;
+        radio57Root.replaceChildren();
+      }
       const isSV13 = r.type === 13;
       const isSV33 = r.type === 33;
       const isSV34 = r.type === 34;
@@ -4326,6 +4455,7 @@
       const isAtt27 = r.type === 27;
       const isIono92 = r.type === 92;
       const isNMA91 = r.type === 91;
+      const isRadio57 = r.type === 57;
       const isRx28 = r.type === 28;
 
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
@@ -4345,6 +4475,7 @@
         !isAtt27 &&
         !isIono92 &&
         !isNMA91 &&
+        !isRadio57 &&
         !isRx28
       ) {
         art._svBriefRecord = null;
@@ -4442,6 +4573,59 @@
         if (nma91Root) {
           renderNMA91RowsTable(art, r);
           nma91Root.hidden = false;
+        }
+      } else if (isRadio57) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        art._rx28Record = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1r = art.querySelector(".sv-brief-view-toggle");
+        if (t1r) {
+          t1r.remove();
+        }
+        const t2r = art.querySelector(".sv-detailed-view-toggle");
+        if (t2r) {
+          t2r.remove();
+        }
+        const tgr = art.querySelector(".tangent-graph-open-btn");
+        if (tgr) {
+          tgr.remove();
+        }
+        const lgr = art.querySelector(".llh-graph-open-btn");
+        if (lgr) {
+          lgr.remove();
+        }
+        const dgr = art.querySelector(".dop-graph-open-btn");
+        if (dgr) {
+          dgr.remove();
+        }
+        const sgr = art.querySelector(".sigma-graph-open-btn");
+        if (sgr) {
+          sgr.remove();
+        }
+        const agr = art.querySelector(".attitude-graph-open-btn");
+        if (agr) {
+          agr.remove();
+        }
+        const rx28gr = art.querySelector(".rx28-graph-open-btn");
+        if (rx28gr) {
+          rx28gr.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+        dl.hidden = false;
+        fillFields(dl, r.fields);
+        if (radio57Root) {
+          renderRadio57Table(art, r);
+          radio57Root.hidden = false;
         }
       } else if (isIono92) {
         art._svBriefRecord = null;

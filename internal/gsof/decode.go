@@ -242,9 +242,10 @@ func yesNo(bit byte) string {
 func bitOn(flags byte, n uint) byte { return (flags >> n) & 1 }
 
 // ShowExpectedReservedBits, when true, includes reserved flag-bit rows that
-// match the specification in type 1 / 8 / 10 flag decodes. The default (false)
-// omits those rows so only unexpected violations appear. Set from CLI (e.g.
-// gsof-dashboard) before calling Decode.
+// match the specification in type 1 / 8 / 10 flag decodes, and includes the
+// channel column for GSOF type 57 radio tables. The default (false) omits those
+// rows so only unexpected violations appear (and omits type 57 channel). Set
+// from CLI (e.g. gsof-dashboard) before calling Decode.
 var ShowExpectedReservedBits bool
 
 func appendReservedSetKV(out []Field, flags byte, n uint, label string) []Field {
