@@ -76,7 +76,12 @@
       text-decoration: none;
     }
     a.doc-top-link:hover { text-decoration: underline; }
-    main { padding: 1rem 1.25rem 2rem; max-width: 1200px; margin: 0 auto; }
+    main {
+      padding: 1rem 1.25rem 2rem;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
     #cards {
       display: flex;
       flex-direction: column;
@@ -440,6 +445,21 @@
       padding-top: 0.55rem;
       font-size: 0.82rem;
       color: var(--text);
+    }
+    /* Type 91: give Source and Signal more room than mask columns. */
+    .nma91-basic-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .nma91-basic-table th:nth-child(1),
+    .nma91-basic-table td:nth-child(1) {
+      min-width: 14rem;
+      width: 24%;
+    }
+    .nma91-basic-table th:nth-child(2),
+    .nma91-basic-table td:nth-child(2) {
+      min-width: 18rem;
+      width: 32%;
     }
     article.card.card--sv-brief .card-body > dl,
     article.card.card--sv-detailed .card-body > dl {
@@ -3863,7 +3883,7 @@
         return;
       }
       const tbl = document.createElement("table");
-      tbl.className = "sv-brief-basic-table";
+      tbl.className = "sv-brief-basic-table nma91-basic-table";
       const thead = document.createElement("thead");
       const trh = document.createElement("tr");
       ["Source", "Signal", "Mask size", "Authenticated mask", "Failed mask"].forEach((h) => {
