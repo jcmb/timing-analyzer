@@ -101,7 +101,9 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 		if cfg.Host != "" {
 			return runTCPOutboundClient(ctx, cfg, packetChan)
 		}
-		address := fmt.Sprintf(":%d", cfg.Port)
+		// Bind IPv4 explicitly so receivers sending to a public IPv4 reach this process; a bare
+		// ":port" often resolves to [::]:port only, which does not accept IPv4 UDP/TCP on many hosts.
+		address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
 		l, err := net.Listen("tcp", address)
 		if err != nil {
 			return fmt.Errorf("tcp listen %s: %w", address, err)
@@ -123,8 +125,10 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 		}
 
 	case "udp":
-		address := fmt.Sprintf(":%d", cfg.Port)
-		addr, err := net.ResolveUDPAddr("udp", address)
+		// Use IPv4 any (udp4) so hub / embedded UDP listen matches receivers aimed at x.x.x.x:port.
+		// ":port" commonly becomes [::]:port, which skips IPv4 datagrams on typical Linux/macOS setups.
+		address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
+		addr, err := net.ResolveUDPAddr("udp4", address)
 		if err != nil {
 			return fmt.Errorf("udp resolve %s: %w", address, err)
 		}
