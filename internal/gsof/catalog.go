@@ -55,6 +55,7 @@ var Catalog = map[int]Message{
 	57: {57, "Radio info", "Radio band, channel, signal and noise strength per datalink.", "https://docs.google.com/document/d/1H5RPgu3INoZ0NA1Pd48GDKvsqNaCHJgsjhKVxZi4lG4/edit?usp=sharing"},
 	62: {62, "Code LLH", "Latitude, longitude, height from the code (pseudorange) solution.", "gsof-messages-code-position-llh.html"},
 	70: {70, "Lat, long, MSL height", "Latitude, longitude, MSL height.", "gsof-messages-llmsl.html"},
+	74: {74, "Position sigma (second antenna)", "Position RMS and sigmas for the second antenna RTK solution.", "https://docs.google.com/document/d/1_h1aBHjor4eH5aJ_3_nj8_BeTUGK3EoZKxik_9R9HCY/edit?usp=sharing"},
 	91: {91, "NMA info", "Navigation Message Authentication (NMA) information.", "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?tab=t.0"},
 	92: {92, "IonoGuard info", "IonoGuard ionospheric monitoring information.", "https://docs.google.com/document/d/1aIc38r95I3LCiIycIj_VmDws7jat2ed55j0Ve6U8tjM/edit?usp=sharing"},
 	96: {96, "IonoGuard summary", "IonoGuard ionospheric summary information.", "https://docs.google.com/document/d/1FEliQDO_vcX1KZqz8pjy0DcXZNEfA1hXipYMjvKWbF4/edit?usp=sharing"},

@@ -102,6 +102,8 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeRadio57(payload)
 	case 70:
 		return decodeLLMSL(payload)
+	case 74:
+		return decodeSigma74(payload)
 	case 91:
 		return decodeNMA91(payload)
 	case 92:

@@ -138,6 +138,10 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(70).DocURL() != base+"gsof-messages-llmsl.html" {
 		t.Fatalf("type 70 doc: %s", Lookup(70).DocURL())
 	}
+	const sigma74 = "https://docs.google.com/document/d/1_h1aBHjor4eH5aJ_3_nj8_BeTUGK3EoZKxik_9R9HCY/edit?usp=sharing"
+	if Lookup(74).DocURL() != sigma74 {
+		t.Fatalf("type 74 doc: %s", Lookup(74).DocURL())
+	}
 	const nma91 = "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?tab=t.0"
 	if Lookup(91).DocURL() != nma91 {
 		t.Fatalf("type 91 doc: %s", Lookup(91).DocURL())
@@ -500,6 +504,68 @@ func TestDecode12SigmaUnitsAndOrientation(t *testing.T) {
 	// √(3² + 4²) = 5 m
 	if got["SIGMA_H (m)"] != "\u00a05.00000 m" {
 		t.Fatalf("SIGMA_H: %q", got["SIGMA_H (m)"])
+	}
+}
+
+func TestDecode74SigmaSecondAntennaLayout(t *testing.T) {
+	payload := make([]byte, 38)
+	binary.BigEndian.PutUint32(payload[0:], math.Float32bits(2))
+	binary.BigEndian.PutUint32(payload[4:], math.Float32bits(3))
+	binary.BigEndian.PutUint32(payload[8:], math.Float32bits(4))
+	binary.BigEndian.PutUint32(payload[12:], math.Float32bits(-1))
+	binary.BigEndian.PutUint32(payload[16:], math.Float32bits(5))
+	binary.BigEndian.PutUint32(payload[20:], math.Float32bits(6))
+	binary.BigEndian.PutUint32(payload[24:], math.Float32bits(7))
+	binary.BigEndian.PutUint32(payload[28:], math.Float32bits(45))
+	binary.BigEndian.PutUint32(payload[32:], math.Float32bits(1))
+	binary.BigEndian.PutUint16(payload[36:], 0)
+
+	fields := Decode(74, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["COVAR_EAST_NORTH (dimensionless)"] != "-1.00000" {
+		t.Fatalf("COVAR: %q", got["COVAR_EAST_NORTH (dimensionless)"])
+	}
+	if got["NUMBER_EPOCHS"] != "0" {
+		t.Fatalf("epochs: %q", got["NUMBER_EPOCHS"])
+	}
+	if _, ok := got["NUMBER_EPOCHS note"]; ok {
+		t.Fatal("expected no non-zero epochs note when epochs is 0")
+	}
+}
+
+func TestDecode74SigmaNonZeroEpochsNote(t *testing.T) {
+	payload := make([]byte, 38)
+	for i := range payload {
+		payload[i] = 0
+	}
+	binary.BigEndian.PutUint16(payload[36:], 99)
+
+	fields := Decode(74, payload)
+	var sawNote bool
+	for _, f := range fields {
+		if f.Label == "NUMBER_EPOCHS note" {
+			sawNote = true
+			if !strings.Contains(f.Value, "zero") {
+				t.Fatalf("note: %q", f.Value)
+			}
+		}
+	}
+	if !sawNote {
+		t.Fatal("expected NUMBER_EPOCHS note when epochs != 0")
+	}
+}
+
+func TestDecode74SigmaShortPayload(t *testing.T) {
+	fields := Decode(74, []byte{1, 2, 3})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "≥38") {
+		t.Fatalf("parse: %#v", got)
 	}
 }
 
