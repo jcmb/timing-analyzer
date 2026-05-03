@@ -389,13 +389,20 @@ func (h *hub) serveSessionBranch(w http.ResponseWriter, r *http.Request, embedde
 	path = strings.TrimSuffix(path, "/")
 	parts := strings.Split(path, "/")
 	if len(parts) == 0 || parts[0] == "" {
-		http.NotFound(w, r)
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	id := parts[0]
 	s, ok := h.get(id)
 	if !ok {
-		http.NotFound(w, r)
+		// Expired or unknown session: send users to the hub home (connection form) instead of a 404
+		// when they refresh the dashboard page. SSE must stay 404 — EventSource cannot follow an
+		// HTML redirect to / reliably.
+		if len(parts) == 2 && parts[1] == "events" {
+			http.NotFound(w, r)
+			return
+		}
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	if len(parts) == 2 && parts[1] == "events" {
