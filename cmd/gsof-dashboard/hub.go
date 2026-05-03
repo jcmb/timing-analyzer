@@ -333,7 +333,9 @@ func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, emb
 		return
 	}
 
-	resp, err := h.startSession(r.Context(), cfg, verbose, allowPrivate, advertiseHost)
+	// Session streams must outlive this HTTP request: r.Context() is cancelled as soon as the
+	// POST response is sent, which would immediately tear down TCP dials and UDP listeners.
+	resp, err := h.startSession(context.Background(), cfg, verbose, allowPrivate, advertiseHost)
 	if err != nil {
 		if errors.Is(err, errTooManySessions) {
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
