@@ -117,7 +117,7 @@ func ParseRadio57Rows(payload []byte) ([]Radio57Row, string) {
 }
 
 // decodeRadio57 decodes GSOF type 0x39 (57) radio info.
-// Per-radio details are exposed as JSON rows via ParseRadio57Rows for table UIs.
+// Per-radio details are exposed as JSON rows via ParseRadio57Rows (radio_57) for table UIs.
 func decodeRadio57(payload []byte) []Field {
 	out := []Field{kv("Summary", Lookup(57).Function)}
 	pr := parseRadio57Result(payload)
@@ -132,9 +132,6 @@ func decodeRadio57(payload []byte) []Field {
 		out = append(out, kv("GPS time availability", "Unavailable (week and ms are zero per specification)"))
 	}
 	out = append(out, kv("Radio count", fmt.Sprintf("%d", pr.nRadios)))
-	if pr.nRadios > 0 {
-		out = append(out, kv("Radios", "Table: radio_57 in JSON / dashboard below"))
-	}
 	if pr.parseNote != "" {
 		out = append(out, kv("Parse", pr.parseNote))
 	}

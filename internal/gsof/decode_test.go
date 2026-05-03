@@ -275,8 +275,8 @@ func TestDecode57RadioLayout(t *testing.T) {
 	if got["Radio count"] != "1" {
 		t.Fatalf("count: %#v", got)
 	}
-	if !strings.Contains(got["Radios"], "radio_57") {
-		t.Fatalf("radios pointer: %#v", got)
+	if _, ok := got["Radios"]; ok {
+		t.Fatalf("Radios field should not be present: %#v", got)
 	}
 	old := ShowExpectedReservedBits
 	ShowExpectedReservedBits = false
