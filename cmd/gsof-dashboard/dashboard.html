@@ -395,6 +395,7 @@
     button.tangent-graph-open-btn,
     button.llh-graph-open-btn,
     button.second-ant-97-graph-open-btn,
+    button.second-ant-102-graph-open-btn,
     button.dop-graph-open-btn,
     button.sigma-graph-open-btn,
     button.attitude-graph-open-btn,
@@ -413,6 +414,7 @@
     button.tangent-graph-open-btn:hover,
     button.llh-graph-open-btn:hover,
     button.second-ant-97-graph-open-btn:hover,
+    button.second-ant-102-graph-open-btn:hover,
     button.dop-graph-open-btn:hover,
     button.sigma-graph-open-btn:hover,
     button.attitude-graph-open-btn:hover,
@@ -4030,6 +4032,288 @@
 </html>`;
     }
 
+    function secondAntenna102GraphStandaloneDoc(initObj) {
+      const j = tangentGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · second antenna heading (type 102)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.72rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.55rem; max-width: 100%; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .gGeo::before { background: #5bd48a; }
+    .gDat::before { background: #3d8bfd; }
+    .gGrid::before { background: #e6a23a; }
+    .gMag::before { background: #f56c6c; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg" title="Left: geodetic / datum / grid headings (°). Right: magnetic variation (°).">
+      <span class="gGeo">Heading geodetic north (°)</span><span class="gDat">Heading datum north (°)</span><span class="gGrid">Heading grid north (°)</span>
+      <span class="gMag">Magnetic variation (°)</span>
+    </div>
+  </div>
+` +
+        "\n  " +
+        so +
+        ' type="application/json" id="gsof-ant102-payload">' +
+        j +
+        sc +
+        "\n  " +
+        so +
+        ">\n" +
+        `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-ant102-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var seriesVis = { geo: true, datum: true, grid: true, mag: true };
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") return;
+    leg.dataset.bound = "1";
+    function sync() {
+      leg.querySelector(".gGeo").classList.toggle("off", !seriesVis.geo);
+      leg.querySelector(".gDat").classList.toggle("off", !seriesVis.datum);
+      leg.querySelector(".gGrid").classList.toggle("off", !seriesVis.grid);
+      leg.querySelector(".gMag").classList.toggle("off", !seriesVis.mag);
+    }
+    function flip(k) { seriesVis[k] = !seriesVis[k]; sync(); draw(); }
+    leg.querySelector(".gGeo").addEventListener("click", function () { flip("geo"); });
+    leg.querySelector(".gDat").addEventListener("click", function () { flip("datum"); });
+    leg.querySelector(".gGrid").addEventListener("click", function () { flip("grid"); });
+    leg.querySelector(".gMag").addEventListener("click", function () { flip("mag"); });
+    sync();
+  }
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) return [lo, hi];
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) step *= 5;
+    else if (norm > 2) step *= 2;
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) out.push(x);
+    if (out.length < 2) out.push(lo, hi);
+    return out;
+  }
+  function formatTimeOfDayHM(decimalHours) {
+    var sec = Math.round(Number(decimalHours) * 3600);
+    sec = ((sec % 86400) + 86400) % 86400;
+    var h = (sec / 3600) | 0;
+    var m = ((sec % 3600) / 60) | 0;
+    var ms = m < 10 ? "0" + String(m) : String(m);
+    return String(h) + ":" + ms;
+  }
+  function yPadRange(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
+    if (hi === lo) { lo -= 1e-9; hi += 1e-9; }
+    var pad = (hi - lo) * 0.08;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padT = 32;
+    var padB = 78;
+    var xs = pts.map(function (p) {
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) sec += 86400;
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
+    });
+    var headVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.geo && isFinite(p.heading_geodetic_deg)) headVals.push(p.heading_geodetic_deg);
+      if (seriesVis.datum && isFinite(p.heading_datum_deg)) headVals.push(p.heading_datum_deg);
+      if (seriesVis.grid && isFinite(p.heading_grid_deg)) headVals.push(p.heading_grid_deg);
+    });
+    var magVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.mag && isFinite(p.magnetic_variation_deg)) magVals.push(p.magnetic_variation_deg);
+    });
+    var useHeadL = headVals.length > 0;
+    var useMagR = magVals.length > 0;
+    if (!useHeadL && !useMagR) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — use the legend.", 24, cssH / 2);
+      return;
+    }
+    var headR = useHeadL ? yPadRange(Math.min.apply(null, headVals), Math.max.apply(null, headVals)) : { lo: 0, hi: 1 };
+    var magRR = useMagR ? yPadRange(Math.min.apply(null, magVals), Math.max.apply(null, magVals)) : { lo: 0, hi: 1 };
+    var padL = useHeadL ? 72 : useMagR ? 56 : 72;
+    var padR = useMagR ? 72 : 52;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    function xSc(v) { return padL + ((v - x0) / (x1 - x0)) * gw; }
+    function yScHead(v) { return padT + (1 - (v - headR.lo) / (headR.hi - headR.lo)) * gh; }
+    function yScMag(v) { return padT + (1 - (v - magRR.lo) / (magRR.hi - magRR.lo)) * gh; }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + gh);
+    ctx.lineTo(padL + gw, padT + gh);
+    ctx.lineTo(padL + gw, padT);
+    ctx.closePath();
+    ctx.stroke();
+    var gridY = useHeadL ? niceTicks(headR.lo, headR.hi, 9) : niceTicks(magRR.lo, magRR.hi, 9);
+    var xt = niceTicks(x0, x1, 10);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT);
+      ctx.lineTo(px, padT + gh);
+      ctx.stroke();
+    });
+    gridY.forEach(function (tk) {
+      var py = useHeadL ? yScHead(tk) : yScMag(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab = xUnit === "h" ? formatTimeOfDayHM(tk) : Math.abs(tk) >= 10000 ? tk.toFixed(0) + " s" : Math.abs(tk) >= 1000 ? tk.toFixed(1) + " s" : tk.toFixed(2) + " s";
+      ctx.save();
+      ctx.translate(px, padT + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    if (useHeadL) {
+      niceTicks(headR.lo, headR.hi, 9).forEach(function (tk) {
+        ctx.fillText(tk.toFixed(4) + "°", padL - 6, yScHead(tk));
+      });
+    }
+    ctx.textAlign = "left";
+    if (useMagR) {
+      niceTicks(magRR.lo, magRR.hi, 9).forEach(function (tk) {
+        ctx.fillText(tk.toFixed(4) + "°", padL + gw + 6, yScMag(tk));
+      });
+    }
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(18, padT + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    var cap = "Left: headings (°)";
+    if (useMagR) cap += " · Right: magnetic variation (°)";
+    ctx.fillText(cap, 0, 0);
+    ctx.restore();
+    function stroke(getter, yFn, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      for (var i = 0; i < pts.length; i++) {
+        var yv = getter(pts[i]);
+        if (!isFinite(yv)) { mv = false; continue; }
+        var px = xSc(xs[i]);
+        var py = yFn(yv);
+        if (!mv) { ctx.moveTo(px, py); mv = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        var y0 = getter(pts[0]);
+        if (isFinite(y0)) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(xSc(xs[0]), yFn(y0), 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    if (seriesVis.geo && useHeadL) stroke(function (p) { return p.heading_geodetic_deg; }, yScHead, "#5bd48a");
+    if (seriesVis.datum && useHeadL) stroke(function (p) { return p.heading_datum_deg; }, yScHead, "#3d8bfd");
+    if (seriesVis.grid && useHeadL) stroke(function (p) { return p.heading_grid_deg; }, yScHead, "#e6a23a");
+    if (seriesVis.mag && useMagR) stroke(function (p) { return p.magnetic_variation_deg; }, yScMag, "#f56c6c");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-ant102-update" || !ev.data.payload) return;
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) document.getElementById("hdr").textContent = INIT.title;
+    draw();
+  });
+  window.addEventListener("resize", function () { requestAnimationFrame(draw); });
+  bindLegend();
+  draw();
+})();
+` +
+        sc +
+        `
+</body>
+</html>`;
+    }
+
     function syncTangentGraphPlotWindow(data) {
       const w = window.__gsofTangentPlotWin;
       if (!w || w.closed) {
@@ -4245,6 +4529,74 @@
         ev.preventDefault();
         ev.stopPropagation();
         openSecondAnt97GraphWindow(art._secondAnt97Record);
+      });
+    }
+
+    function syncSecondAnt102GraphPlotWindow(data) {
+      const w = window.__gsofAnt102PlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row102 = (data.records || []).find((r) => r.type === 102);
+      const payload = {
+        title: row102 ? String(row102.name || "GSOF type 102") : "GSOF type 102",
+        points: row102 && row102.second_antenna_102_history ? row102.second_antenna_102_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-ant102-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
+    function openSecondAnt102GraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 102"),
+        points: Array.isArray(r.second_antenna_102_history) ? r.second_antenna_102_history : [],
+      };
+      const existing = window.__gsofAnt102PlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-ant102-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
+      const html = secondAntenna102GraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "width=980,height=760");
+      if (w) {
+        window.__gsofAnt102PlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-ant102-update", payload: init }, "*");
+        } catch (e) {}
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureSecondAnt102GraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".second-ant-102-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "second-ant-102-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title =
+        "Open second-antenna headings (geodetic / datum / grid, °) and magnetic variation (°) vs GPS TOW. Magnetic variation uses the right axis.";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openSecondAnt102GraphWindow(art._heading102Record);
       });
     }
 
@@ -4840,6 +5192,7 @@
       const isLL2 = r.type === 2;
       const isLL70 = r.type === 70;
       const isLL97 = r.type === 97;
+      const isLL102 = r.type === 102;
       const isDOP9 = r.type === 9;
       const isSig12 = r.type === 12;
       const isSig74 = r.type === 74;
@@ -4862,6 +5215,7 @@
         !isLL2 &&
         !isLL70 &&
         !isLL97 &&
+        !isLL102 &&
         !isDOP9 &&
         !isSig12 &&
         !isSig74 &&
@@ -4876,6 +5230,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -4901,6 +5256,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -4930,6 +5289,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -4954,6 +5314,10 @@
         const a97rmn = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rmn) {
           a97rmn.remove();
+        }
+        const a102rmn = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rmn) {
+          a102rmn.remove();
         }
         const dgn = art.querySelector(".dop-graph-open-btn");
         if (dgn) {
@@ -4983,6 +5347,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5008,6 +5373,10 @@
         const a97rmr = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rmr) {
           a97rmr.remove();
+        }
+        const a102rmr = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rmr) {
+          a102rmr.remove();
         }
         const dgr = art.querySelector(".dop-graph-open-btn");
         if (dgr) {
@@ -5041,6 +5410,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5065,6 +5435,10 @@
         const a97rmi = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rmi) {
           a97rmi.remove();
+        }
+        const a102rmi = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rmi) {
+          a102rmi.remove();
         }
         const dgi = art.querySelector(".dop-graph-open-btn");
         if (dgi) {
@@ -5093,6 +5467,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5112,6 +5487,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -5141,6 +5520,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5160,6 +5540,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -5189,6 +5573,7 @@
         art._svDetailedRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5209,6 +5594,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -5270,6 +5659,7 @@
         svDetRoot.replaceChildren();
 
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._llhRecord = r;
         ensureLLHGraphOpenButton(art);
         dl.hidden = false;
@@ -5284,6 +5674,7 @@
         art._rx28Record = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t197 = art.querySelector(".sv-brief-view-toggle");
@@ -5318,6 +5709,10 @@
         if (rx97) {
           rx97.remove();
         }
+        const h102from97 = art.querySelector(".second-ant-102-graph-open-btn");
+        if (h102from97) {
+          h102from97.remove();
+        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -5327,12 +5722,71 @@
         ensureSecondAnt97GraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+      } else if (isLL102) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        art._rx28Record = null;
+        art._llhRecord = null;
+        art._secondAnt97Record = null;
+        art._heading102Record = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1102 = art.querySelector(".sv-brief-view-toggle");
+        if (t1102) {
+          t1102.remove();
+        }
+        const t2102 = art.querySelector(".sv-detailed-view-toggle");
+        if (t2102) {
+          t2102.remove();
+        }
+        const tg102 = art.querySelector(".tangent-graph-open-btn");
+        if (tg102) {
+          tg102.remove();
+        }
+        const lg102 = art.querySelector(".llh-graph-open-btn");
+        if (lg102) {
+          lg102.remove();
+        }
+        const a97from102 = art.querySelector(".second-ant-97-graph-open-btn");
+        if (a97from102) {
+          a97from102.remove();
+        }
+        const dg102 = art.querySelector(".dop-graph-open-btn");
+        if (dg102) {
+          dg102.remove();
+        }
+        const sg102 = art.querySelector(".sigma-graph-open-btn");
+        if (sg102) {
+          sg102.remove();
+        }
+        const ag102 = art.querySelector(".attitude-graph-open-btn");
+        if (ag102) {
+          ag102.remove();
+        }
+        const rx102 = art.querySelector(".rx28-graph-open-btn");
+        if (rx102) {
+          rx102.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._heading102Record = r;
+        ensureSecondAnt102GraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
       } else if (isDOP9) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
         delete art.dataset.svBriefView;
@@ -5357,6 +5811,10 @@
         if (a97dop) {
           a97dop.remove();
         }
+        const a102dop = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102dop) {
+          a102dop.remove();
+        }
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
@@ -5380,6 +5838,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._attitudeRecord = null;
         art._rx28Record = null;
@@ -5404,6 +5863,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -5432,6 +5895,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
@@ -5456,6 +5920,10 @@
         const a97rmrx = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rmrx) {
           a97rmrx.remove();
+        }
+        const a102rmrx = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rmrx) {
+          a102rmrx.remove();
         }
         const dgrx = art.querySelector(".dop-graph-open-btn");
         if (dgrx) {
@@ -5484,6 +5952,7 @@
         art._tangentRecord = null;
         art._llhRecord = null;
         art._secondAnt97Record = null;
+        art._heading102Record = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._rx28Record = null;
@@ -5508,6 +5977,10 @@
         const a97rm = art.querySelector(".second-ant-97-graph-open-btn");
         if (a97rm) {
           a97rm.remove();
+        }
+        const a102rm = art.querySelector(".second-ant-102-graph-open-btn");
+        if (a102rm) {
+          a102rm.remove();
         }
         const dg = art.querySelector(".dop-graph-open-btn");
         if (dg) {
@@ -5619,6 +6092,7 @@
       syncTangentGraphPlotWindow(data);
       syncLLHGraphPlotWindow(data);
       syncSecondAnt97GraphPlotWindow(data);
+      syncSecondAnt102GraphPlotWindow(data);
       syncDOPGraphPlotWindow(data);
       syncSigmaGraphPlotWindow(data);
       syncAttitudeGraphPlotWindow(data);

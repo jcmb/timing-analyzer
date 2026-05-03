@@ -233,6 +233,40 @@ func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
 	}
 }
 
+func TestStats_SecondAntenna102HistoryFromType1And102(t *testing.T) {
+	s := NewStats(false)
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x66, 0x21,
+		0x00,
+	}
+	buf = append(buf, f64be(10911.505)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(0)...)
+	buf = append(buf, f64be(427.30256)...)
+	if want := 12 + 2 + 33; len(buf) != want {
+		t.Fatalf("packet len %d want %d", len(buf), want)
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row102 *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 102 {
+			row102 = &d.Records[i]
+			break
+		}
+	}
+	if row102 == nil || len(row102.SecondAntenna102History) != 1 {
+		t.Fatalf("row102 history: %+v", row102)
+	}
+	p := row102.SecondAntenna102History[0]
+	if p.GPSTOWSec != 5 || math.Abs(p.HeadingGeodeticDeg-10911.505) > 1e-6 || math.Abs(p.MagneticVariationDeg-427.30256) > 1e-6 {
+		t.Fatalf("point %+v", p)
+	}
+}
+
 func TestStats_Type99InvalidExtendedEmits243FullWireHex(t *testing.T) {
 	s := NewStats(false)
 	buf := []byte{

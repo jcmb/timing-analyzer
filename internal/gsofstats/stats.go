@@ -54,6 +54,8 @@ type Stats struct {
 	llhMSLHistory []gsof.LLHPoint
 	// secondAnt97History holds recent type-0x61 (97) second-antenna position samples paired with lastGPSTOWSec.
 	secondAnt97History []gsof.SecondAntenna97Point
+	// secondAnt102History holds recent type-0x66 (102) second-antenna heading samples paired with lastGPSTOWSec.
+	secondAnt102History []gsof.Heading102Point
 	// dopHistory holds recent type-0x09 DOP samples paired with lastGPSTOWSec.
 	dopHistory []gsof.DOPPoint
 	// sigmaHistory holds recent type-0x0C sigma samples paired with lastGPSTOWSec.
@@ -192,6 +194,12 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendSecondAntenna97Point(pt)
 			}
 		}
+		if recType == 102 {
+			if pt, ok := gsof.ParseHeading102Point(pld); ok {
+				pt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendHeading102Point(pt)
+			}
+		}
 		if recType == 9 {
 			if pt, ok := gsof.ParseDOPPoint(pld); ok {
 				pt.GPSTOWSec = s.lastGPSTOWSec
@@ -256,6 +264,13 @@ func (s *Stats) appendSecondAntenna97Point(pt gsof.SecondAntenna97Point) {
 	s.secondAnt97History = append(s.secondAnt97History, pt)
 	if len(s.secondAnt97History) > historySamplesMax {
 		s.secondAnt97History = s.secondAnt97History[len(s.secondAnt97History)-historySamplesMax:]
+	}
+}
+
+func (s *Stats) appendHeading102Point(pt gsof.Heading102Point) {
+	s.secondAnt102History = append(s.secondAnt102History, pt)
+	if len(s.secondAnt102History) > historySamplesMax {
+		s.secondAnt102History = s.secondAnt102History[len(s.secondAnt102History)-historySamplesMax:]
 	}
 }
 
@@ -329,6 +344,8 @@ type RecordRow struct {
 	LLHHistory []gsof.LLHPoint `json:"llh_history,omitempty"`
 	// SecondAntenna97History is populated for GSOF type 97 (second-antenna position) for dashboard graphing.
 	SecondAntenna97History []gsof.SecondAntenna97Point `json:"second_antenna_97_history,omitempty"`
+	// SecondAntenna102History is populated for GSOF type 102 (second-antenna heading) for dashboard graphing.
+	SecondAntenna102History []gsof.Heading102Point `json:"second_antenna_102_history,omitempty"`
 	// DOPHistory is populated for GSOF type 9 (DOP) for dashboard graphing.
 	DOPHistory []gsof.DOPPoint `json:"dop_history,omitempty"`
 	// SigmaHistory is populated for GSOF type 12 or 74 (position RMS / sigmas) for dashboard graphing (same JSON shape).
@@ -438,6 +455,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 97 && len(s.secondAnt97History) > 0 {
 			row.SecondAntenna97History = append([]gsof.SecondAntenna97Point(nil), s.secondAnt97History...)
+		}
+		if subType == 102 && len(s.secondAnt102History) > 0 {
+			row.SecondAntenna102History = append([]gsof.Heading102Point(nil), s.secondAnt102History...)
 		}
 		if subType == 9 && len(s.dopHistory) > 0 {
 			row.DOPHistory = append([]gsof.DOPPoint(nil), s.dopHistory...)
