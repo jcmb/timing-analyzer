@@ -420,6 +420,11 @@
       font-size: 0.82rem;
       color: var(--text);
     }
+    .sv-48-page-meta {
+      margin: 0 0 0.5rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
     article.card.card--sv-brief .card-body > dl,
     article.card.card--sv-detailed .card-body > dl {
       display: none;
@@ -941,7 +946,9 @@
         top.textContent =
           kind === "sv34"
             ? "Type 34 (all SV detailed): same SV-system / PRN as type 33. Basic view: Elev / Azimuth / SNR first, then Flags 1 and 2 (8-bit binary) as the last two columns. Detailed view: same numeric columns first, then per-bit Flags 1 / Flags 2. Flags 2 bits 5–7 are reserved unless -show-expected-reserved-bits."
-            : "Type 33: SV system is the first column; rows are sorted by SV system then PRN. Flags 2 meanings depend on SV system (sections below). Bits 5–7 of Flags 2 are reserved: hidden in Basic/Detailed unless -show-expected-reserved-bits.";
+            : kind === "sv48"
+              ? "Type 48 (multi-page all SV detailed): same table as type 34 for satellites on this page only. Format version and page (n of m) appear above the table; merge pages for a full list. Flags 2 bits 5–7 are reserved unless -show-expected-reserved-bits."
+              : "Type 33: SV system is the first column; rows are sorted by SV system then PRN. Flags 2 meanings depend on SV system (sections below). Bits 5–7 of Flags 2 are reserved: hidden in Basic/Detailed unless -show-expected-reserved-bits.";
         box.appendChild(top);
       }
 
@@ -950,7 +957,7 @@
         addBitParagraph(i, t);
       });
 
-      if (kind === "sv33" || kind === "sv34") {
+      if (kind === "sv33" || kind === "sv34" || kind === "sv48") {
         function addF2Block(title, lines) {
           addBitsHeading(title);
           const lim = showF2Cols ? lines.length : Math.min(5, lines.length);
@@ -1026,7 +1033,7 @@
 
       const note = document.createElement("p");
       note.className = "sv-brief-legend-note";
-      if (kind === "sv33" || kind === "sv34") {
+      if (kind === "sv33" || kind === "sv34" || kind === "sv48") {
         note.textContent = showF2Cols
           ? "Detailed view shows Flags 2 bits 0–7 as columns. Match each row’s SV system to the Flags 2 section above. Basic view shows full 8-bit Flags 2."
           : "Detailed view shows Flags 2 bits 0–4 only (bits 5–7 reserved). Basic view masks bits 5–7 as ···. Enable -show-expected-reserved-bits for bits 5–7 in the table, legend, and basic Flags 2.";
@@ -1295,8 +1302,23 @@
       root.replaceChildren();
       const is33 = r.type === 33;
       const is34 = r.type === 34;
-      const rows = is34 ? r.all_sv_detailed || [] : is33 ? r.all_sv_brief || [] : r.sv_brief || [];
+      const is48 = r.type === 48;
+      const isAllDetailed = is34 || is48;
+      const rows = isAllDetailed ? r.all_sv_detailed || [] : is33 ? r.all_sv_brief || [] : r.sv_brief || [];
       const view = art.dataset.svBriefView || "basic";
+      if (is48 && r.all_sv_48_page) {
+        const meta = document.createElement("p");
+        meta.className = "sv-48-page-meta";
+        const h = r.all_sv_48_page;
+        meta.textContent =
+          "Format version " +
+          String(h.version) +
+          " — page " +
+          String(h.page_current) +
+          " of " +
+          String(h.page_total);
+        root.appendChild(meta);
+      }
       if (!rows.length) {
         const p = document.createElement("p");
         p.className = "sv-brief-empty";
@@ -1310,7 +1332,7 @@
         const thead = document.createElement("thead");
         const trh = document.createElement("tr");
         let heads;
-        if (is34) {
+        if (isAllDetailed) {
           heads = [
             "SV system",
             "PRN",
@@ -1340,7 +1362,7 @@
         const tb = document.createElement("tbody");
         for (const row of rows) {
           const tr = document.createElement("tr");
-          if (is33 || is34) {
+          if (is33 || isAllDetailed) {
             const tSys = document.createElement("td");
             tSys.textContent = String(row.system_name || "");
             tr.appendChild(tSys);
@@ -1348,7 +1370,7 @@
           const td0 = document.createElement("td");
           td0.textContent = String(row.prn);
           tr.appendChild(td0);
-          if (is34) {
+          if (isAllDetailed) {
             const addNum = (v) => {
               const td = document.createElement("td");
               td.className = "mono";
@@ -1399,8 +1421,8 @@
         root.appendChild(tbl);
         return;
       }
-      if (is33 || is34) {
-        const sv34Extras = is34
+      if (is33 || isAllDetailed) {
+        const sv34Extras = isAllDetailed
           ? [
               { label: "Elev (°)", value: (row) => String(row.elev) },
               { label: "Azimuth (°)", value: (row) => String(row.azimuth) },
@@ -1409,6 +1431,7 @@
               { label: "L5 SNR", value: (row) => Number(row.snr_l5).toFixed(2) },
             ]
           : null;
+        const legendKind = is48 ? "sv48" : is34 ? "sv34" : "sv33";
         satFlagsRenderDetailedGrid(
           root,
           rows,
@@ -1416,12 +1439,12 @@
           "system_name",
           false,
           sv34Extras,
-          is34,
+          isAllDetailed,
           "PRN",
           "prn",
           gsofShowExpectedReservedBits ? 8 : 5
         );
-        satFlagsAppendLegend(root, gsofShowExpectedReservedBits, is34 ? "sv34" : "sv33");
+        satFlagsAppendLegend(root, gsofShowExpectedReservedBits, legendKind);
       } else {
         satFlagsRenderDetailedGrid(
           root,
@@ -2518,7 +2541,7 @@
       return JSON.stringify(initObj).replace(/</g, "\\u003c");
     }
 
-    /** Full HTML document for type-27 attitude graph: pitch/yaw/roll (°), range (m), variances (rad²) vs GPS TOW. */
+    /** Full HTML document for type-27 attitude graph: pitch/yaw/roll (°), range (m), variances (rad² + range m²) vs GPS TOW. */
     function attitudeGraphStandaloneDoc(initObj) {
       const j = attitudeGraphJsonForScript(initObj);
       const so = "<scr" + "ipt";
@@ -2545,6 +2568,7 @@
     .vP::before { background: #a78bfa; }
     .vY::before { background: #22d3ee; }
     .vR::before { background: #fb7185; }
+    .vRg::before { background: #fbbf24; }
     .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
     .leg span:hover { color: #e8eef4; }
     .leg span.off { opacity: 0.38; text-decoration: line-through; }
@@ -2554,7 +2578,7 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Click to show/hide"><span class="aP">Pitch (°)</span><span class="aY">Yaw (°)</span><span class="aR">Roll (°)</span><span class="aG">Range (m)</span><span class="vP">Pitch var (rad²)</span><span class="vY">Yaw var (rad²)</span><span class="vR">Roll var (rad²)</span></div>
+    <div class="leg" title="Click to show/hide"><span class="aP">Pitch (°)</span><span class="aY">Yaw (°)</span><span class="aR">Roll (°)</span><span class="aG">Range (m)</span><span class="vP">Pitch var (rad²)</span><span class="vY">Yaw var (rad²)</span><span class="vR">Roll var (rad²)</span><span class="vRg">Range var (m²)</span></div>
   </div>
 ` +
         "\n  " +
@@ -2569,7 +2593,7 @@
   var INIT = JSON.parse(document.getElementById("gsof-attitude-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
-  var seriesVis = { P: true, Y: true, R: true, G: true, vP: true, vY: true, vR: true };
+  var seriesVis = { P: true, Y: false, R: false, G: false, vP: true, vY: false, vR: false, vRg: false };
   function bindLegend() {
     var leg = document.querySelector(".leg");
     if (!leg || leg.dataset.bound === "1") return;
@@ -2582,6 +2606,7 @@
       leg.querySelector(".vP").classList.toggle("off", !seriesVis.vP);
       leg.querySelector(".vY").classList.toggle("off", !seriesVis.vY);
       leg.querySelector(".vR").classList.toggle("off", !seriesVis.vR);
+      leg.querySelector(".vRg").classList.toggle("off", !seriesVis.vRg);
     }
     leg.querySelector(".aP").addEventListener("click", function () { seriesVis.P = !seriesVis.P; sync(); draw(); });
     leg.querySelector(".aY").addEventListener("click", function () { seriesVis.Y = !seriesVis.Y; sync(); draw(); });
@@ -2590,6 +2615,7 @@
     leg.querySelector(".vP").addEventListener("click", function () { seriesVis.vP = !seriesVis.vP; sync(); draw(); });
     leg.querySelector(".vY").addEventListener("click", function () { seriesVis.vY = !seriesVis.vY; sync(); draw(); });
     leg.querySelector(".vR").addEventListener("click", function () { seriesVis.vR = !seriesVis.vR; sync(); draw(); });
+    leg.querySelector(".vRg").addEventListener("click", function () { seriesVis.vRg = !seriesVis.vRg; sync(); draw(); });
     sync();
   }
   var canvas = document.getElementById("c");
@@ -2671,6 +2697,10 @@
       if (seriesVis.vP) vVals.push(p.pitch_var_rad2);
       if (seriesVis.vY) vVals.push(p.yaw_var_rad2);
       if (seriesVis.vR) vVals.push(p.roll_var_rad2);
+      if (seriesVis.vRg) {
+        var rg = p.range_var_m2;
+        if (rg !== undefined && rg !== null && isFinite(rg)) vVals.push(rg);
+      }
     });
     if (!degVals.length && !gVals.length && !vVals.length) {
       ctx.fillStyle = "#e8eef4";
@@ -2788,7 +2818,7 @@
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
     var cap = "Left: ° & range (m)";
-    if (vVals.length) cap += " · Right: variance (rad²)";
+    if (vVals.length) cap += " · Right: var (rad² angles; m² range)";
     ctx.fillText(cap, 0, 0);
     ctx.restore();
     function stroke(getter, yFn, col) {
@@ -2822,6 +2852,16 @@
     if (seriesVis.vP) stroke(function (p) { return p.pitch_var_rad2; }, yScV, "#a78bfa");
     if (seriesVis.vY) stroke(function (p) { return p.yaw_var_rad2; }, yScV, "#22d3ee");
     if (seriesVis.vR) stroke(function (p) { return p.roll_var_rad2; }, yScV, "#fb7185");
+    if (seriesVis.vRg) {
+      stroke(
+        function (p) {
+          var v = p.range_var_m2;
+          return v === undefined || v === null ? NaN : v;
+        },
+        yScV,
+        "#fbbf24"
+      );
+    }
   }
   btn.addEventListener("click", function () {
     xUnit = xUnit === "h" ? "s" : "h";
@@ -3607,7 +3647,7 @@
       btn.className = "attitude-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open pitch / yaw / roll (decimal °), range (m), and variances (rad²) vs GPS TOW in a new window";
+        "Open pitch / yaw / roll (decimal °), range (m), angle variances (rad²), range variance (m²) vs GPS TOW; legend toggles series (default: pitch + pitch var)";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -3724,6 +3764,7 @@
       const isSV13 = r.type === 13;
       const isSV33 = r.type === 33;
       const isSV34 = r.type === 34;
+      const isSV48 = r.type === 48;
       const isSV14 = r.type === 14;
       const isTan7 = r.type === 7;
       const isLL2 = r.type === 2;
@@ -3731,10 +3772,10 @@
       const isSig12 = r.type === 12;
       const isAtt27 = r.type === 27;
 
-      art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34);
+      art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
       art.classList.toggle("card--sv-detailed", isSV14);
 
-      if (!isSV13 && !isSV33 && !isSV34 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12 && !isAtt27) {
+      if (!isSV13 && !isSV33 && !isSV34 && !isSV48 && !isSV14 && !isTan7 && !isLL2 && !isDOP9 && !isSig12 && !isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
         art._tangentRecord = null;
@@ -3778,7 +3819,7 @@
         svDetRoot.replaceChildren();
         dl.hidden = false;
         fillFields(dl, r.fields);
-      } else if (isSV13 || isSV33 || isSV34) {
+      } else if (isSV13 || isSV33 || isSV34 || isSV48) {
         art._svDetailedRecord = null;
         art._tangentRecord = null;
         art._llhRecord = null;

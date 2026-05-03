@@ -108,6 +108,9 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(34).DocURL() != base+"gsof-messages-all-sv-detail.html" {
 		t.Fatalf("type 34 doc: %s", Lookup(34).DocURL())
 	}
+	if Lookup(48).DocURL() != base+"gsof-messages-multiple-page-detail-all-sv.html" {
+		t.Fatalf("type 48 doc: %s", Lookup(48).DocURL())
+	}
 	if Lookup(35).DocURL() != base+"gsof-messages-received-base-info.html" {
 		t.Fatalf("type 35 doc: %s", Lookup(35).DocURL())
 	}
@@ -305,6 +308,25 @@ func TestDecode33AllSVBriefFields(t *testing.T) {
 	}
 }
 
+func TestDecode48MultiPageHeader(t *testing.T) {
+	// Version 2, page-info 0x34 → current page 3, total pages 4 (Trimble nibbles), zero SV rows.
+	payload := []byte{2, 0x34, 0}
+	fields := Decode(48, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["Format version"] != "2" {
+		t.Fatalf("version: %#v", got)
+	}
+	if got["SV count (this page)"] != "0" {
+		t.Fatalf("count: %#v", got)
+	}
+	if !strings.Contains(got["Page"], "3 of 4") || !strings.Contains(got["Page"], "0x34") {
+		t.Fatalf("page field: %q", got["Page"])
+	}
+}
+
 func TestDecode28ReceiverDiagnostics(t *testing.T) {
 	m := Lookup(28)
 	if m.Title != "Receiver diagnostics" {
@@ -415,9 +437,9 @@ func TestDecode08VelocityFlags(t *testing.T) {
 func TestDecode08VelocityFieldOrderAndUnits(t *testing.T) {
 	payload := make([]byte, 17)
 	payload[0] = 0x00
-	binary.BigEndian.PutUint32(payload[1:], math.Float32bits(1))   // horizontal m/s
-	binary.BigEndian.PutUint32(payload[5:], math.Float32bits(90))  // heading
-	binary.BigEndian.PutUint32(payload[9:], math.Float32bits(2))   // vertical m/s
+	binary.BigEndian.PutUint32(payload[1:], math.Float32bits(1))    // horizontal m/s
+	binary.BigEndian.PutUint32(payload[5:], math.Float32bits(90))   // heading
+	binary.BigEndian.PutUint32(payload[9:], math.Float32bits(2))    // vertical m/s
 	binary.BigEndian.PutUint32(payload[13:], math.Float32bits(180)) // local heading
 	fields := Decode(8, payload)
 	var labels []string
@@ -706,12 +728,12 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	payload[4] = 0x03 // solution
 	payload[5] = 0x01 // RTK condition 1
 	binary.BigEndian.PutUint32(payload[6:], math.Float32bits(3))
-	payload[10] = 0x06 // net: bits 2,1 = 3
-	payload[11] = 0x01 // net2 bit 0
-	payload[12] = 0x01 // frame: ITRF current epoch
+	payload[10] = 0x06                                    // net: bits 2,1 = 3
+	payload[11] = 0x01                                    // net2 bit 0
+	payload[12] = 0x01                                    // frame: ITRF current epoch
 	binary.BigEndian.PutUint16(payload[13:], uint16(100)) // +1.00 year → ~2006-01-01
-	payload[15] = 7                                      // Australia
-	binary.BigEndian.PutUint32(payload[16:], 0xFFFFFFFF) // RTX minutes expired
+	payload[15] = 7                                       // Australia
+	binary.BigEndian.PutUint32(payload[16:], 0xFFFFFFFF)  // RTX minutes expired
 	payload[20] = 0x00
 	binary.BigEndian.PutUint32(payload[21:], math.Float32bits(0))
 	payload[25] = 9 // full fixed RTK

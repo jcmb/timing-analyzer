@@ -980,27 +980,18 @@ func decodeAllSVDetailed(payload []byte) []Field {
 	if len(payload) < 1 {
 		return shortFields(Lookup(34).Function, payload, 1)
 	}
-	br := beReader{b: payload}
-	n := int(br.u8())
-	var out []Field
-	out = append(out, kv("SV count", fmt.Sprintf("%d", n)))
-	for i := 0; i < n; i++ {
-		if !br.ok(10) {
-			out = append(out, kv("Parse", "truncated"))
-			break
-		}
-		sv := br.u8()
-		gnss := br.u8()
-		flags1 := br.u8()
-		flags2 := br.u8()
-		elev := int8(br.u8())
-		az := br.u16()
-		snrL1 := br.u8()
-		snrL2 := br.u8()
-		snrL5 := br.u8()
+	n, rows := ParseAllSVDetailedEntries(payload)
+	out := []Field{
+		kv("Summary", Lookup(34).Function),
+		kv("SV count", fmt.Sprintf("%d", n)),
+	}
+	if len(rows) < n {
+		out = append(out, kv("Parse", "truncated all-SV detailed list"))
+	}
+	for i, e := range rows {
 		out = append(out, kv(fmt.Sprintf("SV %d", i),
 			fmt.Sprintf("%s PRN=%d flags1=0x%02X flags2=0x%02X elev=%d° az=%d L1=%.2f L2=%.2f L5=%.2f",
-				gnssName(int(gnss)), sv, flags1, flags2, elev, az, float64(snrL1)/4, float64(snrL2)/4, float64(snrL5)/4)))
+				e.SystemName, e.PRN, e.Flags1, e.Flags2, e.Elev, e.Azimuth, e.SNRL1, e.SNRL2, e.SNRL5)))
 	}
 	return out
 }
@@ -1156,16 +1147,25 @@ func formatBasePositionQuality(code byte) string {
 
 func decodeMultiPageAllSV(payload []byte) []Field {
 	if len(payload) < 3 {
-		return shortFields(Lookup(48).Title, payload, 3)
+		return shortFields(Lookup(48).Function, payload, 3)
 	}
-	return []Field{
+	hdr, n, rows := ParseAllSVDetailedType48(payload)
+	pageByte := payload[1]
+	out := []Field{
 		kv("Summary", Lookup(48).Function),
-		kv("Multi-page version", fmt.Sprintf("%d", payload[0])),
-		kv("Multi-page info", fmt.Sprintf("%d", payload[1])),
-		kv("SVs in this page", fmt.Sprintf("%d", payload[2])),
-		kv("Note", "Full decode aggregates pages; see Trimble multi-page all-SV topic."),
-		kv("Payload (hex)", hexPreview(payload, 96)),
+		kv("Format version", fmt.Sprintf("%d", hdr.Version)),
+		kv("Page", fmt.Sprintf("%d of %d (page-info 0x%02X)", hdr.PageCurrent, hdr.PageTotal, pageByte)),
+		kv("SV count (this page)", fmt.Sprintf("%d", n)),
 	}
+	if len(rows) < n {
+		out = append(out, kv("Parse", "truncated all-SV detailed list"))
+	}
+	for i, e := range rows {
+		out = append(out, kv(fmt.Sprintf("SV %d", i),
+			fmt.Sprintf("%s PRN=%d flags1=0x%02X flags2=0x%02X elev=%d° az=%d L1=%.2f L2=%.2f L5=%.2f",
+				e.SystemName, e.PRN, e.Flags1, e.Flags2, e.Elev, e.Azimuth, e.SNRL1, e.SNRL2, e.SNRL5)))
+	}
+	return out
 }
 
 func shortFields(summary string, payload []byte, need int) []Field {

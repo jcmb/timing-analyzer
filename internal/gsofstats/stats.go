@@ -254,6 +254,8 @@ type RecordRow struct {
 	AllSVBrief []gsof.AllSVBriefEntry `json:"all_sv_brief,omitempty"`
 	// AllSVDetailed is populated for GSOF type 34 (all systems SV detailed) for structured dashboard views.
 	AllSVDetailed []gsof.AllSVDetailedEntry `json:"all_sv_detailed,omitempty"`
+	// AllSV48Page is set with type 48 (multi-page all-SV detailed); SV rows are in AllSVDetailed for this page only.
+	AllSV48Page *gsof.AllSV48Page `json:"all_sv_48_page,omitempty"`
 	// SVDetailed is populated for GSOF type 14 (detailed satellite info).
 	SVDetailed []gsof.SVDetailedEntry `json:"sv_detailed,omitempty"`
 	// TangentHistory is populated for GSOF type 7 (tangent plane delta) for dashboard graphing.
@@ -270,15 +272,15 @@ type RecordRow struct {
 
 // DashboardPayload is JSON for the web UI / SSE.
 type DashboardPayload struct {
-	ServerTime       string      `json:"server_time"`
-	LastSeq          int         `json:"last_seq"`
-	Mode             string      `json:"mode"`
-	Port             int         `json:"port"`
-	Records          []RecordRow `json:"records"`
-	Warnings         []string    `json:"warnings"`
-	StreamOK                   bool   `json:"stream_ok"`
-	DashboardVersion           string `json:"dashboard_version,omitempty"`
-	ShowExpectedReservedBits   bool   `json:"show_expected_reserved_bits"`
+	ServerTime               string      `json:"server_time"`
+	LastSeq                  int         `json:"last_seq"`
+	Mode                     string      `json:"mode"`
+	Port                     int         `json:"port"`
+	Records                  []RecordRow `json:"records"`
+	Warnings                 []string    `json:"warnings"`
+	StreamOK                 bool        `json:"stream_ok"`
+	DashboardVersion         string      `json:"dashboard_version,omitempty"`
+	ShowExpectedReservedBits bool        `json:"show_expected_reserved_bits"`
 }
 
 // BuildDashboard returns a snapshot for JSON/SSE (sorted by record type).
@@ -331,6 +333,14 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		if subType == 34 {
 			_, row.AllSVDetailed = gsof.ParseAllSVDetailedEntries(payload)
 		}
+		if subType == 48 {
+			hdr, _, rows := gsof.ParseAllSVDetailedType48(payload)
+			row.AllSVDetailed = rows
+			if len(payload) >= 3 {
+				h := hdr
+				row.AllSV48Page = &h
+			}
+		}
 		if subType == 14 {
 			_, row.SVDetailed = gsof.ParseSVDetailedEntries(payload)
 		}
@@ -358,15 +368,15 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 	}
 
 	return &DashboardPayload{
-		ServerTime:                 now.Format(time.RFC3339Nano),
-		LastSeq:                    int(s.lastSeq),
-		Mode:                       mode,
-		Port:                       port,
-		Records:                    rows,
-		Warnings:                   warn,
-		StreamOK:                   streamOK,
-		DashboardVersion:           dashboardVersion,
-		ShowExpectedReservedBits:   gsof.ShowExpectedReservedBits,
+		ServerTime:               now.Format(time.RFC3339Nano),
+		LastSeq:                  int(s.lastSeq),
+		Mode:                     mode,
+		Port:                     port,
+		Records:                  rows,
+		Warnings:                 warn,
+		StreamOK:                 streamOK,
+		DashboardVersion:         dashboardVersion,
+		ShowExpectedReservedBits: gsof.ShowExpectedReservedBits,
 	}
 }
 
