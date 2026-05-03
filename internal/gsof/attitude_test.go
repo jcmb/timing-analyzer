@@ -25,7 +25,7 @@ func TestParseAttitudePointLayout(t *testing.T) {
 	b = append(b, f32beSlice(0)...)
 	b = append(b, f32beSlice(0)...)
 	b = append(b, f32beSlice(0)...)
-	b = append(b, f32beSlice(0)...)
+	b = append(b, f32beSlice(2.25)...)
 	if len(b) != 70 {
 		t.Fatalf("payload len %d", len(b))
 	}
@@ -45,6 +45,9 @@ func TestParseAttitudePointLayout(t *testing.T) {
 	}
 	if pt.PitchVarRad2 != 0.25 || pt.YawVarRad2 != 0.5 || pt.RollVarRad2 != 0.75 {
 		t.Fatalf("var %+v", pt)
+	}
+	if math.Abs(pt.RangeVarM2-2.25) > 1e-6 {
+		t.Fatalf("range var m2 %+v", pt)
 	}
 }
 

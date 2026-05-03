@@ -40,3 +40,38 @@ func TestParseAllSVDetailedEntriesOrderAndSNR(t *testing.T) {
 		t.Fatalf("row0 metrics %+v", rows[0])
 	}
 }
+
+func TestParseAllSVDetailedType48HeaderAndSV(t *testing.T) {
+	// Version 3, page-info 0x12 → page 1 of 2, one SV (same 10-byte row as type 34).
+	payload := make([]byte, 3+10)
+	payload[0] = 3
+	payload[1] = 0x12
+	payload[2] = 1
+	off := 3
+	payload[off] = 6
+	payload[off+1] = 0
+	payload[off+2] = 0x0a
+	payload[off+3] = 0x0b
+	payload[off+4] = 10
+	binary.BigEndian.PutUint16(payload[off+5:], 270)
+	payload[off+7] = 4
+	payload[off+8] = 8
+	payload[off+9] = 12
+	hdr, n, rows := ParseAllSVDetailedType48(payload)
+	if hdr.Version != 3 || hdr.PageCurrent != 1 || hdr.PageTotal != 2 {
+		t.Fatalf("hdr %+v", hdr)
+	}
+	if n != 1 || len(rows) != 1 {
+		t.Fatalf("n=%d len=%d", n, len(rows))
+	}
+	e := rows[0]
+	if e.System != 0 || e.PRN != 6 || e.Elev != 10 || e.Azimuth != 270 {
+		t.Fatalf("entry %+v", e)
+	}
+	if e.Flags1 != 0x0a || e.Flags2 != 0x0b {
+		t.Fatalf("flags %+v", e)
+	}
+	if e.SNRL1 != 1 || e.SNRL2 != 2 || e.SNRL5 != 3 {
+		t.Fatalf("snr %+v", e)
+	}
+}

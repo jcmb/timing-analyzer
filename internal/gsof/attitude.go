@@ -14,6 +14,8 @@ type AttitudePoint struct {
 	PitchVarRad2 float64 `json:"pitch_var_rad2"`
 	YawVarRad2   float64 `json:"yaw_var_rad2"`
 	RollVarRad2  float64 `json:"roll_var_rad2"`
+	// RangeVarM2 is range variance on the wire (typically m²; same field as decode “Range variance”).
+	RangeVarM2 float64 `json:"range_var_m2"`
 }
 
 // ParseAttitudePoint parses GSOF type-27 payload (same layout as decodeAttitude).
@@ -40,7 +42,7 @@ func ParseAttitudePoint(payload []byte) (AttitudePoint, bool) {
 	_ = br.f32() // cov PY
 	_ = br.f32() // cov PR
 	_ = br.f32() // cov YR
-	_ = br.f32() // range variance
+	rngVar := float64(br.f32())
 	rad := 180.0 / math.Pi
 	return AttitudePoint{
 		GPSTOWSec:    tow,
@@ -51,5 +53,6 @@ func ParseAttitudePoint(payload []byte) (AttitudePoint, bool) {
 		PitchVarRad2: pv,
 		YawVarRad2:   yv,
 		RollVarRad2:  rv,
+		RangeVarM2:   rngVar,
 	}, true
 }

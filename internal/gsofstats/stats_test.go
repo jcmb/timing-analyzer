@@ -66,6 +66,41 @@ func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
 	}
 }
 
+func TestStats_Type48AllSVDetailedJSON(t *testing.T) {
+	s := NewStats(false)
+	// Type 1 TOW 5 s, type 48: version 1, page 1 of 2 (0x12), count=1, same SV row as type-34 test.
+	buf := []byte{
+		0x01, 0x0A,
+		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00,
+		0x30, 0x0D,
+		0x01, 0x12, 0x01,
+		0x06, 0x00, 0x0a, 0x0b, 10, 0x01, 0x0e, 4, 8, 12,
+	}
+	s.Update(1, buf)
+	d := s.BuildDashboard("udp", 2101, "")
+	var row *RecordRow
+	for i := range d.Records {
+		if d.Records[i].Type == 48 {
+			row = &d.Records[i]
+			break
+		}
+	}
+	if row == nil {
+		t.Fatal("no type 48 row")
+	}
+	if row.AllSV48Page == nil || row.AllSV48Page.Version != 1 || row.AllSV48Page.PageCurrent != 1 || row.AllSV48Page.PageTotal != 2 {
+		t.Fatalf("page meta %+v", row.AllSV48Page)
+	}
+	if len(row.AllSVDetailed) != 1 {
+		t.Fatalf("all_sv_detailed len %d", len(row.AllSVDetailed))
+	}
+	e := row.AllSVDetailed[0]
+	if e.System != 0 || e.PRN != 6 || e.Elev != 10 || e.Azimuth != 270 {
+		t.Fatalf("entry %+v", e)
+	}
+}
+
 func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 33: count=1, PRN=4, system=0 (GPS), flags1=0x0F, flags2=0x30

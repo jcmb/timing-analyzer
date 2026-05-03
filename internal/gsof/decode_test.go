@@ -762,6 +762,41 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	}
 }
 
+func TestDecodePositionType38FixTypes52and53(t *testing.T) {
+	for _, tc := range []struct {
+		code byte
+		want string
+	}{
+		{52, "52 — HAS"},
+		{53, "53 — INS HAS"},
+	} {
+		payload := make([]byte, 26)
+		payload[4] = 0x03
+		payload[5] = 0x01
+		binary.BigEndian.PutUint32(payload[6:], math.Float32bits(0))
+		payload[10] = 0x06
+		payload[11] = 0x01
+		payload[12] = 0x01
+		binary.BigEndian.PutUint16(payload[13:], 0)
+		payload[15] = 0
+		binary.BigEndian.PutUint32(payload[16:], 0)
+		payload[20] = 0
+		binary.BigEndian.PutUint32(payload[21:], math.Float32bits(0))
+		payload[25] = tc.code
+		fields := Decode(38, payload)
+		var fix string
+		for _, f := range fields {
+			if f.Label == "Position fix type" {
+				fix = f.Value
+				break
+			}
+		}
+		if fix != tc.want {
+			t.Fatalf("code %d: got %q want %q", tc.code, fix, tc.want)
+		}
+	}
+}
+
 func TestDecodePositionType38OEMReservedVerbose(t *testing.T) {
 	t.Cleanup(func() { ShowExpectedReservedBits = false })
 	ShowExpectedReservedBits = true

@@ -356,6 +356,8 @@ var positionType38FixNames = []string{
 	49: "INS xFill-RTX",
 	50: "CLAS",
 	51: "INS CLAS",
+	52: "HAS",
+	53: "INS HAS",
 }
 
 // NNR-Morvel56 plate indices (Trimble OEM type 38).
