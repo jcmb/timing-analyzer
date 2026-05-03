@@ -2487,8 +2487,8 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Click to show/hide. SVs used and Axis 1 (init counter) use the left Y axis. Flags 1 and 2 use numeric values on the right; tick labels are hex.">
-      <span class="sSV">SVs used</span><span class="sA1">Axis 1 (init)</span><span class="sF1">Flags 1</span><span class="sF2">Flags 2</span>
+    <div class="leg" title="Click to show/hide. SVs used on the left Y axis. Flags 1 and 2 and optional init counter on the right (init off by default; right ticks hex for flags-only, decimal when init is on).">
+      <span class="sSV">SVs used</span><span class="sA1">Init counter</span><span class="sF1">Flags 1</span><span class="sF2">Flags 2</span>
     </div>
   </div>
 ` +
@@ -2504,7 +2504,7 @@
   var INIT = JSON.parse(document.getElementById("gsof-pos1-payload").textContent);
   document.getElementById("hdr").textContent = INIT.title;
   var xUnit = "s";
-  var seriesVis = { sv: true, a1: true, f1: true, f2: true };
+  var seriesVis = { sv: true, a1: false, f1: true, f2: true };
   function bindLegend() {
     var leg = document.querySelector(".leg");
     if (!leg || leg.dataset.bound === "1") return;
@@ -2610,10 +2610,10 @@
     var leftVals = [];
     pts.forEach(function (p) {
       if (seriesVis.sv) leftVals.push(p.svs_used);
-      if (seriesVis.a1) leftVals.push(p.axis1);
     });
     var rightVals = [];
     pts.forEach(function (p) {
+      if (seriesVis.a1) rightVals.push(p.axis1);
       if (seriesVis.f1) rightVals.push(p.flags1);
       if (seriesVis.f2) rightVals.push(p.flags2);
     });
@@ -2685,8 +2685,10 @@
     }
     ctx.textAlign = "left";
     if (rightVals.length) {
+      var rightTicksHex = (seriesVis.f1 || seriesVis.f2) && !seriesVis.a1;
       niceTicks(yminR, ymaxR, 9).forEach(function (tk) {
-        ctx.fillText(hexU8(tk), padL + gw + 6, yScR(tk));
+        var labR = rightTicksHex ? hexU8(tk) : (Math.abs(tk - Math.round(tk)) < 1e-6 ? String(Math.round(tk)) : tk.toFixed(2));
+        ctx.fillText(labR, padL + gw + 6, yScR(tk));
       });
     }
     ctx.save();
@@ -2704,7 +2706,7 @@
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#8a9aa8";
       ctx.font = "11px system-ui, sans-serif";
-      ctx.fillText("SVs used · Axis 1 (init)", 0, 0);
+      ctx.fillText("SVs used", 0, 0);
       ctx.restore();
     }
     if (rightVals.length) {
@@ -2715,7 +2717,10 @@
       ctx.textBaseline = "middle";
       ctx.fillStyle = "#8a9aa8";
       ctx.font = "11px system-ui, sans-serif";
-      ctx.fillText("Flags 1 · Flags 2 (hex)", 0, 0);
+      var rParts = [];
+      if (seriesVis.a1) rParts.push("Init counter");
+      if (seriesVis.f1 || seriesVis.f2) rParts.push("Flags 1 · 2" + (seriesVis.a1 ? "" : " (hex)"));
+      ctx.fillText(rParts.length ? rParts.join(" · ") : "—", 0, 0);
       ctx.restore();
     }
     function stroke(getter, yFn, col) {
@@ -2742,7 +2747,7 @@
       }
     }
     if (seriesVis.sv && leftVals.length) stroke(function (p) { return p.svs_used; }, yScL, "#3d8bfd");
-    if (seriesVis.a1 && leftVals.length) stroke(function (p) { return p.axis1; }, yScL, "#5bd48a");
+    if (seriesVis.a1 && rightVals.length) stroke(function (p) { return p.axis1; }, yScR, "#5bd48a");
     if (seriesVis.f1 && rightVals.length) stroke(function (p) { return p.flags1; }, yScR, "#e6a23a");
     if (seriesVis.f2 && rightVals.length) stroke(function (p) { return p.flags2; }, yScR, "#f56c6c");
   }
@@ -5636,7 +5641,7 @@
       btn.className = "pos1-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open position time vs GPS TOW: SVs used and Axis 1 (init counter) on the left Y axis; Flags 1 and Flags 2 as numeric values on the right with hex tick labels.";
+        "Open position time vs GPS TOW: SVs used on the left; Flags 1/2 and optional init counter on the right (init off by default; hex ticks when flags-only).";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
