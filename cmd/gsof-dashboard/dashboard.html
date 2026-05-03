@@ -2455,7 +2455,7 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Click to show/hide. Link % and datalink latency use the left Y axis; diff SVs and common L1/L2 SV counts use the right.">
+    <div class="leg" title="Click to show/hide. Link % and datalink latency use the left Y axis; diff SVs and common L1/L2 SV counts use the right (axis label: SVs).">
       <span class="sLink">Link integrity (%)</span><span class="sD">Datalink latency (s)</span><span class="sS">Diff SVs in use</span>
       <span class="sL1">Common L1 SVs</span><span class="sL2">Common L2 SVs</span>
     </div>
@@ -2651,16 +2651,17 @@
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(xUnit === "h" ? "Time of day (H:MM:SS) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 76);
     ctx.restore();
-    ctx.save();
-    ctx.translate(16, padT + gh / 2);
-    ctx.rotate(-Math.PI / 2);
-    ctx.textAlign = "center";
-    ctx.fillStyle = "#8a9aa8";
-    ctx.font = "11px system-ui, sans-serif";
-    var cap = "Left: link % · latency (s)";
-    if (rightVals.length) cap += " · Right: diff SVs · L1/L2 SV count";
-    ctx.fillText(cap, 0, 0);
-    ctx.restore();
+    if (rightVals.length) {
+      ctx.save();
+      ctx.translate(padL + gw + 40, padT + gh / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "#8a9aa8";
+      ctx.font = "11px system-ui, sans-serif";
+      ctx.fillText("SVs", 0, 0);
+      ctx.restore();
+    }
     function stroke(getter, yFn, col) {
       ctx.strokeStyle = col;
       ctx.lineWidth = 2;
@@ -4809,7 +4810,7 @@
       btn.className = "rx28-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open receiver diagnostics vs GPS TOW: datalink latency, diff SVs, link % (left axis); common L1/L2 SV counts (right axis). Legend toggles series.";
+        "Open receiver diagnostics vs GPS TOW: datalink latency, diff SVs, link % (left axis); common L1/L2 SV counts (right axis, SVs). Legend toggles series.";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
