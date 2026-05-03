@@ -78,6 +78,7 @@ func main() {
 			dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host)
 			data, err := json.Marshal(dash)
 			if err != nil {
+				slog.Warn("dashboard: JSON marshal failed (SSE not updated)", "error", err)
 				continue
 			}
 			broker.Publish(data)

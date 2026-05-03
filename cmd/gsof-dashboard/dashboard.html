@@ -720,7 +720,6 @@
         hour: "numeric",
         minute: "2-digit",
         second: "2-digit",
-        fractionalSecondDigits: 0,
       });
     }
     tickLocalClock();
@@ -1815,8 +1814,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 1rem; }
@@ -1830,7 +1829,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click a series name to show or hide it"><span class="dE">dE (m)</span><span class="dN">dN (m)</span><span class="dU">dU (m)</span></div>
@@ -1896,6 +1895,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) {
       return [lo, hi];
@@ -2168,8 +2182,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 1rem; }
@@ -2184,7 +2198,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click a series name to show or hide it"><span class="sP">PDOP</span><span class="sH">HDOP</span><span class="sT">TDOP</span><span class="sV">VDOP</span></div>
@@ -2231,6 +2245,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;
@@ -2435,8 +2464,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.78rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.65rem; max-width: 100%; }
@@ -2452,7 +2481,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click to show/hide. Link % and datalink latency use the left Y axis; diff SVs and common L1/L2 SV counts use the right (axis label: SVs).">
@@ -2495,6 +2524,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;
@@ -2727,8 +2771,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.75rem; }
@@ -2744,7 +2788,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click a series name to show or hide it"><span class="gR">Pos RMS (m)</span><span class="gE">σ_E (m)</span><span class="gN">σ_N (m)</span><span class="gU">σ_U (m)</span><span class="gZ">σ_H (m)</span></div>
@@ -2794,6 +2838,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;
@@ -3005,8 +3064,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.78rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.65rem; }
@@ -3025,7 +3084,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click to show/hide"><span class="aP">Pitch (°)</span><span class="aY">Yaw (°)</span><span class="aR">Roll (°)</span><span class="aG">Range (m)</span><span class="vP">Pitch var (rad²)</span><span class="vY">Yaw var (rad²)</span><span class="vR">Roll var (rad²)</span><span class="vRg">Range var (m²)</span></div>
@@ -3071,6 +3130,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;
@@ -3357,8 +3431,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.8rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 1rem; }
@@ -3372,7 +3446,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Click a trace name to show or hide it"><span class="latY">Latitude (°)</span><span class="lonY">Longitude (°)</span><span class="hM">Height (m)</span></div>
@@ -3422,6 +3496,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) {
       return [lo, hi];
@@ -3787,8 +3876,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.72rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.55rem; max-width: 100%; }
@@ -3806,7 +3895,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Left: lat/lon (°) and height (m). Right: σ in m. Default: height + σ.">
@@ -3854,6 +3943,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;
@@ -4110,8 +4214,8 @@
     body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
     header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
     h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; line-height: 1.35; word-break: break-word; }
-    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
-    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    #xunit, #savePng { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover, #savePng:hover { color: #3d8bfd; border-color: #3d8bfd; }
     .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
     #c { display: block; width: 100%; min-height: 260px; height: calc(100vh - 9rem); background: #111618; border-radius: 6px; box-sizing: border-box; }
     .leg { font-size: 0.72rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.55rem; max-width: 100%; }
@@ -4126,7 +4230,7 @@
   </style>
 </head>
 <body>
-  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button><button type="button" id="savePng" title="Download plot as PNG">Save PNG</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
     <div class="leg" title="Geodetic, datum, and grid headings use the left Y axis (°). Magnetic variation uses the right Y axis (°). Toggle series below.">
@@ -4168,6 +4272,21 @@
   var canvas = document.getElementById("c");
   var ctx = canvas.getContext("2d");
   var btn = document.getElementById("xunit");
+  document.getElementById("savePng").addEventListener("click", function () {
+    function safeFilenameBase(s) {
+      var t = String(s || "gsof-graph").replace(/[\\/:*?"<>|]+/g, "_").replace(/[ \t\n\r]+/g, "_").trim();
+      if (t.length > 120) {
+        t = t.slice(0, 120);
+      }
+      return t || "gsof-graph";
+    }
+    var a = document.createElement("a");
+    a.href = canvas.toDataURL("image/png");
+    a.download = safeFilenameBase(INIT.title) + ".png";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  });
   function niceTicks(lo, hi, n) {
     if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
     var span = hi - lo;

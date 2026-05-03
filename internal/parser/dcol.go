@@ -57,6 +57,12 @@ type GSOFSession struct {
 	ExpectedNextPage uint8
 }
 
+// maxDCOLBufWithoutSTX bounds how much we retain while waiting for 0x02 (STX). TCP can split
+// a DCOL frame across reads so a chunk may contain no STX; discarding the buffer in that
+// case loses bytes and breaks reassembly. UDP datagrams usually begin at STX, so this
+// matters most for TCP streams.
+const maxDCOLBufWithoutSTX = 1 << 20 // 1 MiB
+
 type DCOLParser struct {
 	buf           []byte
 	gsofAssembler map[uint8]*GSOFSession // Map of transmission number to reassembly session
@@ -74,7 +80,12 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			}
 		}
 		if stxIdx == -1 {
-			p.buf = nil
+			if len(p.buf) > maxDCOLBufWithoutSTX {
+				if verbose >= 1 {
+					fmt.Printf("[WARN] DCOL buffer %d bytes without STX (0x02); discarding to resync.\n", len(p.buf))
+				}
+				p.buf = nil
+			}
 			return
 		}
 		if stxIdx > 0 {
@@ -211,6 +222,10 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			}
 		}
 
+		var gsofCopy []byte
+		if len(gsofBuffer) > 0 {
+			gsofCopy = append([]byte(nil), gsofBuffer...)
+		}
 		out <- core.PacketEvent{
 			BestTime:       bestTime,
 			GoTime:         goTime,
@@ -224,7 +239,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			Version:        version,
 			StationID:      stationID,
 			IsLastInBurst:  isLastInBurst,
-			GSOFBuffer:     gsofBuffer,
+			GSOFBuffer:     gsofCopy,
 			SequenceNumber: gsofSeq,
 		}
 		p.buf = p.buf[totalExpectedLen:]

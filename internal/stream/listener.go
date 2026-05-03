@@ -158,6 +158,9 @@ func handleTCPConn(conn net.Conn, cfg core.Config, packetChan chan<- core.Packet
 			slog.Info("TCP connection closed", "remote_addr", remoteIP)
 			return
 		}
+		if n == 0 {
+			continue
+		}
 
 		if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
 			dcolParser.Process(buf[:n], goTime, goTime, time.Time{}, remoteIP, cfg.Verbose, packetChan)
