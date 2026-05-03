@@ -65,6 +65,7 @@ var Catalog = map[int]Message{
 	100: {100, "Second antenna local datum position", "Second-antenna latitude, longitude, and height in a named local datum (inside type 99 on the wire).", "https://docs.google.com/document/d/1p6qFy3sbqg-xMDmUPvtGHQTtru7re8ArT47uEeD49zM/edit?usp=sharing"},
 	101: {101, "Second antenna local zone position", "Second-antenna east, north, and height in a named local datum and zone (inside type 99 on the wire).", "https://docs.google.com/document/d/1JbEdxVyk0RgvOBiClKE4NRtFAgGhQozvNegjp0MiPMU/edit?usp=sharing"},
 	102: {102, "Second antenna heading", "Geodetic, datum, and grid headings and magnetic variation for the second antenna (inside type 99 on the wire).", "https://docs.google.com/document/d/1su8Zbq5Tgf4CEixTyg58F4xDAcjiSaMsDssEO-H9otc/edit?usp=sharing"},
+	243: {243, "GSOF type 99 extended (unparsed)", "Bytes inside a type-99 record that are not a valid extended block (type ≥100, length, body) or trailing data after extended blocks.", ""},
 }
 
 // Lookup returns catalog metadata, or a synthetic entry for unknown record types.

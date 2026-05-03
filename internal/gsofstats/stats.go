@@ -13,7 +13,8 @@ import (
 
 const historySamplesMax = 2000
 
-// payloadBytesToSpacedHex renders raw GSOF record body bytes as uppercase hex pairs separated by spaces.
+// payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
+// (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
 func payloadBytesToSpacedHex(b []byte) string {
 	if len(b) == 0 {
 		return ""
@@ -41,7 +42,8 @@ type Stats struct {
 	hasSeenType01  bool
 	warnings       []string
 	suppressSingle bool
-	lastPayload    map[int][]byte // last GSOF record payload per type (for dashboard decode)
+	lastPayload    map[int][]byte // last GSOF record inner payload per type (for dashboard decode)
+	lastRecordWire map[int][]byte // last full on-wire sub-record bytes for PayloadHex ([type][len][inner]; 100+ from 99 uses full [99][len][pl])
 	// lastGPSTOWSec is the GPS time-of-week (s) from the latest type-0x01 in stream order.
 	lastGPSTOWSec float64
 	// tangentHistory holds recent type-0x07 samples paired with lastGPSTOWSec at decode time.
@@ -71,6 +73,7 @@ func NewStats(suppressSingle bool) *Stats {
 		displayHz:      make(map[int]string),
 		lastSeen:       make(map[int]time.Time),
 		lastPayload:    make(map[int][]byte),
+		lastRecordWire: make(map[int][]byte),
 		suppressSingle: suppressSingle,
 	}
 }
@@ -117,19 +120,15 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 	s.lastSeq = seq
 	s.lastSeqTime = now
 
-	buffer = gsof.FlattenGSOFBuffer(buffer)
+	expanded := gsof.ExpandGSOFStream(buffer)
 
 	isType01Present := false
 	var packetSubtypes []string
-	ptr := 0
 	seenInThisPacket := make(map[int]bool)
 
-	for ptr < len(buffer) {
-		if ptr+2 > len(buffer) {
-			break
-		}
-		recType := int(buffer[ptr])
-		recLen := int(buffer[ptr+1])
+	for _, e := range expanded {
+		recType := e.MsgType
+		pld := e.Inner
 
 		if recType == 0x01 {
 			isType01Present = true
@@ -149,12 +148,8 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 			seenInThisPacket[recType] = true
 		}
 
-		if ptr+2+recLen > len(buffer) {
-			break
-		}
-		pld := make([]byte, recLen)
-		copy(pld, buffer[ptr+2:ptr+2+recLen])
-		s.lastPayload[recType] = pld
+		s.lastPayload[recType] = append([]byte(nil), pld...)
+		s.lastRecordWire[recType] = append([]byte(nil), e.Wire...)
 
 		if recType == 1 {
 			if sec, ok := gsof.ParsePositionTimeTOWSec(pld); ok {
@@ -226,8 +221,6 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendReceiverDiagnostics28Point(pt)
 			}
 		}
-
-		ptr += 2 + recLen
 	}
 
 	if isType01Present {
@@ -388,6 +381,11 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		meta := gsof.Lookup(subType)
 		payload := s.lastPayload[subType]
 		fields := gsof.Decode(subType, payload)
+		wire := s.lastRecordWire[subType]
+		if len(wire) == 0 {
+			// Synthesize [type][len][payload] if wire was not recorded.
+			wire = append([]byte{byte(subType), byte(len(payload))}, payload...)
+		}
 		row := RecordRow{
 			Type:       subType,
 			TypeHex:    fmt.Sprintf("0x%02X", subType),
@@ -398,7 +396,7 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 			Count:      s.counts[subType],
 			Rate:       rateStr,
 			Stale:      stale,
-			PayloadHex: payloadBytesToSpacedHex(payload),
+			PayloadHex: payloadBytesToSpacedHex(wire),
 		}
 		if subType == 13 {
 			_, row.SVBrief = gsof.ParseSVBriefEntries(payload)

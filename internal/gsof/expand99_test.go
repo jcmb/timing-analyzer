@@ -64,6 +64,37 @@ func TestFlattenGSOFBufferTwoExtendedInOne99(t *testing.T) {
 	}
 }
 
+func TestExpandGSOFStreamWireRetainsType99Wrapper(t *testing.T) {
+	pl := make([]byte, 35)
+	binary.BigEndian.PutUint16(pl[0:2], 100)
+	pl[2] = 32
+	copy(pl[3:11], []byte("MYDATUM\x00"))
+	binary.BigEndian.PutUint64(pl[11:19], math.Float64bits(0))
+	binary.BigEndian.PutUint64(pl[19:27], math.Float64bits(0))
+	binary.BigEndian.PutUint64(pl[27:35], math.Float64bits(1))
+	outer := append([]byte{0x63, byte(len(pl))}, pl...)
+	ex := ExpandGSOFStream(outer)
+	if len(ex) != 1 || ex[0].MsgType != 100 {
+		t.Fatalf("got %+v", ex)
+	}
+	if len(ex[0].Wire) != len(outer) || ex[0].Wire[0] != 0x63 {
+		t.Fatalf("wire % x want prefix 63", ex[0].Wire)
+	}
+}
+
+func TestExpandGSOFStreamInvalidExtendedType243(t *testing.T) {
+	// u16 extended type 5 (<100): entire remainder wrapped as unknown.
+	pl := []byte{0x00, 0x05, 0x00}
+	outer := append([]byte{0x63, byte(len(pl))}, pl...)
+	ex := ExpandGSOFStream(outer)
+	if len(ex) != 1 || ex[0].MsgType != GSOFExtendedUnknown {
+		t.Fatalf("got %+v", ex)
+	}
+	if len(ex[0].Inner) != 3 || ex[0].Wire[0] != 0x63 {
+		t.Fatalf("inner % x wire % x", ex[0].Inner, ex[0].Wire)
+	}
+}
+
 func TestDecode102SecondAntennaHeading(t *testing.T) {
 	pl := make([]byte, 33)
 	pl[0] = 0x0A

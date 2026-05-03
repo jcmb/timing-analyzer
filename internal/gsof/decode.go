@@ -122,6 +122,8 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeSecondAntennaLocalZone101(payload)
 	case 102:
 		return decodeSecondAntennaHeading102(payload)
+	case 243:
+		return decodeGSOF99ExtendedUnknown(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}
