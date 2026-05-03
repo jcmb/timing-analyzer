@@ -2473,7 +2473,7 @@
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     yt.forEach(function (tk) {
-      ctx.fillText(tk.toFixed(5) + " m", padL - 6, ySc(tk));
+      ctx.fillText(tk.toFixed(3) + " m", padL - 6, ySc(tk));
     });
     ctx.save();
     ctx.translate(cssW - 14, padT + gh / 2);
@@ -2795,7 +2795,7 @@
     if (gVals.length) {
       var gx = degVals.length ? padL - 58 : padL - 6;
       niceTicks(gR.lo, gR.hi, 9).forEach(function (tk) {
-        ctx.fillText(tk.toFixed(2) + " m", gx, yScG(tk));
+        ctx.fillText(tk.toFixed(3) + " m", gx, yScG(tk));
       });
     }
     if (vVals.length) {
@@ -3173,7 +3173,7 @@
     if (seriesVis.hm && hVals.length) {
       niceTicks(yminH, ymaxH, 9).forEach(function (tk) {
         var py = yScH(tk);
-        ctx.fillText(tk.toFixed(2) + " m", hLabX, py);
+        ctx.fillText(tk.toFixed(3) + " m", hLabX, py);
       });
     }
     if (seriesVis.lat && latVals.length) {
