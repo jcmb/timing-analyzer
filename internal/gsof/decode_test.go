@@ -138,7 +138,7 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(70).DocURL() != base+"gsof-messages-llmsl.html" {
 		t.Fatalf("type 70 doc: %s", Lookup(70).DocURL())
 	}
-	const nma91 = "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?usp=sharing"
+	const nma91 = "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?tab=t.0"
 	if Lookup(91).DocURL() != nma91 {
 		t.Fatalf("type 91 doc: %s", Lookup(91).DocURL())
 	}
@@ -152,8 +152,17 @@ func TestCatalogDocURLs129(t *testing.T) {
 	}
 }
 
-func TestDecode91NMAStub(t *testing.T) {
-	fields := Decode(91, []byte{0x01, 0x02, 0x03})
+func TestDecode91NMALayout(t *testing.T) {
+	// Week 7, TOW 2000 ms, 1 NMA: OSNMA, GPS LNAV, N=1, auth=0x03, fail=0x01
+	payload := []byte{
+		0x00, 0x00, 0x00, 0x07,
+		0x00, 0x00, 0x07, 0xd0,
+		0x01,
+		0x00, 0x00, 0x01,
+		0x03,
+		0x01,
+	}
+	fields := Decode(91, payload)
 	got := make(map[string]string)
 	for _, f := range fields {
 		got[f.Label] = f.Value
@@ -161,11 +170,28 @@ func TestDecode91NMAStub(t *testing.T) {
 	if !strings.Contains(got["Summary"], "Authentication") && !strings.Contains(got["Summary"], "NMA") {
 		t.Fatalf("summary: %q", got["Summary"])
 	}
-	if got["Payload length (bytes)"] != "3" {
-		t.Fatalf("len: %#v", got)
+	if got["GPS week"] != "7" || got["GPS time of week"] != "2.000 s" || got["NMA count"] != "1" {
+		t.Fatalf("header: %#v", got)
 	}
-	if !strings.Contains(got["Payload (hex)"], "010203") {
-		t.Fatalf("hex: %q", got["Payload (hex)"])
+	if got["NMA 0 source"] != "0 — OSNMA" {
+		t.Fatalf("source: %q", got["NMA 0 source"])
+	}
+	if !strings.Contains(got["NMA 0 authenticated mask (hex)"], "03") {
+		t.Fatalf("auth mask: %q", got["NMA 0 authenticated mask (hex)"])
+	}
+	if !strings.Contains(got["NMA 0 failed mask (hex)"], "01") {
+		t.Fatalf("fail mask: %q", got["NMA 0 failed mask (hex)"])
+	}
+}
+
+func TestDecode91NMATruncated(t *testing.T) {
+	fields := Decode(91, []byte{0, 0, 0, 1, 0, 0, 0, 0, 2, 0})
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "truncated") {
+		t.Fatalf("expected parse note: %#v", got)
 	}
 }
 
