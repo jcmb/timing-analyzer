@@ -3,16 +3,16 @@ package gsof
 import "fmt"
 
 // decodeIonoGuard92 decodes GSOF type 0x5C (92) IonoGuard info.
-// Layout per Trimble OEM spec (linked from catalog): u32 GPS week, u32 GPS TOW (ms), u8 source,
-// u8 geofence status, u8 station activity, u8 SV count, then count × (u8 GNSS system, u8 PRN, u8 SV metric).
+// Layout: u16 GPS week, u32 GPS TOW (ms), u8 source, u8 geofence status, u8 station activity,
+// u8 SV count, then count × (u8 GNSS system, u8 PRN, u8 SV metric).
 func decodeIonoGuard92(payload []byte) []Field {
 	out := []Field{kv("Summary", Lookup(92).Function)}
-	const need = 4 + 4 + 4
+	const need = 2 + 4 + 4
 	if len(payload) < need {
 		return shortFields(Lookup(92).Function, payload, need)
 	}
 	br := beReader{b: payload}
-	week := br.u32()
+	week := br.u16()
 	towMs := br.u32()
 	src := int(br.u8())
 	geo := int(br.u8())
