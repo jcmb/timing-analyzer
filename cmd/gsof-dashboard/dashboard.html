@@ -2024,17 +2024,16 @@
       ctx.fillText(tk.toFixed(3) + " m", padL - 8, py);
     });
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(
       xUnit === "h"
         ? "Time of day (H:MM) from GPS TOW s mod 24 h"
         : "GPS time of week (s)",
-      0,
-      0
+      padL + gw / 2,
+      padT + gh + 58
     );
     ctx.restore();
     ctx.save();
@@ -2318,12 +2317,11 @@
       ctx.fillText(tk.toFixed(2), padL - 8, ySc(tk));
     });
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
@@ -2411,7 +2409,7 @@
   <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
   <div class="wrap">
     <canvas id="c" width="900" height="420"></canvas>
-    <div class="leg" title="Click to show/hide. L1/L2 use the right Y axis; other series use the left.">
+    <div class="leg" title="Click to show/hide. Link % and datalink latency use the left Y axis; diff SVs and common L1/L2 SV counts use the right.">
       <span class="sLink">Link integrity (%)</span><span class="sD">Datalink latency (s)</span><span class="sS">Diff SVs in use</span>
       <span class="sL1">Common L1 SVs</span><span class="sL2">Common L2 SVs</span>
     </div>
@@ -2518,10 +2516,10 @@
     pts.forEach(function (p) {
       if (seriesVis.link) leftVals.push(p.link_integrity_pct);
       if (seriesVis.d) leftVals.push(p.datalink_latency_s);
-      if (seriesVis.s) leftVals.push(p.diff_svs_in_use);
     });
     var rightVals = [];
     pts.forEach(function (p) {
+      if (seriesVis.s) rightVals.push(p.diff_svs_in_use);
       if (seriesVis.l1) rightVals.push(p.common_l1_svs);
       if (seriesVis.l2) rightVals.push(p.common_l2_svs);
     });
@@ -2592,16 +2590,16 @@
     ctx.textAlign = "left";
     if (rightVals.length) {
       niceTicks(yminR, ymaxR, 9).forEach(function (tk) {
-        ctx.fillText(String(Math.round(tk)), padL + gw + 6, yScR(tk));
+        var labR = Math.abs(tk - Math.round(tk)) < 1e-6 ? String(Math.round(tk)) : tk.toFixed(2);
+        ctx.fillText(labR, padL + gw + 6, yScR(tk));
       });
     }
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(16, padT + gh / 2);
@@ -2609,8 +2607,8 @@
     ctx.textAlign = "center";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    var cap = "Left: link % · latency (s) · diff SVs";
-    if (rightVals.length) cap += " · Right: L1/L2 SV count";
+    var cap = "Left: link % · latency (s)";
+    if (rightVals.length) cap += " · Right: diff SVs · L1/L2 SV count";
     ctx.fillText(cap, 0, 0);
     ctx.restore();
     function stroke(getter, yFn, col) {
@@ -2638,7 +2636,7 @@
     }
     if (seriesVis.link && leftVals.length) stroke(function (p) { return p.link_integrity_pct; }, yScL, "#a855f7");
     if (seriesVis.d && leftVals.length) stroke(function (p) { return p.datalink_latency_s; }, yScL, "#3d8bfd");
-    if (seriesVis.s && leftVals.length) stroke(function (p) { return p.diff_svs_in_use; }, yScL, "#e6a23a");
+    if (seriesVis.s && rightVals.length) stroke(function (p) { return p.diff_svs_in_use; }, yScR, "#e6a23a");
     if (seriesVis.l1 && rightVals.length) stroke(function (p) { return p.common_l1_svs; }, yScR, "#5bd48a");
     if (seriesVis.l2 && rightVals.length) stroke(function (p) { return p.common_l2_svs; }, yScR, "#f56c6c");
   }
@@ -2874,12 +2872,11 @@
       ctx.fillText(tk.toFixed(3) + " m", padL - 6, ySc(tk));
     });
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
@@ -3202,12 +3199,11 @@
       });
     }
     ctx.save();
-    ctx.translate(cssW - 14, padT2 + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM)" : "GPS time of week (s)", 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM)" : "GPS time of week (s)", padL + gw / 2, padT2 + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT2 + gh / 2);
@@ -3588,17 +3584,16 @@
       });
     }
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
     ctx.fillText(
       xUnit === "h"
         ? "Time of day (H:MM) from GPS TOW s mod 24 h"
         : "GPS time of week (s)",
-      0,
-      0
+      padL + gw / 2,
+      padT + gh + 58
     );
     ctx.restore();
     ctx.save();
@@ -3962,12 +3957,11 @@
       });
     }
     ctx.save();
-    ctx.translate(cssW - 14, padT + gh / 2);
-    ctx.rotate(Math.PI / 2);
     ctx.textAlign = "center";
+    ctx.textBaseline = "top";
     ctx.fillStyle = "#8a9aa8";
     ctx.font = "11px system-ui, sans-serif";
-    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", padL + gw / 2, padT + gh + 58);
     ctx.restore();
     ctx.save();
     ctx.translate(18, padT + gh / 2);
