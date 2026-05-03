@@ -33,6 +33,10 @@ const minWallDeltaForRateSample = 0.005 // 5 ms — coalesce OS/network batching
 // single long gaps, and TCP bursts without chasing every interval.
 const ratePeriodEMAAlpha = 0.04
 
+// maxTowDeltaForEpoch is the largest type-0x01 TOW step (seconds) we treat as output
+// cadence; larger gaps are treated as outages or discontinuous time, not epoch rate.
+const maxTowDeltaForEpoch = 10.0
+
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
 // (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
 func payloadBytesToSpacedHex(b []byte) string {
@@ -70,6 +74,12 @@ type Stats struct {
 	lastRecordWire map[int][]byte // last full on-wire sub-record bytes for PayloadHex ([type][len][inner]; 100+ from 99 uses full [99][len][pl])
 	// lastGPSTOWSec is the GPS time-of-week (s) from the latest type-0x01 in stream order.
 	lastGPSTOWSec float64
+	// prevEpochTOWSec / epochTowPeriodEMA: type-0x01 TOW deltas track output epoch cadence
+	// (independent of UDP wall-clock batching). Used as a minimum Hz floor for all subtypes.
+	prevEpochTOWSec      float64
+	hasPrevEpochTOWSec   bool
+	epochTowPeriodEMA    float64
+	hasEpochTowPeriodEMA bool
 	// tangentHistory holds recent type-0x07 samples paired with lastGPSTOWSec at decode time.
 	tangentHistory []gsof.TangentPlanePoint
 	// llhHistory holds recent type-0x02 lat/lon samples paired with lastGPSTOWSec at decode time.
@@ -132,6 +142,30 @@ func snapToNearestRate(delta float64) (float64, string) {
 		return hz, fmt.Sprintf("%.0f Hz", hz)
 	}
 	return 1.0 / closest, fmt.Sprintf("%.0f sec", closest)
+}
+
+// towDeltaSeconds returns the GPS week–wrapped advance cur−prev in (0, maxTowDeltaForEpoch].
+func towDeltaSeconds(prev, cur float64) (float64, bool) {
+	const week = 604800.0
+	d := cur - prev
+	if d < -week/2 {
+		d += week
+	} else if d > week/2 {
+		d -= week
+	}
+	if d <= 0 || d > maxTowDeltaForEpoch {
+		return 0, false
+	}
+	return d, true
+}
+
+// epochMinHzFromTOWLocked returns a minimum stream rate (Hz) from type-0x01 TOW cadence.
+// Caller must hold s.mu.
+func (s *Stats) epochMinHzFromTOWLocked() float64 {
+	if !s.hasEpochTowPeriodEMA || s.epochTowPeriodEMA <= 0 {
+		return 0
+	}
+	return 1.0 / s.epochTowPeriodEMA
 }
 
 // Update processes one reassembled GSOF payload and transport sequence number.
@@ -203,6 +237,18 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 
 		if recType == 1 {
 			if sec, ok := gsof.ParsePositionTimeTOWSec(pld); ok {
+				if s.hasPrevEpochTOWSec {
+					if d, okD := towDeltaSeconds(s.prevEpochTOWSec, sec); okD {
+						if s.hasEpochTowPeriodEMA {
+							s.epochTowPeriodEMA = ratePeriodEMAAlpha*d + (1.0-ratePeriodEMAAlpha)*s.epochTowPeriodEMA
+						} else {
+							s.epochTowPeriodEMA = d
+							s.hasEpochTowPeriodEMA = true
+						}
+					}
+				}
+				s.prevEpochTOWSec = sec
+				s.hasPrevEpochTOWSec = true
 				s.lastGPSTOWSec = sec
 			}
 			if pt, ok := gsof.ParsePositionTimeGraphPoint(pld); ok {
@@ -462,13 +508,22 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 	sort.Ints(keys)
 
 	rows := make([]RecordRow, 0, len(keys))
+	epochHz := s.epochMinHzFromTOWLocked()
 	for _, subType := range keys {
 		rateStr := s.displayHz[subType]
 		if rateStr == "" {
 			rateStr = "calc..."
 		}
+		effHz := s.hz[subType]
+		if epochHz > effHz {
+			effHz = epochHz
+			rateStr = fmt.Sprintf("%.0f Hz", effHz)
+		} else if effHz <= 0 && epochHz > 0 {
+			effHz = epochHz
+			rateStr = fmt.Sprintf("%.0f Hz", effHz)
+		}
 		stale := false
-		if s.hz[subType] > 0 && now.Sub(s.lastSeen[subType]).Seconds() > (1.0/s.hz[subType])*3.0 {
+		if effHz > 0 && now.Sub(s.lastSeen[subType]).Seconds() > (1.0/effHz)*3.0 {
 			rateStr = "stale"
 			stale = true
 		}
@@ -583,9 +638,14 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 func (s *Stats) ExportNagios() (hz map[int]float64, counts map[int]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	epochHz := s.epochMinHzFromTOWLocked()
 	hz = make(map[int]float64, len(s.hz))
 	for k, v := range s.hz {
-		hz[k] = v
+		out := v
+		if epochHz > out {
+			out = epochHz
+		}
+		hz[k] = out
 	}
 	counts = make(map[int]int, len(s.counts))
 	for k, v := range s.counts {
