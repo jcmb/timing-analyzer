@@ -154,6 +154,14 @@ func TestCatalogDocURLs129(t *testing.T) {
 	if Lookup(96).DocURL() != iono96 {
 		t.Fatalf("type 96 doc: %s", Lookup(96).DocURL())
 	}
+	const ant97 = "https://docs.google.com/document/d/1fdq0SSPibJn_rc_BbrpnKKWZni3BjRu4nbOACV_E_4o/edit?usp=sharing"
+	if Lookup(97).DocURL() != ant97 {
+		t.Fatalf("type 97 doc: %s", Lookup(97).DocURL())
+	}
+	const ant98 = "https://docs.google.com/document/d/1QDThFOoOE2KSvbEaMNZGwnPK16jEwmCe1Se7YgywvJo/edit?usp=sharing"
+	if Lookup(98).DocURL() != ant98 {
+		t.Fatalf("type 98 doc: %s", Lookup(98).DocURL())
+	}
 }
 
 func TestDecode91NMALayout(t *testing.T) {
@@ -346,6 +354,93 @@ func TestDecode92IonoGuardTruncatedSV(t *testing.T) {
 	}
 	if !strings.Contains(got["Parse"], "truncated") {
 		t.Fatalf("expected parse note: %#v", got)
+	}
+}
+
+func TestDecode97SecondAntennaLayout(t *testing.T) {
+	payload := make([]byte, 44)
+	binary.BigEndian.PutUint16(payload[0:2], 5)
+	binary.BigEndian.PutUint32(payload[2:6], 3000)                           // 3.000 s
+	payload[6] = 7                                                           // Full float RTK (type 38 fix table)
+	payload[7] = 1                                                           // moving-base heading vector
+	binary.BigEndian.PutUint64(payload[8:16], math.Float64bits(math.Pi/6))   // 30° N
+	binary.BigEndian.PutUint64(payload[16:24], math.Float64bits(-math.Pi/4)) // 45° W
+	binary.BigEndian.PutUint64(payload[24:32], math.Float64bits(12.5))
+	binary.BigEndian.PutUint32(payload[32:36], math.Float32bits(0.1))
+	binary.BigEndian.PutUint32(payload[36:40], math.Float32bits(0.2))
+	binary.BigEndian.PutUint32(payload[40:44], math.Float32bits(0.3))
+	fields := Decode(97, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["GPS week"] != "5" || got["GPS time of week"] != "3.000 s" {
+		t.Fatalf("time: %#v", got)
+	}
+	if !strings.Contains(got["Position type"], "7 —") || !strings.Contains(got["Position type"], "Full float RTK") {
+		t.Fatalf("pos type: %q", got["Position type"])
+	}
+	if !strings.Contains(got["Source"], "Moving-base") {
+		t.Fatalf("source: %q", got["Source"])
+	}
+	if !strings.Contains(got["Latitude (decimal °)"], "30.") {
+		t.Fatalf("lat: %q", got["Latitude (decimal °)"])
+	}
+	if !strings.Contains(got["Longitude (decimal °)"], "-45.") {
+		t.Fatalf("lon: %q", got["Longitude (decimal °)"])
+	}
+	if !strings.Contains(got["Height (m)"], "12.5") {
+		t.Fatalf("h: %q", got["Height (m)"])
+	}
+}
+
+func TestDecode97SecondAntennaShortPayload(t *testing.T) {
+	fields := Decode(97, make([]byte, 10))
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "≥44") {
+		t.Fatalf("parse: %#v", got)
+	}
+}
+
+func TestDecode98Antenna2ErrorEstimatesLayout(t *testing.T) {
+	// Same float layout as type 11 (34 B) + u8 source = 1 (moving-base heading).
+	payload := make([]byte, 35)
+	binary.BigEndian.PutUint32(payload[0:], math.Float32bits(1.25))
+	for i := 1; i < 8; i++ {
+		binary.BigEndian.PutUint32(payload[i*4:], math.Float32bits(-0.5))
+	}
+	binary.BigEndian.PutUint16(payload[32:], 42)
+	payload[34] = 1
+	fields := Decode(98, payload)
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if got["POSITION_RMS (m)"] != "\u00a01.25000 m" {
+		t.Fatalf("POSITION_RMS: %q", got["POSITION_RMS (m)"])
+	}
+	if got["VCV_xx (m²)"] != "-0.50000 m²" {
+		t.Fatalf("VCV_xx: %q", got["VCV_xx (m²)"])
+	}
+	if got["NUMBER_OF_EPOCHS"] != "42" {
+		t.Fatalf("epochs: %q", got["NUMBER_OF_EPOCHS"])
+	}
+	if !strings.Contains(got["Source"], "Moving-base") {
+		t.Fatalf("source: %q", got["Source"])
+	}
+}
+
+func TestDecode98Antenna2ErrorEstimatesShortPayload(t *testing.T) {
+	fields := Decode(98, make([]byte, 8))
+	got := make(map[string]string)
+	for _, f := range fields {
+		got[f.Label] = f.Value
+	}
+	if !strings.Contains(got["Parse"], "≥35") {
+		t.Fatalf("parse: %#v", got)
 	}
 }
 

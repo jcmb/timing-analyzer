@@ -59,6 +59,8 @@ var Catalog = map[int]Message{
 	91: {91, "NMA info", "Navigation Message Authentication (NMA) information.", "https://docs.google.com/document/d/1mxY_s34PX3jYNNM81WvM0gDJL_dQKDPsxqa5TdHiepM/edit?tab=t.0"},
 	92: {92, "IonoGuard info", "IonoGuard ionospheric monitoring information.", "https://docs.google.com/document/d/1aIc38r95I3LCiIycIj_VmDws7jat2ed55j0Ve6U8tjM/edit?usp=sharing"},
 	96: {96, "IonoGuard summary", "IonoGuard ionospheric summary information.", "https://docs.google.com/document/d/1FEliQDO_vcX1KZqz8pjy0DcXZNEfA1hXipYMjvKWbF4/edit?usp=sharing"},
+	97: {97, "Second antenna position", "WGS-84 position and sigmas for the second antenna (GGA2-related).", "https://docs.google.com/document/d/1fdq0SSPibJn_rc_BbrpnKKWZni3BjRu4nbOACV_E_4o/edit?usp=sharing"},
+	98: {98, "Error estimates (antenna 2)", "ECEF VCV and RMS for the second-antenna position solution.", "https://docs.google.com/document/d/1QDThFOoOE2KSvbEaMNZGwnPK16jEwmCe1Se7YgywvJo/edit?usp=sharing"},
 }
 
 // Lookup returns catalog metadata, or a synthetic entry for unknown record types.

@@ -110,6 +110,10 @@ func Decode(msgType int, payload []byte) []Field {
 		return decodeIonoGuard92(payload)
 	case 96:
 		return decodeIonoGuard96(payload)
+	case 97:
+		return decodeSecondAntennaPosition97(payload)
+	case 98:
+		return decodeAntenna2ErrorEstimates98(payload)
 	default:
 		return decodeGeneric(msgType, payload)
 	}
