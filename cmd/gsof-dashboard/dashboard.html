@@ -396,7 +396,8 @@
     button.llh-graph-open-btn,
     button.dop-graph-open-btn,
     button.sigma-graph-open-btn,
-    button.attitude-graph-open-btn {
+    button.attitude-graph-open-btn,
+    button.rx28-graph-open-btn {
       font-family: var(--sans);
       font-size: 0.72rem;
       font-weight: 600;
@@ -412,7 +413,8 @@
     button.llh-graph-open-btn:hover,
     button.dop-graph-open-btn:hover,
     button.sigma-graph-open-btn:hover,
-    button.attitude-graph-open-btn:hover {
+    button.attitude-graph-open-btn:hover,
+    button.rx28-graph-open-btn:hover {
       color: var(--accent);
       border-color: var(--accent);
     }
@@ -453,13 +455,18 @@
     }
     .nma91-basic-table th:nth-child(1),
     .nma91-basic-table td:nth-child(1) {
-      min-width: 14rem;
-      width: 24%;
+      min-width: 7rem;
+      width: 12%;
     }
     .nma91-basic-table th:nth-child(2),
     .nma91-basic-table td:nth-child(2) {
-      min-width: 18rem;
-      width: 32%;
+      min-width: 9rem;
+      width: 16%;
+    }
+    .nma91-basic-table td:nth-child(1),
+    .nma91-basic-table td:nth-child(2) {
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     article.card.card--sv-brief .card-body > dl,
     article.card.card--sv-detailed .card-body > dl {
@@ -2328,6 +2335,292 @@
 </html>`;
     }
 
+    function receiverDiag28GraphStandaloneDoc(initObj) {
+      const j = tangentGraphJsonForScript(initObj);
+      const so = "<scr" + "ipt";
+      const sc = "</scr" + "ipt>";
+      return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GSOF · receiver diagnostics (type 28)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background: #0e1318; color: #e8eef4; }
+    header { padding: 10px 16px; border-bottom: 1px solid #2a333d; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    h1 { font-size: 1rem; font-weight: 600; margin: 0; flex: 1; min-width: 12rem; }
+    #xunit { font-size: 0.75rem; padding: 0.25rem 0.55rem; border-radius: 5px; border: 1px solid #2a333d; background: #15191d; color: #8a9aa8; cursor: pointer; }
+    #xunit:hover { color: #3d8bfd; border-color: #3d8bfd; }
+    .wrap { padding: 12px 16px 24px; box-sizing: border-box; }
+    #c { display: block; width: 100%; height: 420px; background: #111618; border-radius: 6px; box-sizing: border-box; }
+    .leg { font-size: 0.78rem; color: #8a9aa8; margin-top: 10px; display: flex; flex-wrap: wrap; gap: 0.65rem; max-width: 100%; }
+    .leg span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+    .sLink::before { background: #a855f7; }
+    .sD::before { background: #3d8bfd; }
+    .sS::before { background: #e6a23a; }
+    .sL1::before { background: #5bd48a; }
+    .sL2::before { background: #f56c6c; }
+    .leg span { cursor: pointer; user-select: none; transition: color 0.15s ease, opacity 0.15s ease; }
+    .leg span:hover { color: #e8eef4; }
+    .leg span.off { opacity: 0.38; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <header><h1 id="hdr"></h1><button type="button" id="xunit">X axis: seconds</button></header>
+  <div class="wrap">
+    <canvas id="c" width="900" height="420"></canvas>
+    <div class="leg" title="Click to show/hide. L1/L2 use the right Y axis; other series use the left.">
+      <span class="sLink">Link integrity (%)</span><span class="sD">Datalink latency (s)</span><span class="sS">Diff SVs in use</span>
+      <span class="sL1">Common L1 SVs</span><span class="sL2">Common L2 SVs</span>
+    </div>
+  </div>
+` +
+        "\n  " +
+        so +
+        ' type="application/json" id="gsof-rx28-payload">' +
+        j +
+        sc +
+        "\n  " +
+        so +
+        ">\n" +
+        `(function () {
+  var INIT = JSON.parse(document.getElementById("gsof-rx28-payload").textContent);
+  document.getElementById("hdr").textContent = INIT.title;
+  var xUnit = "s";
+  var seriesVis = { link: false, d: true, s: true, l1: false, l2: false };
+  function bindLegend() {
+    var leg = document.querySelector(".leg");
+    if (!leg || leg.dataset.bound === "1") return;
+    leg.dataset.bound = "1";
+    function sync() {
+      leg.querySelector(".sLink").classList.toggle("off", !seriesVis.link);
+      leg.querySelector(".sD").classList.toggle("off", !seriesVis.d);
+      leg.querySelector(".sS").classList.toggle("off", !seriesVis.s);
+      leg.querySelector(".sL1").classList.toggle("off", !seriesVis.l1);
+      leg.querySelector(".sL2").classList.toggle("off", !seriesVis.l2);
+    }
+    leg.querySelector(".sLink").addEventListener("click", function () { seriesVis.link = !seriesVis.link; sync(); draw(); });
+    leg.querySelector(".sD").addEventListener("click", function () { seriesVis.d = !seriesVis.d; sync(); draw(); });
+    leg.querySelector(".sS").addEventListener("click", function () { seriesVis.s = !seriesVis.s; sync(); draw(); });
+    leg.querySelector(".sL1").addEventListener("click", function () { seriesVis.l1 = !seriesVis.l1; sync(); draw(); });
+    leg.querySelector(".sL2").addEventListener("click", function () { seriesVis.l2 = !seriesVis.l2; sync(); draw(); });
+    sync();
+  }
+  var canvas = document.getElementById("c");
+  var ctx = canvas.getContext("2d");
+  var btn = document.getElementById("xunit");
+  function niceTicks(lo, hi, n) {
+    if (!(hi > lo) || !isFinite(lo) || !isFinite(hi)) return [lo, hi];
+    var span = hi - lo;
+    var raw = span / Math.max(1, n - 1);
+    var mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    if (!isFinite(mag) || mag === 0) return [lo, hi];
+    var norm = raw / mag;
+    var step = mag;
+    if (norm > 5) step *= 5;
+    else if (norm > 2) step *= 2;
+    var a = Math.ceil(lo / step - 1e-12) * step;
+    var out = [];
+    for (var x = a; x <= hi + step * 1e-9; x += step) out.push(x);
+    if (out.length < 2) out.push(lo, hi);
+    return out;
+  }
+  function formatTimeOfDayHM(decimalHours) {
+    var sec = Math.round(Number(decimalHours) * 3600);
+    sec = ((sec % 86400) + 86400) % 86400;
+    var h = (sec / 3600) | 0;
+    var m = ((sec % 3600) / 60) | 0;
+    var ms = m < 10 ? "0" + String(m) : String(m);
+    return String(h) + ":" + ms;
+  }
+  function yPadRange(lo, hi) {
+    if (!isFinite(lo) || !isFinite(hi)) return { lo: 0, hi: 1 };
+    if (hi === lo) { lo -= 1e-6; hi += 1e-6; }
+    var pad = (hi - lo) * 0.08;
+    return { lo: lo - pad, hi: hi + pad };
+  }
+  function draw() {
+    var pts = INIT.points || [];
+    var dpr = window.devicePixelRatio || 1;
+    var cssW = Math.max(480, Math.floor(window.innerWidth - 32));
+    var cssH = 420;
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    canvas.style.width = cssW + "px";
+    canvas.style.height = cssH + "px";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.fillStyle = "#111618";
+    ctx.fillRect(0, 0, cssW, cssH);
+    if (!pts.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("No samples in this snapshot.", 24, cssH / 2);
+      return;
+    }
+    var padL = 64;
+    var padR = 62;
+    var padT = 32;
+    var padB = 78;
+    var gw = cssW - padL - padR;
+    var gh = cssH - padT - padB;
+    var xs = pts.map(function (p) {
+      if (xUnit === "h") {
+        var sec = p.gps_tow_s % 86400;
+        if (sec < 0) sec += 86400;
+        return sec / 3600;
+      }
+      return p.gps_tow_s;
+    });
+    var leftVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.link) leftVals.push(p.link_integrity_pct);
+      if (seriesVis.d) leftVals.push(p.datalink_latency_s);
+      if (seriesVis.s) leftVals.push(p.diff_svs_in_use);
+    });
+    var rightVals = [];
+    pts.forEach(function (p) {
+      if (seriesVis.l1) rightVals.push(p.common_l1_svs);
+      if (seriesVis.l2) rightVals.push(p.common_l2_svs);
+    });
+    if (!leftVals.length && !rightVals.length) {
+      ctx.fillStyle = "#e8eef4";
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillText("All series hidden — click the legend.", 24, cssH / 2);
+      return;
+    }
+    var lR = leftVals.length ? yPadRange(Math.min.apply(null, leftVals), Math.max.apply(null, leftVals)) : { lo: 0, hi: 1 };
+    var rR = rightVals.length ? yPadRange(Math.min.apply(null, rightVals), Math.max.apply(null, rightVals)) : { lo: 0, hi: 1 };
+    var yminL = lR.lo, ymaxL = lR.hi;
+    var yminR = rR.lo, ymaxR = rR.hi;
+    var xmin = Math.min.apply(null, xs);
+    var xmax = Math.max.apply(null, xs);
+    var xPad = Math.max((xmax - xmin) * 0.04, 1e-9);
+    var x0 = xmin - xPad;
+    var x1 = xmax + xPad;
+    function xSc(v) { return padL + ((v - x0) / (x1 - x0)) * gw; }
+    function yScL(v) { return padT + (1 - (v - yminL) / (ymaxL - yminL)) * gh; }
+    function yScR(v) { return padT + (1 - (v - yminR) / (ymaxR - yminR)) * gh; }
+    ctx.strokeStyle = "#2a333d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, padT);
+    ctx.lineTo(padL, padT + gh);
+    ctx.lineTo(padL + gw, padT + gh);
+    ctx.lineTo(padL + gw, padT);
+    ctx.stroke();
+    var xt = niceTicks(x0, x1, 10);
+    var gridY = leftVals.length ? niceTicks(yminL, ymaxL, 9) : niceTicks(yminR, ymaxR, 9);
+    ctx.strokeStyle = "#1a2430";
+    ctx.lineWidth = 0.5;
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      ctx.beginPath();
+      ctx.moveTo(px, padT);
+      ctx.lineTo(px, padT + gh);
+      ctx.stroke();
+    });
+    gridY.forEach(function (tk) {
+      var py = leftVals.length ? yScL(tk) : yScR(tk);
+      ctx.beginPath();
+      ctx.moveTo(padL, py);
+      ctx.lineTo(padL + gw, py);
+      ctx.stroke();
+    });
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    xt.forEach(function (tk) {
+      var px = xSc(tk);
+      var lab = xUnit === "h" ? formatTimeOfDayHM(tk) : Math.abs(tk) >= 10000 ? tk.toFixed(0) + " s" : Math.abs(tk) >= 1000 ? tk.toFixed(1) + " s" : tk.toFixed(2) + " s";
+      ctx.save();
+      ctx.translate(px, padT + gh + 8);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(lab, 0, 0);
+      ctx.restore();
+    });
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    if (leftVals.length) {
+      niceTicks(yminL, ymaxL, 9).forEach(function (tk) {
+        ctx.fillText(Number.isInteger(tk) ? String(tk) : tk.toFixed(2), padL - 6, yScL(tk));
+      });
+    }
+    ctx.textAlign = "left";
+    if (rightVals.length) {
+      niceTicks(yminR, ymaxR, 9).forEach(function (tk) {
+        ctx.fillText(String(Math.round(tk)), padL + gw + 6, yScR(tk));
+      });
+    }
+    ctx.save();
+    ctx.translate(cssW - 14, padT + gh / 2);
+    ctx.rotate(Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText(xUnit === "h" ? "Time of day (H:MM) from GPS TOW s mod 24 h" : "GPS time of week (s)", 0, 0);
+    ctx.restore();
+    ctx.save();
+    ctx.translate(16, padT + gh / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8a9aa8";
+    ctx.font = "11px system-ui, sans-serif";
+    var cap = "Left: link % · latency (s) · diff SVs";
+    if (rightVals.length) cap += " · Right: L1/L2 SV count";
+    ctx.fillText(cap, 0, 0);
+    ctx.restore();
+    function stroke(getter, yFn, col) {
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      var mv = false;
+      for (var i = 0; i < pts.length; i++) {
+        var yv = getter(pts[i]);
+        if (!isFinite(yv)) { mv = false; continue; }
+        var px = xSc(xs[i]);
+        var py = yFn(yv);
+        if (!mv) { ctx.moveTo(px, py); mv = true; } else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      if (pts.length === 1) {
+        var y0 = getter(pts[0]);
+        if (isFinite(y0)) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.arc(xSc(xs[0]), yFn(y0), 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+    if (seriesVis.link && leftVals.length) stroke(function (p) { return p.link_integrity_pct; }, yScL, "#a855f7");
+    if (seriesVis.d && leftVals.length) stroke(function (p) { return p.datalink_latency_s; }, yScL, "#3d8bfd");
+    if (seriesVis.s && leftVals.length) stroke(function (p) { return p.diff_svs_in_use; }, yScL, "#e6a23a");
+    if (seriesVis.l1 && rightVals.length) stroke(function (p) { return p.common_l1_svs; }, yScR, "#5bd48a");
+    if (seriesVis.l2 && rightVals.length) stroke(function (p) { return p.common_l2_svs; }, yScR, "#f56c6c");
+  }
+  btn.addEventListener("click", function () {
+    xUnit = xUnit === "h" ? "s" : "h";
+    btn.textContent = xUnit === "h" ? "X axis: day hours" : "X axis: seconds";
+    draw();
+  });
+  window.addEventListener("message", function (ev) {
+    if (!ev.data || ev.data.type !== "gsof-rx28-update" || !ev.data.payload) return;
+    INIT = ev.data.payload;
+    if (document.getElementById("hdr")) document.getElementById("hdr").textContent = INIT.title;
+    draw();
+  });
+  window.addEventListener("resize", function () { requestAnimationFrame(draw); });
+  bindLegend();
+  draw();
+})();
+` +
+        sc +
+        `
+</body>
+</html>`;
+    }
+
     /** Full HTML document for type-12 sigma graph (RMS and σ components vs GPS TOW). */
     function sigmaGraphStandaloneDoc(initObj) {
       const j = tangentGraphJsonForScript(initObj);
@@ -3545,6 +3838,21 @@
       } catch (e) {}
     }
 
+    function syncReceiverDiag28GraphPlotWindow(data) {
+      const w = window.__gsofRx28PlotWin;
+      if (!w || w.closed) {
+        return;
+      }
+      const row28 = (data.records || []).find((r) => r.type === 28);
+      const payload = {
+        title: row28 ? String(row28.name || "GSOF type 28") : "GSOF type 28",
+        points: row28 && row28.receiver_diag_28_history ? row28.receiver_diag_28_history : [],
+      };
+      try {
+        w.postMessage({ type: "gsof-rx28-update", payload: payload }, "*");
+      } catch (e) {}
+    }
+
     function openDOPGraphWindow(r) {
       if (!r) {
         return;
@@ -3594,6 +3902,59 @@
         ev.preventDefault();
         ev.stopPropagation();
         openDOPGraphWindow(art._dopRecord);
+      });
+    }
+
+    function openReceiverDiag28GraphWindow(r) {
+      if (!r) {
+        return;
+      }
+      const init = {
+        title: String(r.name || "GSOF type 28"),
+        points: Array.isArray(r.receiver_diag_28_history) ? r.receiver_diag_28_history : [],
+      };
+      const existing = window.__gsofRx28PlotWin;
+      if (existing && !existing.closed) {
+        try {
+          existing.postMessage({ type: "gsof-rx28-update", payload: init }, "*");
+          existing.focus();
+        } catch (e) {}
+        return;
+      }
+      const html = receiverDiag28GraphStandaloneDoc(init);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, "_blank", "width=980,height=760");
+      if (w) {
+        window.__gsofRx28PlotWin = w;
+        try {
+          w.postMessage({ type: "gsof-rx28-update", payload: init }, "*");
+        } catch (e) {}
+        setTimeout(function () {
+          URL.revokeObjectURL(url);
+        }, 120000);
+      } else {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function ensureReceiverDiag28GraphOpenButton(art) {
+      const headTop = art.querySelector(".card-head-top");
+      const copyBtn = art.querySelector(".card-copy-all");
+      if (!headTop || !copyBtn || headTop.querySelector(".rx28-graph-open-btn")) {
+        return;
+      }
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "rx28-graph-open-btn";
+      btn.textContent = "Graph";
+      btn.title =
+        "Open receiver diagnostics vs GPS TOW: datalink latency, diff SVs, link % (left axis); common L1/L2 SV counts (right axis). Legend toggles series.";
+      headTop.insertBefore(btn, copyBtn);
+      btn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openReceiverDiag28GraphWindow(art._rx28Record);
       });
     }
 
@@ -3965,6 +4326,7 @@
       const isAtt27 = r.type === 27;
       const isIono92 = r.type === 92;
       const isNMA91 = r.type === 91;
+      const isRx28 = r.type === 28;
 
       art.classList.toggle("card--sv-brief", isSV13 || isSV33 || isSV34 || isSV48);
       art.classList.toggle("card--sv-detailed", isSV14);
@@ -3982,7 +4344,8 @@
         !isSig12 &&
         !isAtt27 &&
         !isIono92 &&
-        !isNMA91
+        !isNMA91 &&
+        !isRx28
       ) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -3991,6 +4354,7 @@
         art._dopRecord = null;
         art._sigmaRecord = null;
         art._attitudeRecord = null;
+        art._rx28Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -4020,6 +4384,10 @@
         const ag = art.querySelector(".attitude-graph-open-btn");
         if (ag) {
           ag.remove();
+        }
+        const rx28g0 = art.querySelector(".rx28-graph-open-btn");
+        if (rx28g0) {
+          rx28g0.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
@@ -4377,6 +4745,53 @@
         ensureSigmaGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+      } else if (isRx28) {
+        art._svBriefRecord = null;
+        art._svDetailedRecord = null;
+        art._tangentRecord = null;
+        art._llhRecord = null;
+        art._dopRecord = null;
+        art._sigmaRecord = null;
+        art._attitudeRecord = null;
+        delete art.dataset.svBriefView;
+        delete art.dataset.svDetailedView;
+        const t1rx = art.querySelector(".sv-brief-view-toggle");
+        if (t1rx) {
+          t1rx.remove();
+        }
+        const t2rx = art.querySelector(".sv-detailed-view-toggle");
+        if (t2rx) {
+          t2rx.remove();
+        }
+        const tgrx = art.querySelector(".tangent-graph-open-btn");
+        if (tgrx) {
+          tgrx.remove();
+        }
+        const lgrx = art.querySelector(".llh-graph-open-btn");
+        if (lgrx) {
+          lgrx.remove();
+        }
+        const dgrx = art.querySelector(".dop-graph-open-btn");
+        if (dgrx) {
+          dgrx.remove();
+        }
+        const sgrx = art.querySelector(".sigma-graph-open-btn");
+        if (sgrx) {
+          sgrx.remove();
+        }
+        const agrx = art.querySelector(".attitude-graph-open-btn");
+        if (agrx) {
+          agrx.remove();
+        }
+        svRoot.hidden = true;
+        svRoot.replaceChildren();
+        svDetRoot.hidden = true;
+        svDetRoot.replaceChildren();
+
+        art._rx28Record = r;
+        ensureReceiverDiag28GraphOpenButton(art);
+        dl.hidden = false;
+        fillFields(dl, r.fields);
       } else if (isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -4384,6 +4799,7 @@
         art._llhRecord = null;
         art._dopRecord = null;
         art._sigmaRecord = null;
+        art._rx28Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1 = art.querySelector(".sv-brief-view-toggle");
@@ -4409,6 +4825,10 @@
         const sgb = art.querySelector(".sigma-graph-open-btn");
         if (sgb) {
           sgb.remove();
+        }
+        const rx28rmA = art.querySelector(".rx28-graph-open-btn");
+        if (rx28rmA) {
+          rx28rmA.remove();
         }
         svRoot.hidden = true;
         svRoot.replaceChildren();
@@ -4510,6 +4930,7 @@
       syncDOPGraphPlotWindow(data);
       syncSigmaGraphPlotWindow(data);
       syncAttitudeGraphPlotWindow(data);
+      syncReceiverDiag28GraphPlotWindow(data);
     }
 
     function connect() {

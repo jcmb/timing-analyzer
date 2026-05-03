@@ -56,6 +56,8 @@ type Stats struct {
 	sigmaHistory []gsof.SigmaPoint
 	// attitudeHistory holds recent type-0x1B (27) attitude samples (time from each record).
 	attitudeHistory []gsof.AttitudePoint
+	// rxDiag28History holds recent type-0x1C (28) receiver diagnostics paired with lastGPSTOWSec.
+	rxDiag28History []gsof.ReceiverDiagnosticsPoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -200,6 +202,12 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendAttitudePoint(pt)
 			}
 		}
+		if recType == 28 {
+			if pt, ok := gsof.ParseReceiverDiagnosticsPoint(pld); ok {
+				pt.GPSTOWSec = s.lastGPSTOWSec
+				s.appendReceiverDiagnostics28Point(pt)
+			}
+		}
 
 		ptr += 2 + recLen
 	}
@@ -254,6 +262,13 @@ func (s *Stats) appendAttitudePoint(pt gsof.AttitudePoint) {
 	}
 }
 
+func (s *Stats) appendReceiverDiagnostics28Point(pt gsof.ReceiverDiagnosticsPoint) {
+	s.rxDiag28History = append(s.rxDiag28History, pt)
+	if len(s.rxDiag28History) > historySamplesMax {
+		s.rxDiag28History = s.rxDiag28History[len(s.rxDiag28History)-historySamplesMax:]
+	}
+}
+
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
 	Type     int          `json:"type"`
@@ -291,6 +306,8 @@ type RecordRow struct {
 	SigmaHistory []gsof.SigmaPoint `json:"sigma_history,omitempty"`
 	// AttitudeHistory is populated for GSOF type 27 (attitude) for dashboard graphing.
 	AttitudeHistory []gsof.AttitudePoint `json:"attitude_history,omitempty"`
+	// ReceiverDiagnostics28History is populated for GSOF type 28 (receiver diagnostics) for dashboard graphing.
+	ReceiverDiagnostics28History []gsof.ReceiverDiagnosticsPoint `json:"receiver_diag_28_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -390,6 +407,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 27 && len(s.attitudeHistory) > 0 {
 			row.AttitudeHistory = append([]gsof.AttitudePoint(nil), s.attitudeHistory...)
+		}
+		if subType == 28 && len(s.rxDiag28History) > 0 {
+			row.ReceiverDiagnostics28History = append([]gsof.ReceiverDiagnosticsPoint(nil), s.rxDiag28History...)
 		}
 		rows = append(rows, row)
 	}

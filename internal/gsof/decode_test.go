@@ -488,6 +488,28 @@ func TestDecode48MultiPageHeader(t *testing.T) {
 	}
 }
 
+func TestParseReceiverDiagnostics28Point(t *testing.T) {
+	payload := make([]byte, 18)
+	payload[6] = 255
+	payload[9] = 11
+	payload[10] = 12
+	payload[11] = 25
+	payload[13] = 8
+	pt, ok := ParseReceiverDiagnosticsPoint(payload)
+	if !ok {
+		t.Fatal("expected parse ok")
+	}
+	if math.Abs(pt.LinkIntegrityPct-100.0) > 1e-6 {
+		t.Fatalf("link %%: %v", pt.LinkIntegrityPct)
+	}
+	if pt.CommonL1SVs != 11 || pt.CommonL2SVs != 12 || pt.DiffSVsInUse != 8 {
+		t.Fatalf("counts: %+v", pt)
+	}
+	if math.Abs(pt.DatalinkLatencySec-2.5) > 1e-9 {
+		t.Fatalf("latency: %v", pt.DatalinkLatencySec)
+	}
+}
+
 func TestDecode28ReceiverDiagnostics(t *testing.T) {
 	m := Lookup(28)
 	if m.Title != "Receiver diagnostics" {
