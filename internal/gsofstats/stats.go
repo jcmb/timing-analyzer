@@ -52,6 +52,8 @@ type Stats struct {
 	dopHistory []gsof.DOPPoint
 	// sigmaHistory holds recent type-0x0C sigma samples paired with lastGPSTOWSec.
 	sigmaHistory []gsof.SigmaPoint
+	// attitudeHistory holds recent type-0x1B (27) attitude samples (time from each record).
+	attitudeHistory []gsof.AttitudePoint
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -181,6 +183,11 @@ func (s *Stats) Update(seq uint8, buffer []byte) {
 				s.appendSigmaPoint(pt)
 			}
 		}
+		if recType == 27 {
+			if pt, ok := gsof.ParseAttitudePoint(pld); ok {
+				s.appendAttitudePoint(pt)
+			}
+		}
 
 		ptr += 2 + recLen
 	}
@@ -221,6 +228,13 @@ func (s *Stats) appendSigmaPoint(pt gsof.SigmaPoint) {
 	}
 }
 
+func (s *Stats) appendAttitudePoint(pt gsof.AttitudePoint) {
+	s.attitudeHistory = append(s.attitudeHistory, pt)
+	if len(s.attitudeHistory) > historySamplesMax {
+		s.attitudeHistory = s.attitudeHistory[len(s.attitudeHistory)-historySamplesMax:]
+	}
+}
+
 // RecordRow is one GSOF subtype row for dashboards and APIs.
 type RecordRow struct {
 	Type     int          `json:"type"`
@@ -250,6 +264,8 @@ type RecordRow struct {
 	DOPHistory []gsof.DOPPoint `json:"dop_history,omitempty"`
 	// SigmaHistory is populated for GSOF type 12 (position RMS / sigmas) for dashboard graphing.
 	SigmaHistory []gsof.SigmaPoint `json:"sigma_history,omitempty"`
+	// AttitudeHistory is populated for GSOF type 27 (attitude) for dashboard graphing.
+	AttitudeHistory []gsof.AttitudePoint `json:"attitude_history,omitempty"`
 }
 
 // DashboardPayload is JSON for the web UI / SSE.
@@ -329,6 +345,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string) *
 		}
 		if subType == 12 && len(s.sigmaHistory) > 0 {
 			row.SigmaHistory = append([]gsof.SigmaPoint(nil), s.sigmaHistory...)
+		}
+		if subType == 27 && len(s.attitudeHistory) > 0 {
+			row.AttitudeHistory = append([]gsof.AttitudePoint(nil), s.attitudeHistory...)
 		}
 		rows = append(rows, row)
 	}

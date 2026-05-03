@@ -874,13 +874,16 @@ func decodeAttitude(payload []byte) []Field {
 	if ShowExpectedReservedBits {
 		out = append(out, kv("Reserved", fmt.Sprintf("%d", res)))
 	}
+	pitchDeg := pitch * 180 / math.Pi
+	yawDeg := yaw * 180 / math.Pi
+	rollDeg := roll * 180 / math.Pi
 	out = append(out,
 		kv("Pitch (DMS)", radToDMS(pitch)),
 		kv("Yaw (DMS)", radToDMS(yaw)),
 		kv("Roll (DMS)", radToDMS(roll)),
-		kv("Pitch (rad)", formatSignedDecimalNBSP(pitch, 5)),
-		kv("Yaw (rad)", formatSignedDecimalNBSP(yaw, 5)),
-		kv("Roll (rad)", formatSignedDecimalNBSP(roll, 5)),
+		kv("Pitch (decimal °)", formatSignedDecimalNBSP(pitchDeg, 6)),
+		kv("Yaw (decimal °)", formatSignedDecimalNBSP(yawDeg, 6)),
+		kv("Roll (decimal °)", formatSignedDecimalNBSP(rollDeg, 6)),
 		kv("Range (m)", formatMeters3(rng)),
 		kv("PDOP", fmt.Sprintf("%.1f", float64(pdop10)/10)),
 		kv("Pitch variance (rad²)", formatSignedDecimalNBSP(float64(pv), 8)),
