@@ -15,7 +15,8 @@ type MatchedPoint struct {
 	DeltaTowSec float64 `json:"delta_tow_s"`
 	HorizM      float64 `json:"horiz_m"`
 	SlantM      float64 `json:"slant_m"`
-	BearingDeg  float64 `json:"bearing_deg"`
+	// BearingDeg is forward azimuth from the reference (type 41 or moving-base type 1+2 LLH) toward the heading rover (type 1+2), degrees [0,360).
+	BearingDeg float64 `json:"bearing_deg"`
 	SVsHeading  int     `json:"svs_heading"`
 	// SVsMovingBase is moving-base SV count when reference_source is moving_base; otherwise 0.
 	SVsMovingBase   int     `json:"svs_moving_base"`
@@ -66,8 +67,9 @@ type Engine struct {
 	lastHeadingRover  *EpochSample
 	lastHeading27     *gsof.AttitudePoint
 	headingAttRing    []gsof.AttitudePoint
-	lastHeading38Text string
-	movingBaseSerial  string
+	lastHeading38Text    string
+	lastMovingBase38Text string
+	movingBaseSerial     string
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
@@ -141,7 +143,7 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 		}
 		h := HaversineM(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
 		s := SlantM(h, ep.HeightM, tgt.h)
-		br := InitialBearingDeg(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
+		br := InitialBearingDeg(tgt.lat, tgt.lon, ep.LatDeg, ep.LonDeg)
 		pt := MatchedPoint{
 			GPSTOWSec:       ep.GPSTOWSec,
 			DeltaTowSec:     tgt.deltaTow,
@@ -219,6 +221,10 @@ func (e *Engine) IngestMovingBase(gsofBuffer []byte) {
 		last := w.Base41Records[len(w.Base41Records)-1]
 		cp := last
 		e.lastBase41Moving = &cp
+	}
+	if len(w.Last38Payload) > 0 {
+		fields := gsof.Decode(38, w.Last38Payload)
+		e.lastMovingBase38Text = FormatHeading38Card(fields)
 	}
 	if w.Serial15 != nil {
 		e.movingBaseSerial = fmt.Sprintf("%d", *w.Serial15)
@@ -319,6 +325,7 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 	}
 	snap.HeadingCheck = e.computeHeadingCheckLocked()
 	snap.HeadingType38 = e.lastHeading38Text
+	snap.MovingBaseType38 = e.lastMovingBase38Text
 	return snap
 }
 
@@ -326,11 +333,11 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 // type-27 sample exists within the same TOW match window as the last solution.
 type HeadingCheckResult struct {
 	Available bool `json:"available"`
-	// ComputedBearingDeg is initial bearing heading → reference (0–360°, MatchedPoint).
+	// ComputedBearingDeg is initial bearing reference → heading rover (0–360°, same as MatchedPoint.BearingDeg).
 	ComputedBearingDeg float64 `json:"computed_bearing_deg"`
 	// Type27YawDeg is GSOF type-27 yaw (degrees).
 	Type27YawDeg float64 `json:"type27_yaw_deg"`
-	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
+	// DeltaDeg is signed (rover→reference bearing − yaw), folded to (−180, 180]; ComputedBearingDeg is the reverse azimuth (reference → rover).
 	DeltaDeg        float64 `json:"delta_deg"`
 	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
 	TowLastPointSec float64 `json:"tow_last_point_s"`
@@ -370,7 +377,9 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 			TowLastPointSec: last.GPSTOWSec,
 		}
 	}
-	signed := AngleDiffDegSigned(last.BearingDeg, best.YawDeg)
+	// MatchedPoint.BearingDeg is reference → rover; type-27 yaw check uses the reverse azimuth (rover → reference) on the same baseline.
+	roverToRef := math.Mod(last.BearingDeg+180, 360)
+	signed := AngleDiffDegSigned(roverToRef, best.YawDeg)
 	return &HeadingCheckResult{
 		Available:          true,
 		ComputedBearingDeg: last.BearingDeg,
@@ -478,4 +487,6 @@ type EngineSnapshot struct {
 
 	HeadingCheck  *HeadingCheckResult `json:"heading_check,omitempty"`
 	HeadingType38 string              `json:"heading_type38,omitempty"`
+	// MovingBaseType38 is the last GSOF type-38 decode on the moving-base stream (dual transport).
+	MovingBaseType38 string `json:"moving_base_type38,omitempty"`
 }
