@@ -153,6 +153,9 @@ type configResponse struct {
 	CLIStreamTransport string `json:"cli_stream_transport,omitempty"`
 	CLIStreamHost      string `json:"cli_stream_host,omitempty"`
 	CLIStreamPort      int    `json:"cli_stream_port,omitempty"`
+	// IgnoreTCPGSOFTransmissionGap1Default is true when the server was started with
+	// -ignore-tcp-gsof-transmission-gap1; new UI sessions OR this into their stream config.
+	IgnoreTCPGSOFTransmissionGap1Default bool `json:"ignore_tcp_gsof_transmission_gap1_default,omitempty"`
 }
 
 func (h *hub) get(id string) (*gsofSession, bool) {
@@ -296,11 +299,12 @@ func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg co
 		if cfg.Port > 0 || proto == "udp" {
 			out.CLIStreamPort = cfg.Port
 		}
+		out.IgnoreTCPGSOFTransmissionGap1Default = cfg.IgnoreTCPGSOFTransmissionGap1
 	}
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string) {
+func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string, serverIgnoreTCPGSOFGap1 bool) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -338,7 +342,7 @@ func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, emb
 		http.Error(w, `transport must be "tcp" or "udp"`, http.StatusBadRequest)
 		return
 	}
-	cfg.IgnoreTCPGSOFTransmissionGap1 = req.IgnoreTCPGSOFTransmissionGap1
+	cfg.IgnoreTCPGSOFTransmissionGap1 = req.IgnoreTCPGSOFTransmissionGap1 || serverIgnoreTCPGSOFGap1
 
 	// Session streams must outlive this HTTP request: r.Context() is cancelled as soon as the
 	// POST response is sent, which would immediately tear down TCP dials and UDP listeners.

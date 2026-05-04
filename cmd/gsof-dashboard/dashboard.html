@@ -896,6 +896,8 @@
     const warningsEl = document.getElementById("warnings");
     const warnBody = document.getElementById("warnBody");
     let lastStreamData = null;
+    /** Latest GET /api/config payload (hub mode); used when POSTing /api/sessions. */
+    let serverStreamConfig = null;
     /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
@@ -7655,6 +7657,9 @@
           }
         }
         const body = { transport: transport, host: host, port: port };
+        if (serverStreamConfig && serverStreamConfig.ignore_tcp_gsof_transmission_gap1_default) {
+          body.ignore_tcp_gsof_transmission_gap1 = true;
+        }
         statusEl.textContent = "Starting stream…";
         fetch("/api/sessions", {
           method: "POST",

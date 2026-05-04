@@ -50,7 +50,7 @@ func main() {
 	maxUISessions := flag.Int("max-ui-sessions", 64, "Maximum concurrent UI-defined GSOF sessions (hub / -embedded-stream=false)")
 	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "Allow UI/API TCP targets that resolve to loopback or RFC1918 addresses (lab only)")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
-	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats and parser warnings when exactly one GSOF transmission id is skipped between messages")
+	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats/parser warnings for a single skipped GSOF transmission id; applies to embedded streams and (with -embedded-stream=false) is merged into each browser-started session")
 	flag.Parse()
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved
@@ -130,7 +130,7 @@ func main() {
 		h.handleAPIConfig(w, *embeddedStream, cfg)
 	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
-		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, *allowPrivateGSOF, strings.TrimSpace(*advertiseHost))
+		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, *allowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1)
 	})
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		h.handleAPIDeleteSession(w, r, *embeddedStream)
