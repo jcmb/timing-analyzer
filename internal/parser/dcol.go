@@ -2,9 +2,53 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 	"time"
+
 	"timing-analyzer/internal/core"
+	"timing-analyzer/internal/gsof"
 )
+
+// hexBytesSpaced returns each byte as two uppercase hex digits, separated by spaces (e.g. "1A 2B FF").
+func hexBytesSpaced(b []byte) string {
+	if len(b) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.Grow(len(b)*3 - 1)
+	for i, v := range b {
+		if i > 0 {
+			sb.WriteByte(' ')
+		}
+		sb.WriteString(fmt.Sprintf("%02X", v))
+	}
+	return sb.String()
+}
+
+// printGSOFSubRecordsVerbose2 logs each sub-record in a reassembled GSOF buffer: type, length byte, and full record bytes as spaced hex.
+func printGSOFSubRecordsVerbose2(gsofBuffer []byte) {
+	gsofBuffer = gsof.FlattenGSOFBuffer(gsofBuffer)
+	ptr := 0
+	for ptr < len(gsofBuffer) {
+		if ptr+2 > len(gsofBuffer) {
+			fmt.Printf("[VERBOSE2] GSOF sub-record truncated at offset %d (remainder %d bytes): %s\n",
+				ptr, len(gsofBuffer)-ptr, hexBytesSpaced(gsofBuffer[ptr:]))
+			return
+		}
+		recType := gsofBuffer[ptr]
+		recLen := int(gsofBuffer[ptr+1])
+		endIdx := ptr + 2 + recLen
+		if endIdx > len(gsofBuffer) {
+			fmt.Printf("[VERBOSE2] GSOF sub-record type=0x%02X len=%d incomplete (need %d bytes, %d remain): %s\n",
+				recType, recLen, endIdx-ptr, len(gsofBuffer)-ptr, hexBytesSpaced(gsofBuffer[ptr:]))
+			return
+		}
+		recBytes := gsofBuffer[ptr:endIdx]
+		fmt.Printf("[VERBOSE2] GSOF sub-record type=0x%02X len=%d packet_hex=%s\n",
+			recType, recLen, hexBytesSpaced(recBytes))
+		ptr = endIdx
+	}
+}
 
 // GSOFSession maintains the state of a multi-page GSOF message reassembly.
 type GSOFSession struct {
@@ -14,12 +58,42 @@ type GSOFSession struct {
 	ExpectedNextPage uint8
 }
 
+// maxDCOLBufWithoutSTX bounds how much we retain while waiting for 0x02 (STX). TCP can split
+// a DCOL frame across reads so a chunk may contain no STX; discarding the buffer in that
+// case loses bytes and breaks reassembly. UDP datagrams usually begin at STX, so this
+// matters most for TCP streams.
+const maxDCOLBufWithoutSTX = 1 << 20 // 1 MiB
+
 type DCOLParser struct {
-	buf           []byte
-	gsofAssembler map[uint8]*GSOFSession // Map of transmission number to reassembly session
+	buf                      []byte
+	gsofAssembler            map[uint8]*GSOFSession // Map of transmission number to reassembly session
+	synced                   bool                   // true after at least one complete DCOL frame was emitted
+	pendingStreamWarnings    []string
+	lastCompletedGSOFXmit    uint8
+	hasLastCompletedGSOFXmit bool
 }
 
-func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time, remoteAddr string, verbose int, out chan<- core.PacketEvent) {
+func (p *DCOLParser) appendGSOFTransportWarning(msg string, verbose int) {
+	p.pendingStreamWarnings = append(p.pendingStreamWarnings, msg)
+	if verbose >= 2 {
+		fmt.Printf("[VERBOSE2] %s\n", msg)
+	}
+}
+
+func (p *DCOLParser) noteUndecodedAfterSync(n int, reason, remoteAddr string, verbose int) {
+	if !p.synced || n <= 0 {
+		return
+	}
+	msg := fmt.Sprintf("[%s] WARNING: %d undecoded byte(s) after DCOL sync (%s) remote=%s",
+		time.Now().Format("15:04:05"), n, reason, remoteAddr)
+	p.pendingStreamWarnings = append(p.pendingStreamWarnings, msg)
+	if verbose >= 2 {
+		fmt.Printf("[VERBOSE2] %s\n", msg)
+	}
+}
+
+func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time, remoteAddr string, cfg core.Config, out chan<- core.PacketEvent) {
+	verbose := cfg.Verbose
 	p.buf = append(p.buf, data...)
 
 	for len(p.buf) >= 6 {
@@ -31,10 +105,17 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			}
 		}
 		if stxIdx == -1 {
-			p.buf = nil
+			if len(p.buf) > maxDCOLBufWithoutSTX {
+				if verbose >= 1 {
+					fmt.Printf("[WARN] DCOL buffer %d bytes without STX (0x02); discarding to resync.\n", len(p.buf))
+				}
+				p.noteUndecodedAfterSync(len(p.buf), "discarded without STX (buffer cap)", remoteAddr, verbose)
+				p.buf = nil
+			}
 			return
 		}
 		if stxIdx > 0 {
+			p.noteUndecodedAfterSync(stxIdx, "leading bytes before STX", remoteAddr, verbose)
 			p.buf = p.buf[stxIdx:]
 		}
 		if len(p.buf) < 6 {
@@ -49,6 +130,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			return
 		}
 		if p.buf[totalExpectedLen-1] != 0x03 { // End of Transmission
+			p.noteUndecodedAfterSync(1, "invalid ETX (slipped 1 byte)", remoteAddr, verbose)
 			p.buf = p.buf[1:]
 			continue
 		}
@@ -61,6 +143,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			if verbose >= 1 {
 				fmt.Printf("[WARN] Checksum failed for packet type 0x%02X\n", pktType)
 			}
+			p.noteUndecodedAfterSync(1, "checksum mismatch (slipped 1 byte)", remoteAddr, verbose)
 			p.buf = p.buf[1:]
 			continue
 		}
@@ -92,6 +175,32 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 				p.gsofAssembler = make(map[uint8]*GSOFSession)
 			}
 
+			// Sender restarted this transmission before finishing the previous multi-page assembly.
+			if sess, ok := p.gsofAssembler[transmissionNum]; ok && sess.ExpectedNextPage > 0 && pageIndex == 0 {
+				if verbose >= 1 {
+					fmt.Printf("[WARN] GSOF transmission %d: new page 0 while page %d was still expected; restarting assembly\n",
+						transmissionNum, sess.ExpectedNextPage)
+				}
+				delete(p.gsofAssembler, transmissionNum)
+			}
+
+			// Skipped transmission numbers between completed GSOF messages (UDP loss or broken sender).
+			// On TCP, a single skipped id still warns unless IgnoreTCPGSOFTransmissionGap1 is set.
+			if pageIndex == 0 && p.hasLastCompletedGSOFXmit {
+				d := (int(transmissionNum) - int(p.lastCompletedGSOFXmit) + 256) % 256
+				if d > 1 {
+					missed := d - 1
+					tcp := !strings.EqualFold(cfg.IP, "udp")
+					if tcp && cfg.IgnoreTCPGSOFTransmissionGap1 && missed == 1 {
+						// TCP: suppress dashboard/parser warning for exactly one skipped transmission id.
+					} else {
+						msg := fmt.Sprintf("[%s] WARNING: GSOF transmission gap: ~%d missed id(s) between xmit %d and %d",
+							time.Now().Format("15:04:05"), missed, p.lastCompletedGSOFXmit, transmissionNum)
+						p.appendGSOFTransportWarning(msg, verbose)
+					}
+				}
+			}
+
 			session, exists := p.gsofAssembler[transmissionNum]
 			if !exists {
 				session = &GSOFSession{
@@ -106,35 +215,53 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 				fmt.Printf("[DEBUG] GSOF Frag: Seq=%d, Page=%d, Max=%d\n", transmissionNum, pageIndex, maxPages)
 			}
 
-			// Validate page order
-			if pageIndex == session.ExpectedNextPage {
-				// Append GSOF record data (skipping transport bytes 4, 5, 6)
-				session.Data = append(session.Data, p.buf[7:totalExpectedLen-2]...)
-				session.ExpectedNextPage++
-			} else {
+			// Page order: tolerate duplicates/late pages; drop assembly if intermediate pages were lost.
+			if pageIndex < session.ExpectedNextPage {
 				if verbose >= 1 {
-					fmt.Printf("[ERROR] GSOF Page Out of Order: Seq=%d, Got=%d, Expected=%d. Dropping.\n", transmissionNum, pageIndex, session.ExpectedNextPage)
+					fmt.Printf("[WARN] GSOF duplicate or late page: xmit=%d page=%d (already past); dropping frame\n",
+						transmissionNum, pageIndex)
 				}
+				p.buf = p.buf[totalExpectedLen:]
+				continue
+			}
+			if pageIndex > session.ExpectedNextPage {
+				if verbose >= 1 {
+					fmt.Printf("[WARN] GSOF missed page(s): xmit=%d got page=%d expected=%d; dropping partial assembly\n",
+						transmissionNum, pageIndex, session.ExpectedNextPage)
+				}
+				msg := fmt.Sprintf("[%s] WARNING: GSOF multi-page gap: transmission %d expected page %d, got %d (dropped partial)",
+					time.Now().Format("15:04:05"), transmissionNum, session.ExpectedNextPage, pageIndex)
+				p.appendGSOFTransportWarning(msg, verbose)
 				delete(p.gsofAssembler, transmissionNum)
 				p.buf = p.buf[totalExpectedLen:]
 				continue
 			}
 
+			// Append GSOF record data (skipping transport bytes 4, 5, 6)
+			session.Data = append(session.Data, p.buf[7:totalExpectedLen-2]...)
+			session.ExpectedNextPage++
+
 			// Reassembly is complete only when the page index reaches maxPages
 			if pageIndex == session.TotalPages {
 				gsofBuffer = session.Data
+				p.lastCompletedGSOFXmit = transmissionNum
+				p.hasLastCompletedGSOFXmit = true
+				if verbose >= 2 {
+					printGSOFSubRecordsVerbose2(gsofBuffer)
+				}
 				if verbose >= 3 {
 					fmt.Printf("[DEBUG] GSOF FULL BUFFER: %X\n", gsofBuffer)
+					flat := gsof.FlattenGSOFBuffer(gsofBuffer)
 					ptr := 0
-					for ptr < len(gsofBuffer)-1 {
-						recType := gsofBuffer[ptr]
-						recLen := gsofBuffer[ptr+1]
+					for ptr < len(flat)-1 {
+						recType := flat[ptr]
+						recLen := flat[ptr+1]
 						endIdx := ptr + 2 + int(recLen)
-						if endIdx > len(gsofBuffer) {
-							fmt.Printf("[DEBUG]   - SUB-MESSAGE OVERRUN: Type 0x%02X needs %d bytes, but only %d remain\n", recType, recLen, len(gsofBuffer)-ptr-2)
+						if endIdx > len(flat) {
+							fmt.Printf("[DEBUG]   - SUB-MESSAGE OVERRUN: Type 0x%02X needs %d bytes, but only %d remain\n", recType, recLen, len(flat)-ptr-2)
 							break
 						}
-						fmt.Printf("[DEBUG]   - SUB-MESSAGE: Type 0x%02X, Len %d, Data [%X]\n", recType, recLen, gsofBuffer[ptr+2:endIdx])
+						fmt.Printf("[DEBUG]   - SUB-MESSAGE: Type 0x%02X, Len %d, Data [%X]\n", recType, recLen, flat[ptr+2:endIdx])
 						ptr = endIdx
 					}
 				}
@@ -164,6 +291,12 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			}
 		}
 
+		var gsofCopy []byte
+		if len(gsofBuffer) > 0 {
+			gsofCopy = append([]byte(nil), gsofBuffer...)
+		}
+		warnings := append([]string(nil), p.pendingStreamWarnings...)
+		p.pendingStreamWarnings = p.pendingStreamWarnings[:0]
 		out <- core.PacketEvent{
 			BestTime:       bestTime,
 			GoTime:         goTime,
@@ -177,9 +310,11 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			Version:        version,
 			StationID:      stationID,
 			IsLastInBurst:  isLastInBurst,
-			GSOFBuffer:     gsofBuffer,
+			GSOFBuffer:     gsofCopy,
 			SequenceNumber: gsofSeq,
+			StreamWarnings: warnings,
 		}
+		p.synced = true
 		p.buf = p.buf[totalExpectedLen:]
 	}
 }

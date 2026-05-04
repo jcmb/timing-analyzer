@@ -21,9 +21,13 @@ type Config struct {
 	Username   string
 	Password   string
 	SessionID  string
+
+	// IgnoreTCPGSOFTransmissionGap1, when true on a TCP stream, suppresses warnings for exactly
+	// one missing GSOF transmission number between successive messages (Stats and DCOL parser).
+	// Default false: a single skipped id on TCP is still reported.
+	IgnoreTCPGSOFTransmissionGap1 bool
 }
 
-// ... the rest of the file (PacketEvent, TelemetryEvent, LogEntry, GetNiceName) stays EXACTLY the same.
 type PacketEvent struct {
 	BestTime      time.Time
 	GoTime        time.Time
@@ -38,7 +42,11 @@ type PacketEvent struct {
 	StationID     int
 	IsLastInBurst bool
 	GSOFBuffer    []byte // The reassembled multi-page payload
-	SequenceNumber uint8  // Byte 4 of the GSOF packet
+	// SequenceNumber is the GSOF 0x40 transmission number (payload byte 4) when
+	// PacketType is 0x40; otherwise zero. It is not a monotonic transport sequence.
+	SequenceNumber uint8
+	// StreamWarnings are parser-side issues (e.g. undecoded bytes after sync) to merge into stats.
+	StreamWarnings []string `json:"-"`
 }
 
 type TelemetryEvent struct {
@@ -80,17 +88,29 @@ type LogEntry struct {
 
 func GetNiceName(displayKey string) string {
 	switch displayKey {
-	case "0x93-0": return "CMR GPS"
-	case "0x93-1": return "CMR Base LLH"
-	case "0x93-2": return "CMR Base Name"
-	case "0x93-3": return "CMR GLN-STD"
-	case "0x93-4": return "GPS Delta"
-	case "0x94":   return "CMR+ Base"
-	case "0x98-0": return "CMR GLONASS"
-	case "0x98-1": return "CMR Time"
-	case "0x98-4": return "GLN Delta"
-	case "0x40":   return "GSOF"
-	case "0x57":   return "RAWDATA"
-	default:       return displayKey
+	case "0x93-0":
+		return "CMR GPS"
+	case "0x93-1":
+		return "CMR Base LLH"
+	case "0x93-2":
+		return "CMR Base Name"
+	case "0x93-3":
+		return "CMR GLN-STD"
+	case "0x93-4":
+		return "GPS Delta"
+	case "0x94":
+		return "CMR+ Base"
+	case "0x98-0":
+		return "CMR GLONASS"
+	case "0x98-1":
+		return "CMR Time"
+	case "0x98-4":
+		return "GLN Delta"
+	case "0x40":
+		return "GSOF"
+	case "0x57":
+		return "RAWDATA"
+	default:
+		return displayKey
 	}
 }
