@@ -117,6 +117,50 @@
       background: var(--card); color: var(--tx); min-width: 8.5rem; cursor: pointer;
     }
     .theme-select:hover { border-color: var(--accent); }
+    .card-h2-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.35rem;
+    }
+    .card-h2-row .card-toggle { flex: 1; min-width: 0; width: auto; }
+    .card-info-anchor { position: relative; flex-shrink: 0; margin-top: 0.15rem; }
+    .card-info-btn {
+      font: inherit;
+      width: 1.5rem;
+      height: 1.5rem;
+      padding: 0;
+      border-radius: 50%;
+      border: 1px solid var(--bd);
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .card-info-btn:hover, .card-info-btn:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+    }
+    .card-info-popover {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 40;
+      min-width: min(100%, 14rem);
+      max-width: min(22rem, calc(100vw - 2rem));
+      padding: 0.55rem 0.65rem;
+      font: 11px/1.45 var(--sans);
+      color: var(--tx);
+      background: var(--card);
+      border: 1px solid var(--bd);
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    html[data-theme="light"] .card-info-popover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
   </style>
 </head>
 <body>
@@ -149,11 +193,23 @@
         <div class="card-panel"><div id="headingInfo" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-check">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading check</span></button></h2>
+        <h2 class="card-h2 card-h2-row">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading check</span></button>
+          <div class="card-info-anchor">
+            <button type="button" class="card-info-btn" title="Hover or click for notes on bearing vs yaw" aria-label="Notes on heading check" aria-expanded="false" aria-controls="pop-heading-check" id="btn-info-heading-check">i</button>
+            <div id="pop-heading-check" class="card-info-popover" hidden role="region" aria-labelledby="btn-info-heading-check"></div>
+          </div>
+        </h2>
         <div class="card-panel"><div id="headingCheck" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="range-check">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Range</span></button></h2>
+        <h2 class="card-h2 card-h2-row">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Range</span></button>
+          <div class="card-info-anchor">
+            <button type="button" class="card-info-btn" title="Hover or click for notes on slant, ref, and tolerance" aria-label="Notes on range readout" aria-expanded="false" aria-controls="pop-range-check" id="btn-info-range-check">i</button>
+            <div id="pop-range-check" class="card-info-popover" hidden role="region" aria-labelledby="btn-info-range-check"></div>
+          </div>
+        </h2>
         <div class="card-panel"><div id="rcheck" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-rover">
@@ -318,6 +374,10 @@
     lines.push(plainFromRows(rows));
     lines.push("");
   }
+  var POP_NOTE_HEADING_CHECK =
+    "Bearing here is the horizontal initial bearing on the ellipsoid from heading positions toward the reference. Type 27 yaw is body attitude (rotation about the receiver's vertical axis in its attitude frame). Pitch and roll tilt that frame: the horizontal direction implied by yaw is not automatically the same as geographic bearing, and non-level mounting can widen the gap without either value being wrong. Large |Δ| with large |pitch| or |roll| often points to this geometry mismatch rather than a bad solution.";
+  var POP_NOTE_RANGE =
+    "Check vs reference compares |slant − ref| to the range tolerance set on the command line (-range-check-tolerance).\n\nWhen ref is GSOF 27: slant is from LLH (heading type 1/2 to the matched reference); ref is the GSOF type-27 range at that TOW. These are different definitions, so a steady offset is common. If |slant − ref| barely moves as epochs update, you are usually seeing a bias between those two ranges, not random jitter. Five decimal places are shown on slant, horizontal range, and |slant − ref| so tiny drift is visible.\n\nWhen ref is from the CLI expected range: the reference is the fixed value you supplied; slant comes from the latest matched positions.";
   function buildPlainTextExport(d) {
     if (!d) return "";
     var lines = [];
@@ -330,8 +390,18 @@
     blockRows(lines, "HEADING — BEARING AND RANGE", rowsHeadingInfo(d));
     if (d.heading_type27) {
       blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
+      if (d.heading_check && d.heading_check.available) {
+        lines.push("Notes (same as WebUI ⓘ):");
+        lines.push(POP_NOTE_HEADING_CHECK);
+        lines.push("");
+      }
     }
     blockRows(lines, "RANGE", rowsRangeCheck(d.points || []));
+    if (d.points && d.points.length) {
+      lines.push("Notes (same as WebUI ⓘ):");
+      lines.push(POP_NOTE_RANGE);
+      lines.push("");
+    }
     blockRows(lines, "HEADING POSITION", rowsHeadingRover(d.heading_rover));
     blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
     blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
@@ -421,13 +491,19 @@
       if (h.note && h.note !== "no_type27_same_tow") s += "\nNote: " + h.note;
       return [full(s.trim())];
     }
-    return [
+    var pitch =
+      typeof h.type27_pitch_deg === "number" && !isNaN(h.type27_pitch_deg) ? h.type27_pitch_deg.toFixed(3) : "—";
+    var roll =
+      typeof h.type27_roll_deg === "number" && !isNaN(h.type27_roll_deg) ? h.type27_roll_deg.toFixed(3) : "—";
+    var rows = [
       row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
       row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
+      row("Type 27 pitch / roll (reported)", pitch + " ° / " + roll + " °"),
       row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
       row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
       row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
     ];
+    return rows;
   }
   function parseType38TextBlock(text) {
     return String(text)
@@ -483,8 +559,8 @@
     var rows = [
       row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
       row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
-      row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
-      row("Slant range", p.slant_m.toFixed(3) + " m"),
+      row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
+      row("Slant range", p.slant_m.toFixed(5) + " m"),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
       row("Reference", String(p.reference_source)),
       row("SVs used (heading)", String(p.svs_heading))
@@ -553,8 +629,7 @@
     var p = pts[pts.length - 1];
     var note = p.range_note || "";
     var rows = [];
-    var fromT27 = note.indexOf("type27") >= 0;
-    if (fromT27) {
+    if (note.indexOf("type27") >= 0) {
       rows.push(
         row(
           "Type 27 range (GSOF)",
@@ -566,33 +641,13 @@
       rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
       rows.push(row("Source", formatRangeRefSource(note)));
     }
-    rows.push(row("Slant range (computed)", p.slant_m.toFixed(3) + " m"));
-    rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(3) + " m"));
+    rows.push(row("Slant range (computed)", p.slant_m.toFixed(5) + " m"));
+    rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(5) + " m"));
     rows.push(row("Position Latency", p.delta_tow_s.toFixed(3) + " s"));
     rows.push(row("Bearing reference", String(p.reference_source)));
     if (rangeCompareActive(p)) {
-      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(3) + " m"));
-      rows.push(
-        row(
-          "Check vs reference",
-          p.range_ok
-            ? "Within tolerance — |slant − ref| is within the CLI range tolerance."
-            : "Outside tolerance — |slant − ref| exceeds the CLI range tolerance."
-        )
-      );
-      if (fromT27) {
-        rows.push(
-          full(
-            "Why |slant − ref| may be small but not zero (e.g. 0.003 m): the slant range is computed from LLH (heading type 1/2 to the matched reference). The reference is the scalar range from GSOF type 27 at the same TOW. Those are not the same measurement path: the receiver’s type‑27 range uses its internal model (antenna / phase‑centre / filtering), while the slant uses your paired positions. Sub‑centimetre differences are normal and do not by themselves mean the data are wrong."
-          )
-        );
-      } else if (note === "expected_range_param") {
-        rows.push(
-          full(
-            "The reference is the fixed expected range from the command line; the slant is computed from the latest matched positions. |slant − ref| is compared to the CLI tolerance."
-          )
-        );
-      }
+      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
+      rows.push(row("Check vs reference", p.range_ok ? "Within tolerance" : "Outside tolerance"));
     }
     return rows;
   }
@@ -630,8 +685,8 @@
       row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
       row("Bearing", p.bearing_deg.toFixed(3) + " °"),
-      row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
-      row("Slant range", p.slant_m.toFixed(3) + " m"),
+      row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
+      row("Slant range", p.slant_m.toFixed(5) + " m"),
       row("Reference", String(p.reference_source)),
       row("SVs (heading)", String(p.svs_heading)),
       row("SVs (moving base)", String(p.svs_moving_base))
@@ -643,7 +698,7 @@
       }
     }
     if (rangeCompareActive(p)) {
-      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(3) + " m"));
+      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
       rows.push(row("Range OK", p.range_ok ? "yes" : "no"));
     }
     return rows;
@@ -694,6 +749,57 @@
             if (id === "chart-range" && chart1) chart1.resize();
             if (id === "chart-sv" && chart2) chart2.resize();
           });
+        }
+      });
+    });
+  }
+  function wireInfoPopover(anchor, pop, btn) {
+    if (!anchor || !pop || !btn) return;
+    var hideT;
+    function open() {
+      clearTimeout(hideT);
+      pop.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+    }
+    function close() {
+      hideT = setTimeout(function () {
+        pop.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }, 280);
+    }
+    anchor.addEventListener("mouseenter", open);
+    anchor.addEventListener("mouseleave", close);
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      if (pop.hidden) open();
+      else {
+        clearTimeout(hideT);
+        pop.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+  function initCardInfoAnchors() {
+    var ph = document.getElementById("pop-heading-check");
+    var bh = document.getElementById("btn-info-heading-check");
+    if (ph && bh) {
+      ph.textContent = POP_NOTE_HEADING_CHECK;
+      wireInfoPopover(bh.closest(".card-info-anchor"), ph, bh);
+    }
+    var pr = document.getElementById("pop-range-check");
+    var br = document.getElementById("btn-info-range-check");
+    if (pr && br) {
+      pr.textContent = POP_NOTE_RANGE;
+      wireInfoPopover(br.closest(".card-info-anchor"), pr, br);
+    }
+    document.addEventListener("click", function (ev) {
+      document.querySelectorAll(".card-info-anchor").forEach(function (a) {
+        if (a.contains(ev.target)) return;
+        var p = a.querySelector(".card-info-popover");
+        var b = a.querySelector(".card-info-btn");
+        if (p && !p.hidden) {
+          p.hidden = true;
+          if (b) b.setAttribute("aria-expanded", "false");
         }
       });
     });
@@ -893,6 +999,7 @@
   };
   es.onerror = function () {};
   initCollapsibleCards();
+  initCardInfoAnchors();
   updateThemeButtons();
 })();
   </script>

@@ -336,6 +336,9 @@ type HeadingCheckResult struct {
 	ComputedBearingDeg float64 `json:"computed_bearing_deg"`
 	// Type27YawDeg is GSOF type-27 yaw (degrees).
 	Type27YawDeg float64 `json:"type27_yaw_deg"`
+	// Type27PitchDeg and Type27RollDeg are from the same type-27 record as yaw (when Available).
+	Type27PitchDeg float64 `json:"type27_pitch_deg"`
+	Type27RollDeg  float64 `json:"type27_roll_deg"`
 	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
 	DeltaDeg        float64 `json:"delta_deg"`
 	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
@@ -381,6 +384,8 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 		Available:          true,
 		ComputedBearingDeg: last.BearingDeg,
 		Type27YawDeg:       best.YawDeg,
+		Type27PitchDeg:     best.PitchDeg,
+		Type27RollDeg:      best.RollDeg,
 		DeltaDeg:           signed,
 		AbsDeltaDeg:        math.Abs(signed),
 		TowLastPointSec:    last.GPSTOWSec,
