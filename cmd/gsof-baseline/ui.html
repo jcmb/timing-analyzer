@@ -483,7 +483,6 @@
       row("|ΔTOW|", fmtTowSec2(cc.tow_delta_s)),
       row("Match (≤5 m horiz, ≤5 m height)", cc.match_ok ? "YES" : "NO")
     ];
-    if (cc.note) rows.push(row("Note", cc.note));
     return rows;
   }
   function rowsStatus(d) {
@@ -533,15 +532,6 @@
     } else if (note === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) {
       rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
       rows.push(row("Source", formatRangeRefSource(note)));
-    } else if (note === "no_reference") {
-      rows.push(row("Reference range", "not available"));
-      rows.push(
-        row(
-          "Note",
-          "No type-27 range at the solution TOW, or no slant yet. With -expected-range 0, reference is GSOF type-27 on the heading stream; comparison uses -range-check-tolerance (default 0.01 m)."
-        )
-      );
-    }
     rows.push(row("Slant range (computed)", p.slant_m.toFixed(3) + " m"));
     rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(3) + " m"));
     rows.push(row("Position Latency", p.delta_tow_s.toFixed(3) + " s"));
@@ -551,6 +541,19 @@
       rows.push(row("Check vs reference", p.range_ok ? "within tolerance" : "outside tolerance"));
     }
     return rows;
+  }
+  function rangeCheckCardHasContent(pts) {
+    if (!pts || !pts.length) return false;
+    var p = pts[pts.length - 1];
+    var n = p.range_note || "";
+    if (n.indexOf("type27") >= 0 && p.range_ref_m != null && !isNaN(p.range_ref_m)) return true;
+    if (n === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) return true;
+    if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) return true;
+    return false;
+  }
+  function setDataCardVisible(id, show) {
+    var el = document.querySelector('.card[data-card-id="' + id + '"]');
+    if (el) el.style.display = show ? "" : "none";
   }
   function rowsLastPoint(d) {
     var pts = d.points || [];
@@ -698,8 +701,27 @@
     try { d = JSON.parse(ev.data); } catch (err) { return; }
     lastSnap = d;
     var mbOn = !!d.moving_base_configured;
-    document.getElementById("cardMb").style.display = mbOn ? "" : "none";
-    document.getElementById("cardMb35").style.display = mbOn ? "" : "none";
+    var pts = d.points || [];
+    var hasPts = pts.length > 0;
+
+    setDataCardVisible("heading-info", hasPts);
+    setDataCardVisible("heading-check", hasPts);
+    setDataCardVisible("range-check", rangeCheckCardHasContent(pts));
+    setDataCardVisible("heading-rover", !!d.heading_rover);
+    setDataCardVisible("heading-base-41", !!d.base_41_heading);
+    document.getElementById("cardMb35").style.display =
+      mbOn && d.base_35_moving ? "" : "none";
+    setDataCardVisible("heading-27", !!d.heading_type27);
+    setDataCardVisible("heading-38", !!(d.heading_type38 && String(d.heading_type38).trim()));
+    setDataCardVisible(
+      "serials",
+      !!(d.heading_serial || (mbOn && d.moving_base_serial))
+    );
+    document.getElementById("cardMb").style.display =
+      mbOn && d.base_41_moving ? "" : "none";
+    setDataCardVisible("chart-range", hasPts);
+    setDataCardVisible("chart-sv", hasPts);
+
     renderKv("status", rowsStatus(d));
     renderKv("headingInfo", rowsHeadingInfo(d));
     renderKv("headingCheck", rowsHeadingCheck(d.heading_check));
@@ -724,7 +746,6 @@
     } else {
       cardCross.style.display = "none";
     }
-    var pts = d.points || [];
     var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
     var bear = pts.map(function (p) { return p.bearing_deg; });
     var horiz = pts.map(function (p) { return p.horiz_m; });
