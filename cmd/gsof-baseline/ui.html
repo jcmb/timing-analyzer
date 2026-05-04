@@ -48,6 +48,7 @@
     <div class="card-grid">
       <div class="card"><h2>Status</h2><pre id="status">—</pre></div>
       <div class="card"><h2>Heading · bearing &amp; range</h2><pre id="headingInfo">—</pre></div>
+      <div class="card"><h2>Heading check</h2><pre id="headingCheck">—</pre></div>
       <div class="card"><h2>Range check</h2><pre id="rcheck">—</pre></div>
       <div class="card"><h2>Heading · rover position (types 1+2)</h2><pre id="headingRover">—</pre></div>
       <div class="card">
@@ -58,6 +59,7 @@
         <pre id="b41h">—</pre>
       </div>
       <div class="card"><h2>Heading · attitude (GSOF type 27)</h2><pre id="heading27">—</pre></div>
+      <div class="card"><h2>Heading · position type (GSOF type 38)</h2><pre id="heading38">—</pre></div>
       <div class="card"><h2>Receiver serial (type 15)</h2><pre id="serials">—</pre></div>
       <div class="card" id="cardCross" style="display:none"><h2>Type 41 (heading) vs moving base (types 1+2)</h2><pre id="cross">—</pre></div>
       <div class="card" id="cardMb" style="display:none">
@@ -105,6 +107,12 @@
     o.push(row("## heading_bearing_range", ""));
     o.push(row("heading_bearing_range", document.getElementById("headingInfo").textContent.replace(/\n/g, " | ")));
     o.push(row("", ""));
+    o.push(row("## heading_check", ""));
+    o.push(row("heading_check", document.getElementById("headingCheck").textContent.replace(/\n/g, " | ")));
+    if (d.heading_check) {
+      o.push(row("heading_check_json", JSON.stringify(d.heading_check)));
+    }
+    o.push(row("", ""));
     o.push(row("## range_check", ""));
     o.push(row("range_check", document.getElementById("rcheck").textContent.replace(/\n/g, " | ")));
     o.push(row("", ""));
@@ -119,6 +127,9 @@
     o.push(row("", ""));
     o.push(row("## heading_type27", ""));
     o.push(row("heading_type27", document.getElementById("heading27").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_type38", ""));
+    o.push(row("heading_type38", document.getElementById("heading38").textContent.replace(/\n/g, " | ")));
     o.push(row("", ""));
     o.push(row("## serials", ""));
     o.push(row("serials", document.getElementById("serials").textContent.replace(/\n/g, " | ")));
@@ -181,12 +192,32 @@
       "Pitch °: " + a.pitch_deg,
       "Yaw °: " + a.yaw_deg,
       "Roll °: " + a.roll_deg,
-      "Range m: " + a.range_m,
-      "Pitch var (rad²): " + a.pitch_var_rad2,
-      "Yaw var (rad²): " + a.yaw_var_rad2,
-      "Roll var (rad²): " + a.roll_var_rad2,
-      "Range var (m²): " + a.range_var_m2
+      "Range m: " + a.range_m
     ].join("\n");
+  }
+  function fmtHeadingCheck(h) {
+    if (!h) return "—\n(No check data.)";
+    if (!h.available && h.note === "no_bearing_solution") return "—\n(No bearing solution yet.)";
+    if (!h.available) {
+      var s = "Computed bearing vs type 27 yaw: not compared (no type 27 within the TOW match window).\n";
+      if (h.tow_last_point_s != null && !isNaN(h.tow_last_point_s)) s += "Last solution TOW s: " + h.tow_last_point_s.toFixed(3) + "\n";
+      if (h.note) s += "Note: " + h.note;
+      return s.trim();
+    }
+    return [
+      "Computed bearing (heading → ref): " + h.computed_bearing_deg.toFixed(3) + " °",
+      "Type 27 yaw: " + h.type27_yaw_deg.toFixed(3) + " °",
+      "Δ (computed − yaw, signed shortest): " + h.delta_deg.toFixed(3) + " °",
+      "|Δ|: " + h.abs_delta_deg.toFixed(3) + " °",
+      "TOW last point s: " + h.tow_last_point_s.toFixed(3),
+      "TOW type 27 s: " + h.tow_type27_s.toFixed(3),
+      "|ΔTOW| (point vs type 27): " + h.tow_delta_s.toFixed(3) + " s"
+    ].join("\n");
+  }
+  function fmtHeading38(d) {
+    var t = d.heading_type38;
+    if (!t) return "—\n(No GSOF type 38 on heading stream yet.)";
+    return t;
   }
   function fmtSerials(d) {
     var h = d.heading_serial ? d.heading_serial : "—";
@@ -308,11 +339,13 @@
     document.getElementById("cardMb").style.display = mbOn ? "" : "none";
     document.getElementById("status").textContent = statusText(d);
     document.getElementById("headingInfo").textContent = fmtHeadingInfo(d);
+    document.getElementById("headingCheck").textContent = fmtHeadingCheck(d.heading_check);
     document.getElementById("rcheck").textContent = lastRangeLine(d.points || []);
     document.getElementById("headingRover").textContent = fmtHeadingRover(d.heading_rover);
     document.getElementById("b35h").textContent = fmtBase35(d.base_35_heading);
     document.getElementById("b41h").textContent = fmtBase41(d.base_41_heading);
     document.getElementById("heading27").textContent = fmtType27(d.heading_type27);
+    document.getElementById("heading38").textContent = fmtHeading38(d);
     document.getElementById("serials").textContent = fmtSerials(d);
     if (mbOn) {
       document.getElementById("b35m").textContent = fmtBase35(d.base_35_moving);

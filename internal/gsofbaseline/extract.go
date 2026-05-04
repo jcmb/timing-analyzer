@@ -32,6 +32,10 @@ type PacketWalkResult struct {
 	Serial15       *uint32
 	// LastAttitude27 is the last type-27 record in packet order (full attitude decode).
 	LastAttitude27 *gsof.AttitudePoint
+	// Heading27All is every type-27 attitude in packet order (for TOW matching to bearing).
+	Heading27All []gsof.AttitudePoint
+	// Last38Payload is the last type-38 inner payload in packet order (heading stream).
+	Last38Payload []byte
 }
 
 // WalkGSOFPacket walks one flattened GSOF payload like gsofstats.ExpandGSOFStream.
@@ -50,9 +54,12 @@ func WalkGSOFPacket(gsofBuffer []byte) PacketWalkResult {
 					GPSTOWSec: ap.GPSTOWSec,
 					RangeM:    ap.RangeM,
 				})
+				out.Heading27All = append(out.Heading27All, ap)
 				cp := ap
 				out.LastAttitude27 = &cp
 			}
+		case 38:
+			out.Last38Payload = append([]byte(nil), pld...)
 		case 35:
 			if b, ok := gsof.ParseReceivedBaseInfo(pld); ok {
 				cp := b

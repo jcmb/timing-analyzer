@@ -66,6 +66,8 @@ type Engine struct {
 
 	lastHeadingRover *EpochSample
 	lastHeading27    *gsof.AttitudePoint
+	headingAttRing   []gsof.AttitudePoint
+	lastHeading38Text string
 	movingBaseSerial string
 }
 
@@ -118,6 +120,14 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 	if w.LastAttitude27 != nil {
 		v := *w.LastAttitude27
 		e.lastHeading27 = &v
+	}
+	for _, ap := range w.Heading27All {
+		e.headingAttRing = append(e.headingAttRing, ap)
+	}
+	e.headingAttRing = trimFront(e.headingAttRing, maxRing)
+	if len(w.Last38Payload) > 0 {
+		fields := gsof.Decode(38, w.Last38Payload)
+		e.lastHeading38Text = FormatGSOFFieldsForCard(fields)
 	}
 	if len(w.Epochs) > 0 {
 		le := w.Epochs[len(w.Epochs)-1]
@@ -308,7 +318,70 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 	if cc != nil {
 		snap.Heading41VsMovingBase = cc
 	}
+	snap.HeadingCheck = e.computeHeadingCheckLocked()
+	snap.HeadingType38 = e.lastHeading38Text
 	return snap
+}
+
+// HeadingCheckResult compares the latest computed bearing to type-27 yaw when a
+// type-27 sample exists within the same TOW match window as the last solution.
+type HeadingCheckResult struct {
+	Available bool `json:"available"`
+	// ComputedBearingDeg is initial bearing heading → reference (0–360°, MatchedPoint).
+	ComputedBearingDeg float64 `json:"computed_bearing_deg"`
+	// Type27YawDeg is GSOF type-27 yaw (degrees).
+	Type27YawDeg float64 `json:"type27_yaw_deg"`
+	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
+	DeltaDeg    float64 `json:"delta_deg"`
+	AbsDeltaDeg float64 `json:"abs_delta_deg"`
+	TowLastPointSec float64 `json:"tow_last_point_s"`
+	TowType27Sec    float64 `json:"tow_type27_s"`
+	TowDeltaSec     float64 `json:"tow_delta_s"`
+	Note            string `json:"note,omitempty"`
+}
+
+func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
+	if len(e.points) == 0 {
+		return &HeadingCheckResult{Available: false, Note: "no_bearing_solution"}
+	}
+	last := e.points[len(e.points)-1]
+	var best gsof.AttitudePoint
+	bestD := math.MaxFloat64
+	found := false
+	for _, a := range e.headingAttRing {
+		d := TowAbsDiffSeconds(a.GPSTOWSec, last.GPSTOWSec)
+		if d <= e.cfg.MatchMaxTowDeltaSec && d < bestD {
+			bestD = d
+			best = a
+			found = true
+		}
+	}
+	if !found && e.lastHeading27 != nil {
+		d := TowAbsDiffSeconds(e.lastHeading27.GPSTOWSec, last.GPSTOWSec)
+		if d <= e.cfg.MatchMaxTowDeltaSec {
+			best = *e.lastHeading27
+			bestD = d
+			found = true
+		}
+	}
+	if !found {
+		return &HeadingCheckResult{
+			Available:       false,
+			Note:            "no_type27_within_match_window",
+			TowLastPointSec: last.GPSTOWSec,
+		}
+	}
+	signed := AngleDiffDegSigned(last.BearingDeg, best.YawDeg)
+	return &HeadingCheckResult{
+		Available:          true,
+		ComputedBearingDeg: last.BearingDeg,
+		Type27YawDeg:       best.YawDeg,
+		DeltaDeg:           signed,
+		AbsDeltaDeg:        math.Abs(signed),
+		TowLastPointSec:    last.GPSTOWSec,
+		TowType27Sec:       best.GPSTOWSec,
+		TowDeltaSec:        bestD,
+	}
 }
 
 func (e *Engine) crossCheckHeading41VsMovingBaseLocked() *CrossCheckHeading41Moving {
@@ -400,4 +473,7 @@ type EngineSnapshot struct {
 
 	// Heading41VsMovingBase is set when moving base is configured and heading type 41 exists; compares to matched moving-base epoch.
 	Heading41VsMovingBase *CrossCheckHeading41Moving `json:"heading_41_vs_moving_base,omitempty"`
+
+	HeadingCheck *HeadingCheckResult `json:"heading_check,omitempty"`
+	HeadingType38 string               `json:"heading_type38,omitempty"`
 }
