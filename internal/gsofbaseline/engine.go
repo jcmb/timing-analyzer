@@ -37,9 +37,8 @@ type Base41TowSample struct {
 // EngineConfig controls matching and optional range check.
 type EngineConfig struct {
 	MatchMaxTowDeltaSec  float64
-	RangeCheckTolM       float64
-	ExpectedRangeM       float64
-	RangeRefFromAttitude bool
+	RangeCheckTolM     float64
+	ExpectedRangeM     float64
 	// MovingBaseConfigured is true when a second transport is enabled (UI / status).
 	MovingBaseConfigured bool
 }
@@ -264,9 +263,7 @@ func (e *Engine) referenceRangeLocked(towRef float64, attitudeFromHeading bool) 
 	if e.cfg.ExpectedRangeM > 0 {
 		return e.cfg.ExpectedRangeM, "expected_range_param", true
 	}
-	if !e.cfg.RangeRefFromAttitude {
-		return 0, "", false
-	}
+	// No fixed CLI range: use GSOF type-27 range from the attitude pool when available (same TOW as towRef).
 	pool := e.bAtt
 	if attitudeFromHeading {
 		pool = e.hAtt
