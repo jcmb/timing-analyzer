@@ -141,7 +141,7 @@
   <main>
     <div class="card-grid">
       <div class="card" data-card-id="status">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Status</span></button></h2>
+        <h2 class="card-h2">Status</h2>
         <div class="card-panel"><div id="status" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-info">
@@ -153,11 +153,11 @@
         <div class="card-panel"><div id="headingCheck" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="range-check">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Range check</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Range</span></button></h2>
         <div class="card-panel"><div id="rcheck" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-rover">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · rover position (types 1+2)</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading position</span></button></h2>
         <div class="card-panel"><div id="headingRover" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-base-41">
@@ -173,7 +173,7 @@
         <div class="card-panel"><div id="heading27" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-38">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · position type (GSOF type 38)</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Position type</span></button></h2>
         <div class="card-panel"><div id="heading38" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="serials">
@@ -185,7 +185,7 @@
         <div class="card-panel"><div id="cross" class="kv-grid"></div></div>
       </div>
       <div class="card" id="cardMb" data-card-id="moving-base" style="display:none">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base · GSOF type 41</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Base information</span></button></h2>
         <div class="card-panel"><div id="b41m" class="kv-grid"></div></div>
       </div>
     </div>
@@ -328,17 +328,21 @@
     lines.push("");
     blockRows(lines, "STATUS", rowsStatus(d));
     blockRows(lines, "HEADING — BEARING AND RANGE", rowsHeadingInfo(d));
-    blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
-    blockRows(lines, "RANGE CHECK", rowsRangeCheck(d.points || []));
-    blockRows(lines, "HEADING — ROVER POSITION (types 1 and 2)", rowsHeadingRover(d.heading_rover));
+    if (d.heading_type27) {
+      blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
+    }
+    blockRows(lines, "RANGE", rowsRangeCheck(d.points || []));
+    blockRows(lines, "HEADING POSITION", rowsHeadingRover(d.heading_rover));
     blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
     blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
-    blockRows(lines, "HEADING — POSITION TYPE 38", rowsHeading38(d));
+    blockRows(lines, "POSITION TYPE", rowsPositionType(d));
     blockRows(lines, "RECEIVER SERIAL (type 15)", rowsSerials(d));
     if (d.moving_base_configured) {
       blockRows(lines, "TYPE 41 (HEADING) VS MOVING BASE (types 1 and 2)", rowsCross(d.heading_41_vs_moving_base));
       blockRows(lines, "MOVING BASE — TYPE 35", rowsBase35(d.base_35_moving));
-      blockRows(lines, "MOVING BASE — TYPE 41", rowsBase41(d.base_41_moving));
+      if (d.base_41_moving && !d.base_35_moving) {
+        blockRows(lines, "BASE INFORMATION (moving base · GSOF type 41)", rowsBase41(d.base_41_moving));
+      }
     }
     if (d.points && d.points.length) {
       blockRows(lines, "LAST MATCHED POINT", rowsLastPoint(d));
@@ -418,17 +422,15 @@
       return [full(s.trim())];
     }
     return [
-      row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
+      row("Computed bearing (reference → heading)", h.computed_bearing_deg.toFixed(3) + " °"),
       row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
-      row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
+      row("Δ (rover→reference − yaw)", h.delta_deg.toFixed(3) + " °"),
       row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
       row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
     ];
   }
-  function rowsHeading38(d) {
-    var t = d.heading_type38;
-    if (!t) return [full("—\n(No GSOF type 38 on heading stream yet.)")];
-    return String(t)
+  function parseType38TextBlock(text) {
+    return String(text)
       .split("\n")
       .filter(function (ln) {
         return ln.length;
@@ -438,6 +440,27 @@
         if (idx === -1) return full(line);
         return row(line.slice(0, idx), line.slice(idx + 2));
       });
+  }
+  function rowsPositionType(d) {
+    var h = d.heading_type38 && String(d.heading_type38).trim();
+    var m =
+      d.moving_base_configured &&
+      d.moving_base_type38 &&
+      String(d.moving_base_type38).trim();
+    if (!h && !m) {
+      return [full("—\n(No GSOF type 38 on heading or moving-base stream yet.)")];
+    }
+    var rows = [];
+    if (h) {
+      rows.push(full("Heading receiver"));
+      rows = rows.concat(parseType38TextBlock(h));
+    }
+    if (m) {
+      if (rows.length) rows.push(full(""));
+      rows.push(full("Moving base"));
+      rows = rows.concat(parseType38TextBlock(m));
+    }
+    return rows;
   }
   function rowsSerials(d) {
     var h = d.heading_serial ? d.heading_serial : "—";
@@ -459,7 +482,7 @@
     var p = pts[pts.length - 1];
     var rows = [
       row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
-      row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
+      row("Bearing (reference → heading)", p.bearing_deg.toFixed(3) + " °"),
       row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
       row("Slant range", p.slant_m.toFixed(3) + " m"),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
@@ -515,6 +538,17 @@
     if (note === "no_reference") return "No reference";
     return note;
   }
+  /** True when slant was compared to a CLI or type-27 reference (engine filled range_ref_m). */
+  function rangeCompareActive(p) {
+    if (!p) return false;
+    var note = p.range_note || "";
+    var fromT27 = note.indexOf("type27") >= 0;
+    return (
+      (fromT27 || note === "expected_range_param") &&
+      p.range_ref_m != null &&
+      !isNaN(p.range_ref_m)
+    );
+  }
   function rowsRangeCheck(pts) {
     if (!pts.length) return [full("No matched points yet.")];
     var p = pts[pts.length - 1];
@@ -532,28 +566,42 @@
     } else if (note === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) {
       rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
       rows.push(row("Source", formatRangeRefSource(note)));
+    }
     rows.push(row("Slant range (computed)", p.slant_m.toFixed(3) + " m"));
     rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(3) + " m"));
     rows.push(row("Position Latency", p.delta_tow_s.toFixed(3) + " s"));
     rows.push(row("Bearing reference", String(p.reference_source)));
-    if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) {
+    if (rangeCompareActive(p)) {
       rows.push(row("|slant − ref|", p.range_delta_m.toFixed(3) + " m"));
       rows.push(row("Check vs reference", p.range_ok ? "within tolerance" : "outside tolerance"));
     }
     return rows;
   }
-  function rangeCheckCardHasContent(pts) {
-    if (!pts || !pts.length) return false;
-    var p = pts[pts.length - 1];
-    var n = p.range_note || "";
-    if (n.indexOf("type27") >= 0 && p.range_ref_m != null && !isNaN(p.range_ref_m)) return true;
-    if (n === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) return true;
-    if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) return true;
-    return false;
+  var cardWasShown = {};
+  function revealCardPanel(el) {
+    if (!el) return;
+    var panel = el.querySelector(".card-panel");
+    if (panel) panel.hidden = false;
+    var btn = el.querySelector(".card-toggle");
+    if (btn) btn.setAttribute("aria-expanded", "true");
+    var chev = el.querySelector(".card-chev");
+    if (chev) chev.textContent = "▾";
   }
   function setDataCardVisible(id, show) {
     var el = document.querySelector('.card[data-card-id="' + id + '"]');
-    if (el) el.style.display = show ? "" : "none";
+    if (!el) return;
+    var prev = cardWasShown[id];
+    cardWasShown[id] = !!show;
+    el.style.display = show ? "" : "none";
+    if (show && !prev) revealCardPanel(el);
+  }
+  function setMbCardVisible(el, show) {
+    if (!el) return;
+    var key = el.id || el.getAttribute("data-card-id") || "";
+    var prev = cardWasShown[key];
+    cardWasShown[key] = !!show;
+    el.style.display = show ? "" : "none";
+    if (show && !prev) revealCardPanel(el);
   }
   function rowsLastPoint(d) {
     var pts = d.points || [];
@@ -575,7 +623,7 @@
         rows.push(row("Reference range (m)", p.range_ref_m.toFixed(4)));
       }
     }
-    if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) {
+    if (rangeCompareActive(p)) {
       rows.push(row("|slant − ref|", p.range_delta_m.toFixed(3) + " m"));
       rows.push(row("Range OK", p.range_ok ? "yes" : "no"));
     }
@@ -608,6 +656,10 @@
     var map = readCardOpenMap();
     document.querySelectorAll(".card[data-card-id]").forEach(function (card) {
       var id = card.getAttribute("data-card-id");
+      if (id === "status") {
+        applyCardCollapsed(card, false);
+        return;
+      }
       applyCardCollapsed(card, map[id] === false);
       var btn = card.querySelector(".card-toggle");
       if (!btn) return;
@@ -705,20 +757,30 @@
     var hasPts = pts.length > 0;
 
     setDataCardVisible("heading-info", hasPts);
-    setDataCardVisible("heading-check", hasPts);
-    setDataCardVisible("range-check", rangeCheckCardHasContent(pts));
+    setDataCardVisible("heading-check", !!d.heading_type27);
+    setDataCardVisible("range-check", hasPts);
     setDataCardVisible("heading-rover", !!d.heading_rover);
     setDataCardVisible("heading-base-41", !!d.base_41_heading);
-    document.getElementById("cardMb35").style.display =
-      mbOn && d.base_35_moving ? "" : "none";
+    setMbCardVisible(
+      document.getElementById("cardMb35"),
+      mbOn && !!d.base_35_moving
+    );
     setDataCardVisible("heading-27", !!d.heading_type27);
-    setDataCardVisible("heading-38", !!(d.heading_type38 && String(d.heading_type38).trim()));
+    setDataCardVisible(
+      "heading-38",
+      !!(
+        (d.heading_type38 && String(d.heading_type38).trim()) ||
+        (mbOn && d.moving_base_type38 && String(d.moving_base_type38).trim())
+      )
+    );
     setDataCardVisible(
       "serials",
       !!(d.heading_serial || (mbOn && d.moving_base_serial))
     );
-    document.getElementById("cardMb").style.display =
-      mbOn && d.base_41_moving ? "" : "none";
+    setMbCardVisible(
+      document.getElementById("cardMb"),
+      mbOn && !!d.base_41_moving && !d.base_35_moving
+    );
     setDataCardVisible("chart-range", hasPts);
     setDataCardVisible("chart-sv", hasPts);
 
@@ -729,7 +791,7 @@
     renderKv("headingRover", rowsHeadingRover(d.heading_rover));
     renderKv("b41h", rowsBase41(d.base_41_heading));
     renderKv("heading27", rowsType27(d.heading_type27));
-    renderKv("heading38", rowsHeading38(d));
+    renderKv("heading38", rowsPositionType(d));
     renderKv("serials", rowsSerials(d));
     if (mbOn) {
       renderKv("b35m", rowsBase35(d.base_35_moving));
@@ -738,13 +800,13 @@
     var cc = d.heading_41_vs_moving_base;
     var cardCross = document.getElementById("cardCross");
     if (mbOn && d.has_heading_type41) {
-      cardCross.style.display = "";
+      setMbCardVisible(cardCross, true);
       var crossEl = document.getElementById("cross");
       renderKv("cross", rowsCross(cc));
       crossEl.className =
         "kv-grid " + (cc && cc.has_pair && cc.match_ok ? "ok" : cc && cc.has_pair ? "bad" : "");
     } else {
-      cardCross.style.display = "none";
+      setMbCardVisible(cardCross, false);
     }
     var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
     var bear = pts.map(function (p) { return p.bearing_deg; });
@@ -758,7 +820,7 @@
         data: {
           labels: labels,
           datasets: [
-            { label: "Heading °", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
+            { label: "Bearing ° (ref → heading)", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
             { label: "Horiz range m", data: horiz, yAxisID: "y2", borderColor: "#3fb950", tension: 0.15, pointRadius: 0 },
             { label: "Slant range m", data: slant, yAxisID: "y2", borderColor: "#79c0ff", borderDash: [4, 3], tension: 0.15, pointRadius: 0, hidden: true }
           ]
@@ -768,7 +830,7 @@
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) heading" } },
-            y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
+            y: { type: "linear", position: "left", title: { display: true, text: "Bearing ° (ref → heading)" } },
             y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
           },
           plugins: {
