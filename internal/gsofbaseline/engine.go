@@ -154,7 +154,8 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 			ReferenceSource: tgt.source,
 			RangeOK:         true,
 		}
-		ref, refSrc, okRef := e.referenceRangeLocked(tgt.refTow, tgt.useHeadingAtt)
+		// Range reference: GSOF type-27 range on the heading stream at the same TOW as this type-1 epoch.
+		ref, refSrc, okRef := e.referenceRangeLocked(ep.GPSTOWSec, true)
 		if e.cfg.RangeCheckTolM > 0 && okRef {
 			pt.RangeRefM = ref
 			pt.RangeDeltaM = math.Abs(s - ref)
@@ -282,12 +283,13 @@ func (e *Engine) referenceRangeLocked(towRef float64, attitudeFromHeading bool) 
 			best = a
 		}
 	}
-	if bestD > e.cfg.MatchMaxTowDeltaSec*2 {
+	if bestD > sameEpochTowEpsilonSec {
 		return 0, "", false
 	}
 	if best.RangeM <= 0 || math.IsNaN(best.RangeM) {
 		return 0, "", false
 	}
+	// Heading-stream type-27 only (attitudeFromHeading selects hAtt vs bAtt pool; range check always passes true from caller).
 	src := "type27_range_moving_base"
 	if attitudeFromHeading {
 		src = "type27_range_heading"
@@ -336,7 +338,7 @@ type HeadingCheckResult struct {
 	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
 	TowLastPointSec float64 `json:"tow_last_point_s"`
 	TowType27Sec    float64 `json:"tow_type27_s"`
-	TowDeltaSec     float64 `json:"tow_delta_s"`
+	TowDeltaSec     float64 `json:"tow_delta_s,omitempty"`
 	Note            string  `json:"note,omitempty"`
 }
 
@@ -350,7 +352,7 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 	found := false
 	for _, a := range e.headingAttRing {
 		d := TowAbsDiffSeconds(a.GPSTOWSec, last.GPSTOWSec)
-		if d <= e.cfg.MatchMaxTowDeltaSec && d < bestD {
+		if d <= sameEpochTowEpsilonSec && d < bestD {
 			bestD = d
 			best = a
 			found = true
@@ -358,7 +360,7 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 	}
 	if !found && e.lastHeading27 != nil {
 		d := TowAbsDiffSeconds(e.lastHeading27.GPSTOWSec, last.GPSTOWSec)
-		if d <= e.cfg.MatchMaxTowDeltaSec {
+		if d <= sameEpochTowEpsilonSec {
 			best = *e.lastHeading27
 			bestD = d
 			found = true
@@ -367,7 +369,7 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 	if !found {
 		return &HeadingCheckResult{
 			Available:       false,
-			Note:            "no_type27_within_match_window",
+			Note:            "no_type27_same_tow",
 			TowLastPointSec: last.GPSTOWSec,
 		}
 	}
@@ -380,7 +382,6 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 		AbsDeltaDeg:        math.Abs(signed),
 		TowLastPointSec:    last.GPSTOWSec,
 		TowType27Sec:       best.GPSTOWSec,
-		TowDeltaSec:        bestD,
 	}
 }
 
@@ -449,6 +450,10 @@ type CrossCheckHeading41Moving struct {
 
 const crossCheckHorizTolM = 5.0
 const crossCheckHeightTolM = 5.0
+
+// sameEpochTowEpsilonSec is the maximum |ΔTOW| (s) allowed when pairing GSOF type-27
+// to a heading type-1 epoch or for type-27 range reference (matched time tags).
+const sameEpochTowEpsilonSec = 1e-4
 
 // EngineSnapshot is JSON-serializable UI state.
 type EngineSnapshot struct {
