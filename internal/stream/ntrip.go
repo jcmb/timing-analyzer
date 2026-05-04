@@ -133,7 +133,7 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 			}
 
 			if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
-				dcolParser.Process(buf[:n], goTime, goTime, time.Time{}, cfg.Host, cfg.Verbose, packetChan)
+				dcolParser.Process(buf[:n], goTime, goTime, time.Time{}, cfg.Host, cfg, packetChan)
 			} else {
 				packetChan <- core.PacketEvent{
 					BestTime:      goTime,

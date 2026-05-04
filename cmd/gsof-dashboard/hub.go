@@ -128,14 +128,16 @@ type createSessionRequest struct {
 	Transport string `json:"transport"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
+	// IgnoreTCPGSOFTransmissionGap1 suppresses single-step GSOF transmission-number gap warnings on TCP (dashboard + parser).
+	IgnoreTCPGSOFTransmissionGap1 bool `json:"ignore_tcp_gsof_transmission_gap1,omitempty"`
 }
 
 type createSessionResponse struct {
-	ID            string             `json:"id"`
-	EventsPath    string             `json:"events_path"`
-	DashboardPath string             `json:"dashboard_path"`
-	Listen        *sessionListenDTO  `json:"listen,omitempty"`
-	AdvertiseHost string             `json:"advertise_host,omitempty"`
+	ID            string            `json:"id"`
+	EventsPath    string            `json:"events_path"`
+	DashboardPath string            `json:"dashboard_path"`
+	Listen        *sessionListenDTO `json:"listen,omitempty"`
+	AdvertiseHost string            `json:"advertise_host,omitempty"`
 }
 
 type sessionListenDTO struct {
@@ -226,7 +228,7 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 				}
 				tcp := !strings.EqualFold(cfg.IP, "udp")
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
-					stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp)
+					stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp, cfg.IgnoreTCPGSOFTransmissionGap1)
 				}
 			}
 		}
@@ -336,6 +338,7 @@ func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, emb
 		http.Error(w, `transport must be "tcp" or "udp"`, http.StatusBadRequest)
 		return
 	}
+	cfg.IgnoreTCPGSOFTransmissionGap1 = req.IgnoreTCPGSOFTransmissionGap1
 
 	// Session streams must outlive this HTTP request: r.Context() is cancelled as soon as the
 	// POST response is sent, which would immediately tear down TCP dials and UDP listeners.

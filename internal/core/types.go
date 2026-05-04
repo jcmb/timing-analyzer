@@ -21,6 +21,11 @@ type Config struct {
 	Username   string
 	Password   string
 	SessionID  string
+
+	// IgnoreTCPGSOFTransmissionGap1, when true on a TCP stream, suppresses warnings for
+	// exactly one missing GSOF transmission number between successive messages (some senders
+	// skip one counter in multi-page bursts). Larger gaps still warn. UDP behavior is unchanged.
+	IgnoreTCPGSOFTransmissionGap1 bool
 }
 
 type PacketEvent struct {
@@ -83,17 +88,29 @@ type LogEntry struct {
 
 func GetNiceName(displayKey string) string {
 	switch displayKey {
-	case "0x93-0": return "CMR GPS"
-	case "0x93-1": return "CMR Base LLH"
-	case "0x93-2": return "CMR Base Name"
-	case "0x93-3": return "CMR GLN-STD"
-	case "0x93-4": return "GPS Delta"
-	case "0x94":   return "CMR+ Base"
-	case "0x98-0": return "CMR GLONASS"
-	case "0x98-1": return "CMR Time"
-	case "0x98-4": return "GLN Delta"
-	case "0x40":   return "GSOF"
-	case "0x57":   return "RAWDATA"
-	default:       return displayKey
+	case "0x93-0":
+		return "CMR GPS"
+	case "0x93-1":
+		return "CMR Base LLH"
+	case "0x93-2":
+		return "CMR Base Name"
+	case "0x93-3":
+		return "CMR GLN-STD"
+	case "0x93-4":
+		return "GPS Delta"
+	case "0x94":
+		return "CMR+ Base"
+	case "0x98-0":
+		return "CMR GLONASS"
+	case "0x98-1":
+		return "CMR Time"
+	case "0x98-4":
+		return "GLN Delta"
+	case "0x40":
+		return "GSOF"
+	case "0x57":
+		return "RAWDATA"
+	default:
+		return displayKey
 	}
 }

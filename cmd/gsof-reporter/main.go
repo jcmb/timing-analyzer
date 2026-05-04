@@ -70,13 +70,21 @@ func main() {
 	host := flag.String("host", "", "Target IP")
 	port := flag.Int("port", 2101, "Port")
 	verbose := flag.Int("verbose", 0, "Verbosity level")
-	suppress := flag.Bool("suppress-single", false, "Suppress single missed sequence warnings")
+	suppress := flag.Bool("suppress-single", false, "Suppress single missed sequence warnings (UDP)")
+	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: enable GSOF transmission gap warnings but suppress when exactly one id is skipped")
 	nagios := flag.Bool("nagios", false, "Enable Nagios check mode")
 	rateFile := flag.String("expected-rates", "", "Path to expected rates config file")
 	strict := flag.Bool("strict", false, "Fail if unexpected subtypes are found")
 	flag.Parse()
 
-	cfg := core.Config{IP: *ipFlag, Host: *host, Port: *port, Decode: "dcol", Verbose: *verbose}
+	cfg := core.Config{
+		IP:                            *ipFlag,
+		Host:                          *host,
+		Port:                          *port,
+		Decode:                        "dcol",
+		Verbose:                       *verbose,
+		IgnoreTCPGSOFTransmissionGap1: *ignoreTCPGSOFGap1,
+	}
 	if cfg.Host != "" {
 		cfg.IP = "tcp"
 	}
@@ -93,7 +101,7 @@ func main() {
 			}
 			tcp := !strings.EqualFold(cfg.IP, "udp")
 			if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
-				stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp)
+				stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp, cfg.IgnoreTCPGSOFTransmissionGap1)
 			}
 		}
 	}()

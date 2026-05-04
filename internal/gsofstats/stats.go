@@ -172,21 +172,28 @@ func (s *Stats) epochMinHzFromTOWLocked() float64 {
 }
 
 // Update processes one reassembled GSOF payload. seq is the GSOF transmission number
-// (0x40 payload byte 4) when present; it may jump arbitrarily and is not a wire
-// transport sequence. tcpTransport suppresses sequence-gap warnings: on TCP,
-// coalescing/reordering and transmission numbers produce false "missed seq" alerts;
-// UDP callers may still use seq jumps (vs wall time) for rate inference.
-func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport bool) {
+// (0x40 payload byte 4) when present. tcpTransport selects TCP vs UDP handling for
+// sequence-gap warnings: on TCP, warnings are off by default (batching/coalescing);
+// set ignoreTCPGSOFTransmissionGap1 to enable gap detection while still suppressing
+// warnings when exactly one transmission number was skipped (broken MP streams).
+func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTransmissionGap1 bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 
-	if !tcpTransport && !s.lastSeqTime.IsZero() {
+	checkGap := !tcpTransport || (tcpTransport && ignoreTCPGSOFTransmissionGap1)
+	if checkGap && !s.lastSeqTime.IsZero() {
 		expectedSeq := s.lastSeq + 1
 		if seq != expectedSeq && seq != s.lastSeq {
 			gap := (int(seq) + 256 - int(expectedSeq)) % 256
-			if !(s.suppressSingle && gap == 1) {
+			suppress := false
+			if gap == 1 {
+				if (!tcpTransport && s.suppressSingle) || (tcpTransport && ignoreTCPGSOFTransmissionGap1) {
+					suppress = true
+				}
+			}
+			if !suppress {
 				s.warnings = append(s.warnings, fmt.Sprintf("[%s] WARNING: Sequence Gap! Jumped %d to %d (Missed %d)",
 					now.Format("15:04:05"), s.lastSeq, seq, gap))
 			}

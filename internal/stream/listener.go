@@ -187,7 +187,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 				if parsers[ip] == nil {
 					parsers[ip] = &parser.DCOLParser{}
 				}
-				parsers[ip].Process(buf[:n], bestTime, goTime, kernelTime, ip, cfg.Verbose, packetChan)
+				parsers[ip].Process(buf[:n], bestTime, goTime, kernelTime, ip, cfg, packetChan)
 			} else {
 				packetChan <- core.PacketEvent{
 					BestTime:      bestTime,
@@ -238,7 +238,7 @@ func handleTCPConn(conn net.Conn, cfg core.Config, packetChan chan<- core.Packet
 		}
 
 		if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
-			dcolParser.Process(buf[:n], goTime, goTime, time.Time{}, remoteIP, cfg.Verbose, packetChan)
+			dcolParser.Process(buf[:n], goTime, goTime, time.Time{}, remoteIP, cfg, packetChan)
 		} else {
 			packetChan <- core.PacketEvent{
 				BestTime:      goTime,
