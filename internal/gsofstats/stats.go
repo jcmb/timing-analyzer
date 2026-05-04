@@ -172,18 +172,16 @@ func (s *Stats) epochMinHzFromTOWLocked() float64 {
 }
 
 // Update processes one reassembled GSOF payload. seq is the GSOF transmission number
-// (0x40 payload byte 4) when present. tcpTransport selects TCP vs UDP handling for
-// sequence-gap warnings: on TCP, warnings are off by default (batching/coalescing);
-// set ignoreTCPGSOFTransmissionGap1 to enable gap detection while still suppressing
-// warnings when exactly one transmission number was skipped (broken MP streams).
+// (0x40 payload byte 4) when present. Sequence-gap warnings run for TCP and UDP; a single
+// missed id is suppressed on TCP only when ignoreTCPGSOFTransmissionGap1 is true, and on
+// UDP only when suppressSingle is true.
 func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTransmissionGap1 bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 
-	checkGap := !tcpTransport || (tcpTransport && ignoreTCPGSOFTransmissionGap1)
-	if checkGap && !s.lastSeqTime.IsZero() {
+	if !s.lastSeqTime.IsZero() {
 		expectedSeq := s.lastSeq + 1
 		if seq != expectedSeq && seq != s.lastSeq {
 			gap := (int(seq) + 256 - int(expectedSeq)) % 256

@@ -54,16 +54,21 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	}
 }
 
-func TestStats_TCPNoSequenceGapWarning(t *testing.T) {
+func TestStats_TCPEmitsSequenceGapByDefault(t *testing.T) {
 	s := NewStats(false)
 	buf := []byte{0x01, 0x00}
 	s.Update(1, buf, true, false)
 	s.Update(10, buf, true, false)
 	d := s.BuildDashboard("tcp", 2101, "", "")
+	found := false
 	for _, w := range d.Warnings {
 		if strings.Contains(w, "Sequence Gap") {
-			t.Fatalf("TCP without ignore-tcp-gsof flag should not emit sequence-gap warnings; got %q", w)
+			found = true
+			break
 		}
+	}
+	if !found {
+		t.Fatal("TCP with ignore flag off should emit sequence-gap warnings")
 	}
 }
 

@@ -71,7 +71,7 @@ func main() {
 	port := flag.Int("port", 2101, "Port")
 	verbose := flag.Int("verbose", 0, "Verbosity level")
 	suppress := flag.Bool("suppress-single", false, "Suppress single missed sequence warnings (UDP)")
-	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: enable GSOF transmission gap warnings but suppress when exactly one id is skipped")
+	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats and parser warnings when exactly one GSOF transmission id is skipped")
 	nagios := flag.Bool("nagios", false, "Enable Nagios check mode")
 	rateFile := flag.String("expected-rates", "", "Path to expected rates config file")
 	strict := flag.Bool("strict", false, "Fail if unexpected subtypes are found")

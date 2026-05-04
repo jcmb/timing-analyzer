@@ -50,7 +50,7 @@ func main() {
 	maxUISessions := flag.Int("max-ui-sessions", 64, "Maximum concurrent UI-defined GSOF sessions (hub / -embedded-stream=false)")
 	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "Allow UI/API TCP targets that resolve to loopback or RFC1918 addresses (lab only)")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
-	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress dashboard/parser warnings when exactly one GSOF transmission id is skipped between messages (noisy multi-page senders)")
+	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats and parser warnings when exactly one GSOF transmission id is skipped between messages")
 	flag.Parse()
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved

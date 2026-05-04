@@ -22,9 +22,9 @@ type Config struct {
 	Password   string
 	SessionID  string
 
-	// IgnoreTCPGSOFTransmissionGap1, when true on a TCP stream, suppresses warnings for
-	// exactly one missing GSOF transmission number between successive messages (some senders
-	// skip one counter in multi-page bursts). Larger gaps still warn. UDP behavior is unchanged.
+	// IgnoreTCPGSOFTransmissionGap1, when true on a TCP stream, suppresses warnings for exactly
+	// one missing GSOF transmission number between successive messages (Stats and DCOL parser).
+	// Default false: a single skipped id on TCP is still reported.
 	IgnoreTCPGSOFTransmissionGap1 bool
 }
 

@@ -108,7 +108,29 @@ func TestDCOL_GSOFTransmissionGapWarningUDP(t *testing.T) {
 	}
 }
 
-func TestDCOL_GSOFTransmissionGapSuppressedTCPFlag(t *testing.T) {
+func TestDCOL_GSOFTransmissionGapTCPDefaultWarnsSingleSkip(t *testing.T) {
+	p := &DCOLParser{}
+	ch := make(chan core.PacketEvent, 8)
+	cfg := core.Config{Verbose: 0, IP: "tcp"}
+	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
+	f3 := buildDCOL40(3, 0, 0, []byte{0x01, 0x00})
+	p.Process(f1, time.Time{}, time.Time{}, time.Time{}, "t:1", cfg, ch)
+	<-ch
+	p.Process(f3, time.Time{}, time.Time{}, time.Time{}, "t:1", cfg, ch)
+	ev := <-ch
+	found := false
+	for _, w := range ev.StreamWarnings {
+		if strings.Contains(w, "transmission gap") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("TCP without ignore flag should warn for a single skipped transmission id; got %v", ev.StreamWarnings)
+	}
+}
+
+func TestDCOL_GSOFTransmissionGapSuppressedTCPWithFlag(t *testing.T) {
 	p := &DCOLParser{}
 	ch := make(chan core.PacketEvent, 8)
 	cfg := core.Config{Verbose: 0, IP: "tcp", IgnoreTCPGSOFTransmissionGap1: true}
@@ -120,8 +142,30 @@ func TestDCOL_GSOFTransmissionGapSuppressedTCPFlag(t *testing.T) {
 	ev := <-ch
 	for _, w := range ev.StreamWarnings {
 		if strings.Contains(w, "transmission gap") {
-			t.Fatalf("gap of 1 should be suppressed with ignore flag; got %q", w)
+			t.Fatalf("TCP with ignore flag should suppress single skipped id; got %q", w)
 		}
+	}
+}
+
+func TestDCOL_GSOFTransmissionGapTCPWarnsTwoSkippedEvenWithFlag(t *testing.T) {
+	p := &DCOLParser{}
+	ch := make(chan core.PacketEvent, 8)
+	cfg := core.Config{Verbose: 0, IP: "tcp", IgnoreTCPGSOFTransmissionGap1: true}
+	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
+	f4 := buildDCOL40(4, 0, 0, []byte{0x01, 0x00})
+	p.Process(f1, time.Time{}, time.Time{}, time.Time{}, "t:1", cfg, ch)
+	<-ch
+	p.Process(f4, time.Time{}, time.Time{}, time.Time{}, "t:1", cfg, ch)
+	ev := <-ch
+	found := false
+	for _, w := range ev.StreamWarnings {
+		if strings.Contains(w, "transmission gap") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("TCP should still warn when ≥2 transmission ids are skipped, even with ignore flag; got %v", ev.StreamWarnings)
 	}
 }
 

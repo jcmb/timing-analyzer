@@ -185,12 +185,15 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			}
 
 			// Skipped transmission numbers between completed GSOF messages (UDP loss or broken sender).
+			// On TCP, a single skipped id still warns unless IgnoreTCPGSOFTransmissionGap1 is set.
 			if pageIndex == 0 && p.hasLastCompletedGSOFXmit {
 				d := (int(transmissionNum) - int(p.lastCompletedGSOFXmit) + 256) % 256
 				if d > 1 {
 					missed := d - 1
 					tcp := !strings.EqualFold(cfg.IP, "udp")
-					if !(tcp && cfg.IgnoreTCPGSOFTransmissionGap1 && missed == 1) {
+					if tcp && cfg.IgnoreTCPGSOFTransmissionGap1 && missed == 1 {
+						// TCP: suppress dashboard/parser warning for exactly one skipped transmission id.
+					} else {
 						msg := fmt.Sprintf("[%s] WARNING: GSOF transmission gap: ~%d missed id(s) between xmit %d and %d",
 							time.Now().Format("15:04:05"), missed, p.lastCompletedGSOFXmit, transmissionNum)
 						p.appendGSOFTransportWarning(msg, verbose)

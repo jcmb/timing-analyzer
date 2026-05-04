@@ -128,7 +128,7 @@ type createSessionRequest struct {
 	Transport string `json:"transport"`
 	Host      string `json:"host"`
 	Port      int    `json:"port"`
-	// IgnoreTCPGSOFTransmissionGap1 suppresses single-step GSOF transmission-number gap warnings on TCP (dashboard + parser).
+	// IgnoreTCPGSOFTransmissionGap1 suppresses TCP warnings when exactly one GSOF transmission id is skipped.
 	IgnoreTCPGSOFTransmissionGap1 bool `json:"ignore_tcp_gsof_transmission_gap1,omitempty"`
 }
 
