@@ -74,7 +74,6 @@
     body { margin:0; min-height:100%; font-family:var(--sans); background:var(--bg); color:var(--tx); display:flex; flex-direction:column; }
     header { padding:1rem 1.25rem; border-bottom:1px solid var(--bd); display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; justify-content:space-between; }
     h1 { margin:0; font-size:1.1rem; font-weight:600; }
-    .sub { color:var(--muted); font-size:0.85rem; margin-top:0.35rem; flex-basis:100%; }
     .hdr-actions { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
     button { font: inherit; padding:0.45rem 0.85rem; border-radius:6px; border:1px solid var(--bd); background:var(--card); color:var(--tx); cursor:pointer; }
     button:hover { border-color: var(--accent); color: var(--accent); }
@@ -88,13 +87,13 @@
     .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:0.75rem 1rem; }
     .card-h2 { margin:0 0 0.5rem; font-size:0.95rem; color:var(--muted); font-weight:600; }
     .card-toggle {
-      width:100%; display:flex; align-items:center; gap:0.4rem; margin:0; padding:0;
+      width:100%; display:flex; align-items:center; gap:0.55rem; margin:0; padding:0.35rem 0;
       border:none; border-radius:4px; background:transparent; color:inherit;
-      font:inherit; font-weight:600; cursor:pointer; text-align:left;
+      font:inherit; font-weight:600; font-size:1rem; cursor:pointer; text-align:left;
     }
     .card-toggle:hover { color:var(--accent); }
-    .card-chev { flex:0 0 auto; width:1em; text-align:center; font-size:0.75rem; opacity:0.85; }
-    .card-title-text { flex:1; min-width:0; }
+    .card-chev { flex:0 0 auto; width:1.35em; text-align:center; font-size:1.15rem; line-height:1; opacity:0.9; }
+    .card-title-text { flex:1; min-width:0; font-size:1rem; }
     .card-panel[hidden] { display:none !important; }
     .kv-grid {
       display:grid; grid-template-columns:auto minmax(0,1fr);
@@ -125,7 +124,6 @@
   <header>
     <div>
       <h1>GSOF baseline — heading receiver</h1>
-      <div class="sub">Wide layout uses multiple columns. Click the <strong>Slant range m</strong> legend item on the range chart to show or hide that series. Build __VERSION__</div>
     </div>
     <div class="hdr-actions">
       <div class="theme-wrap" title="Appearance">
@@ -289,6 +287,13 @@
   function full(t) {
     return { full: t };
   }
+  /** GPS / GSOF time-of-week for display (2 decimal places). */
+  function fmtTowSec2(v) {
+    if (v == null || v === undefined) return "—";
+    var n = typeof v === "number" ? v : parseFloat(v);
+    if (isNaN(n)) return String(v);
+    return n.toFixed(2) + " s";
+  }
   function escHtml(s) {
     var d = document.createElement("div");
     d.textContent = s == null || s === undefined ? "" : String(s);
@@ -364,7 +369,7 @@
     if (!x) return [row("Status", "—")];
     return [
       row("GPS week", String(x.gps_week)),
-      row("GPS TOW s", String(x.gps_tow_s)),
+      row("GPS TOW s", fmtTowSec2(x.gps_tow_s)),
       row("Latitude °", String(x.lat_deg)),
       row("Longitude °", String(x.lon_deg)),
       row("Height m", String(x.height_m)),
@@ -381,7 +386,7 @@
           ? "—"
           : String(hm);
     return [
-      row("GPS TOW s (type 1)", String(r.gps_tow_s)),
+      row("GPS TOW s (type 1)", fmtTowSec2(r.gps_tow_s)),
       row("Latitude °", String(r.lat_deg)),
       row("Longitude °", String(r.lon_deg)),
       row("Height m (type 2)", hs),
@@ -390,43 +395,41 @@
   }
   function rowsType27(a) {
     if (!a) return [full("—\n(No GSOF type 27 on heading stream yet.)")];
+    var rm = a.range_m;
+    var rs =
+      typeof rm === "number" && !isNaN(rm)
+        ? rm.toFixed(4) + " m"
+        : rm == null || rm === undefined
+          ? "—"
+          : String(rm);
     return [
-      row("GPS TOW s", String(a.gps_tow_s)),
-      row("Pitch °", String(a.pitch_deg)),
+      row("GPS TOW s", fmtTowSec2(a.gps_tow_s)),
       row("Yaw °", String(a.yaw_deg)),
+      row("Pitch °", String(a.pitch_deg)),
       row("Roll °", String(a.roll_deg)),
-      row("Range m", String(a.range_m))
+      row("Range m", rs)
     ];
-  }
-  function headingCheckWhyDiffHint() {
-    return (
-      "Why computed bearing and type-27 yaw can differ (common reasons):\n" +
-      "· Time alignment: yaw comes from the type-27 record nearest the solution TOW; bearing uses type-1 + reference LLH within a small TOW window, so attitude and geometry are not always from the same instant.\n" +
-      "· Definition: computed value is geodetic initial bearing rover → reference; type-27 yaw is vehicle/body yaw in a local-level frame and is not guaranteed to match that geographic bearing.\n" +
-      "· Reference geometry: bearing is toward type-41 or moving-base position; yaw is not defined relative to that line unless the rover longitudinal axis aligns with it.\n" +
-      "· Antenna / lever-arm and pitch–roll coupling between body frame and horizontal projection.\n" +
-      "· GNSS noise: sub-degree differences are typical when comparing attitude to a position-derived bearing."
-    );
   }
   function rowsHeadingCheck(h) {
     if (!h) return [full("—\n(No check data.)")];
     if (!h.available && h.note === "no_bearing_solution") return [full("—\n(No bearing solution yet.)")];
     if (!h.available) {
-      var s = "Computed bearing vs type 27 yaw: not compared (no type 27 within the TOW match window).";
+      var s =
+        h.note === "no_type27_same_tow"
+          ? "Computed bearing vs type 27 yaw: not compared (no type 27 at the same GPS TOW as the solution epoch)."
+          : "Computed bearing vs type 27 yaw: not compared.";
       if (h.tow_last_point_s != null && !isNaN(h.tow_last_point_s)) {
-        s += "\nLast solution TOW s: " + h.tow_last_point_s.toFixed(3);
+        s += "\nLast solution TOW s: " + fmtTowSec2(h.tow_last_point_s);
       }
-      if (h.note) s += "\nNote: " + h.note;
+      if (h.note && h.note !== "no_type27_same_tow") s += "\nNote: " + h.note;
       return [full(s.trim())];
     }
     return [
       row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
       row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
       row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
-      row("TOW last point s", h.tow_last_point_s.toFixed(3)),
-      row("TOW type 27 s", h.tow_type27_s.toFixed(3)),
-      row("|ΔTOW| (point vs type 27)", h.tow_delta_s.toFixed(3) + " s"),
-      full(headingCheckWhyDiffHint())
+      row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
+      row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
     ];
   }
   function rowsHeading38(d) {
@@ -462,7 +465,7 @@
     }
     var p = pts[pts.length - 1];
     var rows = [
-      row("GPS TOW (heading, type 1)", p.gps_tow_s.toFixed(3) + " s"),
+      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
       row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
       row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
       row("Slant range", p.slant_m.toFixed(3) + " m"),
@@ -482,9 +485,9 @@
     var rows = [
       row("Great-circle vs type 1/2 LLH", cc.horizontal_diff_m.toFixed(3) + " m"),
       row("|Δ height|", cc.height_diff_m.toFixed(3) + " m"),
-      row("Type 41 TOW s", cc.tow_type41_s.toFixed(3)),
-      row("Moving-base TOW s", cc.tow_moving_base_s.toFixed(3)),
-      row("|ΔTOW|", cc.tow_delta_s.toFixed(3) + " s"),
+      row("Type 41 TOW s", fmtTowSec2(cc.tow_type41_s)),
+      row("Moving-base TOW s", fmtTowSec2(cc.tow_moving_base_s)),
+      row("|ΔTOW|", fmtTowSec2(cc.tow_delta_s)),
       row("Match (≤5 m horiz, ≤5 m height)", cc.match_ok ? "YES" : "NO")
     ];
     if (cc.note) rows.push(row("Note", cc.note));
@@ -530,12 +533,12 @@
       rows.push(
         row(
           "Type 27 range (GSOF)",
-          p.range_ref_m != null && !isNaN(p.range_ref_m) ? p.range_ref_m.toFixed(3) + " m" : "—"
+          p.range_ref_m != null && !isNaN(p.range_ref_m) ? p.range_ref_m.toFixed(4) + " m" : "—"
         )
       );
       rows.push(row("Range ref. source", formatRangeRefSource(note)));
     } else if (note === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) {
-      rows.push(row("Reference range", p.range_ref_m.toFixed(3) + " m"));
+      rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
       rows.push(row("Source", formatRangeRefSource(note)));
     } else if (note === "no_reference") {
       rows.push(row("Reference range", "not available"));
@@ -561,7 +564,7 @@
     if (!pts.length) return [full("No matched points.")];
     var p = pts[pts.length - 1];
     var rows = [
-      row("GPS TOW (heading, type 1)", p.gps_tow_s.toFixed(3) + " s"),
+      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
       row("Bearing", p.bearing_deg.toFixed(3) + " °"),
       row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
@@ -573,7 +576,7 @@
     if (p.range_note) {
       rows.push(row("Range ref. source", formatRangeRefSource(p.range_note)));
       if (p.range_ref_m != null && !isNaN(p.range_ref_m)) {
-        rows.push(row("Reference range (m)", p.range_ref_m.toFixed(3)));
+        rows.push(row("Reference range (m)", p.range_ref_m.toFixed(4)));
       }
     }
     if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) {
