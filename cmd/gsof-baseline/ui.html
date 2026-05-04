@@ -160,14 +160,13 @@
         <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · rover position (types 1+2)</span></button></h2>
         <div class="card-panel"><div id="headingRover" class="kv-grid"></div></div>
       </div>
-      <div class="card" data-card-id="base-heading">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · base station (types 35 &amp; 41)</span></button></h2>
-        <div class="card-panel">
-          <div class="mb-title">GSOF type 35</div>
-          <div id="b35h" class="kv-grid"></div>
-          <div class="mb-title">GSOF type 41</div>
-          <div id="b41h" class="kv-grid"></div>
-        </div>
+      <div class="card" data-card-id="heading-base-41">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · base (GSOF type 41)</span></button></h2>
+        <div class="card-panel"><div id="b41h" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMb35" data-card-id="moving-base-35" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base · GSOF type 35</span></button></h2>
+        <div class="card-panel"><div id="b35m" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-27">
         <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · attitude (GSOF type 27)</span></button></h2>
@@ -186,13 +185,8 @@
         <div class="card-panel"><div id="cross" class="kv-grid"></div></div>
       </div>
       <div class="card" id="cardMb" data-card-id="moving-base" style="display:none">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base stream</span></button></h2>
-        <div class="card-panel">
-          <div class="mb-title">Type 35</div>
-          <div id="b35m" class="kv-grid"></div>
-          <div class="mb-title">Type 41</div>
-          <div id="b41m" class="kv-grid"></div>
-        </div>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base · GSOF type 41</span></button></h2>
+        <div class="card-panel"><div id="b41m" class="kv-grid"></div></div>
       </div>
     </div>
     <div class="card" data-card-id="chart-range" style="margin-bottom:1rem">
@@ -337,8 +331,7 @@
     blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
     blockRows(lines, "RANGE CHECK", rowsRangeCheck(d.points || []));
     blockRows(lines, "HEADING — ROVER POSITION (types 1 and 2)", rowsHeadingRover(d.heading_rover));
-    blockRows(lines, "HEADING — BASE TYPE 35", rowsBase35(d.base_35_heading));
-    blockRows(lines, "HEADING — BASE TYPE 41", rowsBase41(d.base_41_heading));
+    blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
     blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
     blockRows(lines, "HEADING — POSITION TYPE 38", rowsHeading38(d));
     blockRows(lines, "RECEIVER SERIAL (type 15)", rowsSerials(d));
@@ -697,12 +690,12 @@
     lastSnap = d;
     var mbOn = !!d.moving_base_configured;
     document.getElementById("cardMb").style.display = mbOn ? "" : "none";
+    document.getElementById("cardMb35").style.display = mbOn ? "" : "none";
     renderKv("status", rowsStatus(d));
     renderKv("headingInfo", rowsHeadingInfo(d));
     renderKv("headingCheck", rowsHeadingCheck(d.heading_check));
     renderKv("rcheck", rowsRangeCheck(d.points || []));
     renderKv("headingRover", rowsHeadingRover(d.heading_rover));
-    renderKv("b35h", rowsBase35(d.base_35_heading));
     renderKv("b41h", rowsBase41(d.base_41_heading));
     renderKv("heading27", rowsType27(d.heading_type27));
     renderKv("heading38", rowsHeading38(d));
