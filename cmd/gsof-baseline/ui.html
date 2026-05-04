@@ -50,6 +50,7 @@
       <div class="stack" id="colHeading">
         <div class="card"><h2>Heading · base info (GSOF type 35)</h2><pre id="b35h">—</pre></div>
         <div class="card"><h2>Heading · base position (GSOF type 41)</h2><pre id="b41h">—</pre></div>
+        <div class="card"><h2>Heading · bearing & range</h2><pre id="headingInfo">—</pre></div>
       </div>
       <div class="stack" id="wrapMb" style="display:none">
         <div class="card">
@@ -104,6 +105,26 @@
       "Height m: " + x.height_m,
       x.quality_label
     ].join("\n");
+  }
+  function fmtHeadingInfo(d) {
+    var pts = d.points || [];
+    if (!pts.length) {
+      return "No matched solution yet.\nEmit heading type 1+2 and either heading type 41 (TOW-matched) or moving-base type 1+2.";
+    }
+    var p = pts[pts.length - 1];
+    var lines = [
+      "GPS TOW (heading, type 1): " + p.gps_tow_s.toFixed(3) + " s",
+      "Bearing (heading → reference): " + p.bearing_deg.toFixed(3) + " °",
+      "Horizontal range: " + p.horiz_m.toFixed(3) + " m",
+      "Slant range: " + p.slant_m.toFixed(3) + " m",
+      "|ΔTOW| (heading vs reference): " + p.delta_tow_s.toFixed(3) + " s",
+      "Reference: " + p.reference_source,
+      "SVs used (heading): " + p.svs_heading
+    ];
+    if (d.moving_base_configured) {
+      lines.push("SVs used (moving base): " + p.svs_moving_base);
+    }
+    return lines.join("\n");
   }
   function fmtCross(cc) {
     if (!cc) return "—\n(Requires heading type 41 and moving base stream enabled.)";
@@ -203,6 +224,7 @@
     document.getElementById("status").textContent = statusText(d);
     document.getElementById("b35h").textContent = fmtBase35(d.base_35_heading);
     document.getElementById("b41h").textContent = fmtBase41(d.base_41_heading);
+    document.getElementById("headingInfo").textContent = fmtHeadingInfo(d);
     if (mbOn) {
       document.getElementById("b35m").textContent = fmtBase35(d.base_35_moving);
       document.getElementById("b41m").textContent = fmtBase41(d.base_41_moving);
