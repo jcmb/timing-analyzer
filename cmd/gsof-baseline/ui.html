@@ -7,11 +7,15 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
   <style>
     :root { --bg:#0f1419; --card:#1a2332; --bd:#2d3a4d; --tx:#e6edf3; --muted:#8b9cb3; --accent:#3d8bfd; --ok:#3fb950; --bad:#f85149; --mono:ui-monospace,Menlo,monospace; --sans:system-ui,sans-serif; }
-    body { margin:0; font-family:var(--sans); background:var(--bg); color:var(--tx); }
-    header { padding:1rem 1.25rem; border-bottom:1px solid var(--bd); }
+    html { height: 100%; }
+    body { margin:0; min-height:100%; font-family:var(--sans); background:var(--bg); color:var(--tx); display:flex; flex-direction:column; }
+    header { padding:1rem 1.25rem; border-bottom:1px solid var(--bd); display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; justify-content:space-between; }
     h1 { margin:0; font-size:1.1rem; font-weight:600; }
-    .sub { color:var(--muted); font-size:0.85rem; margin-top:0.35rem; }
-    main { padding:1rem; max-width:1400px; margin:0 auto; }
+    .sub { color:var(--muted); font-size:0.85rem; margin-top:0.35rem; flex-basis:100%; }
+    .hdr-actions { display:flex; gap:0.5rem; flex-wrap:wrap; }
+    button { font: inherit; padding:0.45rem 0.85rem; border-radius:6px; border:1px solid var(--bd); background:var(--card); color:var(--tx); cursor:pointer; }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    main { padding:1rem; max-width:1400px; margin:0 auto; flex:1; width:100%; box-sizing:border-box; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
     @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
     .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:0.75rem 1rem; }
@@ -19,18 +23,29 @@
     pre { margin:0; font:12px/1.45 var(--mono); white-space:pre-wrap; word-break:break-all; }
     canvas { max-height:320px; }
     .warn { color:var(--bad); }
-    .ok { color:var(--ok); }
+    footer { margin-top:auto; padding:0.75rem 1.25rem; border-top:1px solid var(--bd); font:13px var(--mono); color:var(--muted); background:var(--card); }
+    footer strong { color: var(--tx); }
   </style>
 </head>
 <body>
   <header>
-    <h1>GSOF dual-stream baseline</h1>
-    <div class="sub">Stream 1 vs stream 2 · matched on GPS TOW from GSOF type 1 · build __VERSION__</div>
+    <div>
+      <h1>GSOF baseline — heading receiver</h1>
+      <div class="sub">Bearing and range vs <strong>type 41</strong> on the heading stream when present; otherwise vs <strong>moving base</strong> (optional second stream). Matched on GPS TOW from GSOF type 1. Build __VERSION__</div>
+    </div>
+    <div class="hdr-actions">
+      <button type="button" id="btnPng" title="Stacked PNG of both chart panels">Save charts PNG</button>
+    </div>
   </header>
   <main>
+    <div class="card" style="margin-bottom:1rem"><h2>Status</h2><pre id="status">—</pre></div>
     <div class="grid">
-      <div class="card"><h2>Base info · stream 1 (GSOF type 35)</h2><pre id="b35">—</pre></div>
-      <div class="card"><h2>Base position · stream 2 (GSOF type 41)</h2><pre id="b41">—</pre></div>
+      <div class="card"><h2>Base info · heading (GSOF type 35)</h2><pre id="b35h">—</pre></div>
+      <div class="card"><h2>Base position · heading (GSOF type 41, bearing target)</h2><pre id="b41h">—</pre></div>
+    </div>
+    <div class="grid" style="margin-top:1rem">
+      <div class="card"><h2>Moving base stream · type 35</h2><pre id="b35m">—</pre></div>
+      <div class="card"><h2>Moving base stream · type 41</h2><pre id="b41m">—</pre></div>
     </div>
     <div class="card" style="margin-top:1rem">
       <h2>Range check</h2>
@@ -45,6 +60,7 @@
       <canvas id="ch2"></canvas>
     </div>
   </main>
+  <footer id="footSerial">Receiver serial (GSOF type 15): <strong>—</strong></footer>
   <script>
 (function () {
   const es = new EventSource("/events");
@@ -72,29 +88,71 @@
       x.quality_label
     ].join("\n");
   }
+  function statusText(d) {
+    var lines = [];
+    lines.push("Moving base transport: " + (d.moving_base_configured ? "enabled" : "disabled"));
+    lines.push("Type 41 on heading stream: " + (d.has_heading_type41 ? "yes (used for bearing when TOW-matched)" : "not seen yet"));
+    if (d.needs_moving_base) {
+      lines.push("Note: enable moving base (-moving-base-port) or emit GSOF type 41 on the heading stream to compute bearing/range.");
+    }
+    var pts = d.points || [];
+    if (pts.length) {
+      var p = pts[pts.length - 1];
+      lines.push("Last reference: " + p.reference_source);
+    }
+    return lines.join("\n");
+  }
   function lastRangeLine(pts) {
     if (!pts.length) return "No matched points yet.";
-    const p = pts[pts.length - 1];
-    let s = "Last: slant " + p.slant_m.toFixed(3) + " m · horiz " + p.horiz_m.toFixed(3) + " m · ΔTOW " + p.delta_tow_s.toFixed(3) + " s";
+    var p = pts[pts.length - 1];
+    var s = "Last: slant " + p.slant_m.toFixed(3) + " m · horiz " + p.horiz_m.toFixed(3) + " m · ΔTOW " + p.delta_tow_s.toFixed(3) + " s · ref " + p.reference_source;
     if (p.range_note) s += "\nRef: " + (p.range_ref_m ? p.range_ref_m.toFixed(3) + " m (" + p.range_note + ")" : p.range_note);
     if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) {
       s += "\n|slant−ref|: " + p.range_delta_m.toFixed(3) + " m · OK: " + (p.range_ok ? "yes" : "NO");
     }
     return s;
   }
+  function setSerial(text) {
+    var el = document.getElementById("footSerial");
+    el.innerHTML = "Receiver serial (GSOF type 15): <strong>" + (text || "—") + "</strong>";
+  }
+  document.getElementById("btnPng").onclick = function () {
+    if (!chart1 || !chart2) { alert("Charts not ready yet."); return; }
+    var c1 = chart1.canvas;
+    var c2 = chart2.canvas;
+    var gap = 24;
+    var w = Math.max(c1.width, c2.width);
+    var h = c1.height + gap + c2.height;
+    var out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    var g = out.getContext("2d");
+    g.fillStyle = "#0f1419";
+    g.fillRect(0, 0, w, h);
+    g.drawImage(c1, 0, 0);
+    g.drawImage(c2, 0, c1.height + gap);
+    var a = document.createElement("a");
+    a.download = "gsof-baseline-charts.png";
+    a.href = out.toDataURL("image/png");
+    a.click();
+  };
   es.onmessage = function (ev) {
-    let d;
-    try { d = JSON.parse(ev.data); } catch (e) { return; }
-    document.getElementById("b35").textContent = fmtBase35(d.base_35_stream1);
-    document.getElementById("b41").textContent = fmtBase41(d.base_41_stream2);
+    var d;
+    try { d = JSON.parse(ev.data); } catch (err) { return; }
+    document.getElementById("status").textContent = statusText(d);
+    document.getElementById("b35h").textContent = fmtBase35(d.base_35_heading);
+    document.getElementById("b41h").textContent = fmtBase41(d.base_41_heading);
+    document.getElementById("b35m").textContent = fmtBase35(d.base_35_moving);
+    document.getElementById("b41m").textContent = fmtBase41(d.base_41_moving);
     document.getElementById("rcheck").textContent = lastRangeLine(d.points || []);
-    const pts = d.points || [];
-    const labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
-    const bear = pts.map(function (p) { return p.bearing_deg; });
-    const horiz = pts.map(function (p) { return p.horiz_m; });
-    const slant = pts.map(function (p) { return p.slant_m; });
-    const sv1 = pts.map(function (p) { return p.svs_stream1; });
-    const sv2 = pts.map(function (p) { return p.svs_stream2; });
+    setSerial(d.heading_serial);
+    var pts = d.points || [];
+    var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
+    var bear = pts.map(function (p) { return p.bearing_deg; });
+    var horiz = pts.map(function (p) { return p.horiz_m; });
+    var slant = pts.map(function (p) { return p.slant_m; });
+    var svH = pts.map(function (p) { return p.svs_heading; });
+    var svM = pts.map(function (p) { return p.svs_moving_base; });
     if (!chart1) {
       chart1 = new Chart(document.getElementById("ch1").getContext("2d"), {
         type: "line",
@@ -110,9 +168,9 @@
           responsive: true,
           interaction: { mode: "index", intersect: false },
           scales: {
-            x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) stream 1" } },
+            x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) heading" } },
             y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
-            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Horiz m" } }
+            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
           },
           plugins: { legend: { position: "bottom" } }
         }
@@ -122,8 +180,8 @@
         data: {
           labels: labels,
           datasets: [
-            { label: "SVs stream1", data: sv1, borderColor: "#d29922", stepped: true, pointRadius: 0 },
-            { label: "SVs stream2", data: sv2, borderColor: "#a371f7", stepped: true, pointRadius: 0 }
+            { label: "SVs heading", data: svH, borderColor: "#d29922", stepped: true, pointRadius: 0 },
+            { label: "SVs moving base", data: svM, borderColor: "#a371f7", stepped: true, pointRadius: 0 }
           ]
         },
         options: {
@@ -142,12 +200,12 @@
       chart1.data.datasets[2].data = slant;
       chart1.update("none");
       chart2.data.labels = labels;
-      chart2.data.datasets[0].data = sv1;
-      chart2.data.datasets[1].data = sv2;
+      chart2.data.datasets[0].data = svH;
+      chart2.data.datasets[1].data = svM;
       chart2.update("none");
     }
   };
-  es.onerror = function () { /* browser will retry */ };
+  es.onerror = function () {};
 })();
   </script>
 </body>

@@ -21,12 +21,15 @@ type AttitudeRangeSample struct {
 	RangeM    float64 `json:"range_m"`
 }
 
-// PacketWalkResult holds the latest auxiliary records seen while walking one DCOL GSOF buffer.
+// PacketWalkResult holds records seen while walking one DCOL GSOF buffer.
+// Type-41 records are collected before epochs so a type 41 after type 1/2 in the
+// same transmission still pairs correctly for the heading receiver.
 type PacketWalkResult struct {
 	Epochs         []EpochSample
 	AttitudeRanges []AttitudeRangeSample
 	Base35         *gsof.ReceivedBaseInfo
-	Base41         *gsof.BasePositionQualityInfo
+	Base41Records  []gsof.BasePositionQualityInfo
+	Serial15       *uint32
 }
 
 // WalkGSOFPacket walks one flattened GSOF payload like gsofstats.ExpandGSOFStream.
@@ -34,6 +37,35 @@ type PacketWalkResult struct {
 func WalkGSOFPacket(gsofBuffer []byte) PacketWalkResult {
 	var out PacketWalkResult
 	expanded := gsof.ExpandGSOFStream(gsofBuffer)
+
+	// Pass 1: base info, all type 41, serial, attitude (before epoch pairing).
+	for _, e := range expanded {
+		pld := e.Inner
+		switch e.MsgType {
+		case 27:
+			if ap, ok := gsof.ParseAttitudePoint(pld); ok {
+				out.AttitudeRanges = append(out.AttitudeRanges, AttitudeRangeSample{
+					GPSTOWSec: ap.GPSTOWSec,
+					RangeM:    ap.RangeM,
+				})
+			}
+		case 35:
+			if b, ok := gsof.ParseReceivedBaseInfo(pld); ok {
+				cp := b
+				out.Base35 = &cp
+			}
+		case 41:
+			if b, ok := gsof.ParseBasePositionQualityInfo(pld); ok {
+				out.Base41Records = append(out.Base41Records, b)
+			}
+		case 15:
+			if sn, ok := gsof.ParseSerial15(pld); ok {
+				v := sn
+				out.Serial15 = &v
+			}
+		}
+	}
+
 	var lastTOW float64
 	var hasTOW bool
 	var lastSV int
@@ -61,23 +93,6 @@ func WalkGSOFPacket(gsofBuffer []byte) PacketWalkResult {
 					HeightM:   h,
 					SVsUsed:   lastSV,
 				})
-			}
-		case 27:
-			if ap, ok := gsof.ParseAttitudePoint(pld); ok {
-				out.AttitudeRanges = append(out.AttitudeRanges, AttitudeRangeSample{
-					GPSTOWSec: ap.GPSTOWSec,
-					RangeM:    ap.RangeM,
-				})
-			}
-		case 35:
-			if b, ok := gsof.ParseReceivedBaseInfo(pld); ok {
-				cp := b
-				out.Base35 = &cp
-			}
-		case 41:
-			if b, ok := gsof.ParseBasePositionQualityInfo(pld); ok {
-				cp := b
-				out.Base41 = &cp
 			}
 		}
 	}
