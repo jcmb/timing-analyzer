@@ -54,4 +54,13 @@ env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-w -s" -
 env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-windows-amd64.exe ./cmd/gsof-dashboard
 env CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-dashboard-windows-386.exe ./cmd/gsof-dashboard
 
+echo "Building GSOF dual-stream baseline tool..."
+env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-linux-amd64 ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-linux-arm32 ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-linux-arm64 ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-macos-arm64 ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-macos-intel ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-windows-amd64.exe ./cmd/gsof-baseline
+env CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-w -s" -o bin/timing-analyzer/gsof-baseline-windows-386.exe ./cmd/gsof-baseline
+
 echo "Done! All executables are in the /bin folder."

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GSOF baseline · __VERSION__</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --bg:#0f1419; --card:#1a2332; --bd:#2d3a4d; --tx:#e6edf3; --muted:#8b9cb3; --accent:#3d8bfd; --ok:#3fb950; --bad:#f85149; --mono:ui-monospace,Menlo,monospace; --sans:system-ui,sans-serif; }
+    body { margin:0; font-family:var(--sans); background:var(--bg); color:var(--tx); }
+    header { padding:1rem 1.25rem; border-bottom:1px solid var(--bd); }
+    h1 { margin:0; font-size:1.1rem; font-weight:600; }
+    .sub { color:var(--muted); font-size:0.85rem; margin-top:0.35rem; }
+    main { padding:1rem; max-width:1400px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+    @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
+    .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:0.75rem 1rem; }
+    .card h2 { margin:0 0 0.5rem; font-size:0.95rem; color:var(--muted); font-weight:600; }
+    pre { margin:0; font:12px/1.45 var(--mono); white-space:pre-wrap; word-break:break-all; }
+    canvas { max-height:320px; }
+    .warn { color:var(--bad); }
+    .ok { color:var(--ok); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>GSOF dual-stream baseline</h1>
+    <div class="sub">Stream 1 vs stream 2 · matched on GPS TOW from GSOF type 1 · build __VERSION__</div>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="card"><h2>Base info · stream 1 (GSOF type 35)</h2><pre id="b35">—</pre></div>
+      <div class="card"><h2>Base position · stream 2 (GSOF type 41)</h2><pre id="b41">—</pre></div>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Range check</h2>
+      <pre id="rcheck">—</pre>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>Heading (°), horizontal range (m), slant range (m)</h2>
+      <canvas id="ch1"></canvas>
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <h2>SV counts (GSOF type 1)</h2>
+      <canvas id="ch2"></canvas>
+    </div>
+  </main>
+  <script>
+(function () {
+  const es = new EventSource("/events");
+  let chart1, chart2;
+  function fmtBase35(x) {
+    if (!x) return "—";
+    return [
+      "Name: " + x.name,
+      "Base ID: " + x.base_id,
+      "Valid: " + x.info_valid,
+      "Lat °: " + x.lat_deg,
+      "Lon °: " + x.lon_deg,
+      "Height m: " + x.height_m,
+      "Flags: " + x.flags_detail
+    ].join("\n");
+  }
+  function fmtBase41(x) {
+    if (!x) return "—";
+    return [
+      "GPS week: " + x.gps_week,
+      "GPS TOW s: " + x.gps_tow_s,
+      "Lat °: " + x.lat_deg,
+      "Lon °: " + x.lon_deg,
+      "Height m: " + x.height_m,
+      x.quality_label
+    ].join("\n");
+  }
+  function lastRangeLine(pts) {
+    if (!pts.length) return "No matched points yet.";
+    const p = pts[pts.length - 1];
+    let s = "Last: slant " + p.slant_m.toFixed(3) + " m · horiz " + p.horiz_m.toFixed(3) + " m · ΔTOW " + p.delta_tow_s.toFixed(3) + " s";
+    if (p.range_note) s += "\nRef: " + (p.range_ref_m ? p.range_ref_m.toFixed(3) + " m (" + p.range_note + ")" : p.range_note);
+    if (p.range_delta_m != null && p.range_delta_m !== undefined && !isNaN(p.range_delta_m)) {
+      s += "\n|slant−ref|: " + p.range_delta_m.toFixed(3) + " m · OK: " + (p.range_ok ? "yes" : "NO");
+    }
+    return s;
+  }
+  es.onmessage = function (ev) {
+    let d;
+    try { d = JSON.parse(ev.data); } catch (e) { return; }
+    document.getElementById("b35").textContent = fmtBase35(d.base_35_stream1);
+    document.getElementById("b41").textContent = fmtBase41(d.base_41_stream2);
+    document.getElementById("rcheck").textContent = lastRangeLine(d.points || []);
+    const pts = d.points || [];
+    const labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
+    const bear = pts.map(function (p) { return p.bearing_deg; });
+    const horiz = pts.map(function (p) { return p.horiz_m; });
+    const slant = pts.map(function (p) { return p.slant_m; });
+    const sv1 = pts.map(function (p) { return p.svs_stream1; });
+    const sv2 = pts.map(function (p) { return p.svs_stream2; });
+    if (!chart1) {
+      chart1 = new Chart(document.getElementById("ch1").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            { label: "Heading °", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
+            { label: "Horiz range m", data: horiz, yAxisID: "y2", borderColor: "#3fb950", tension: 0.15, pointRadius: 0 },
+            { label: "Slant range m", data: slant, yAxisID: "y2", borderColor: "#79c0ff", borderDash: [4, 3], tension: 0.15, pointRadius: 0 }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) stream 1" } },
+            y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
+            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Horiz m" } }
+          },
+          plugins: { legend: { position: "bottom" } }
+        }
+      });
+      chart2 = new Chart(document.getElementById("ch2").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            { label: "SVs stream1", data: sv1, borderColor: "#d29922", stepped: true, pointRadius: 0 },
+            { label: "SVs stream2", data: sv2, borderColor: "#a371f7", stepped: true, pointRadius: 0 }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { ticks: { maxTicksLimit: 12 } },
+            y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: "SVs used" } }
+          },
+          plugins: { legend: { position: "bottom" } }
+        }
+      });
+    } else {
+      chart1.data.labels = labels;
+      chart1.data.datasets[0].data = bear;
+      chart1.data.datasets[1].data = horiz;
+      chart1.data.datasets[2].data = slant;
+      chart1.update("none");
+      chart2.data.labels = labels;
+      chart2.data.datasets[0].data = sv1;
+      chart2.data.datasets[1].data = sv2;
+      chart2.update("none");
+    }
+  };
+  es.onerror = function () { /* browser will retry */ };
+})();
+  </script>
+</body>
+</html>
