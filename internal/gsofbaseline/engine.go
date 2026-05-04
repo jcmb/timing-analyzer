@@ -18,8 +18,8 @@ type MatchedPoint struct {
 	BearingDeg  float64 `json:"bearing_deg"`
 	SVsHeading  int     `json:"svs_heading"`
 	// SVsMovingBase is moving-base SV count when reference_source is moving_base; otherwise 0.
-	SVsMovingBase int    `json:"svs_moving_base"`
-	ReferenceSource string `json:"reference_source"` // "type41" | "moving_base"
+	SVsMovingBase   int     `json:"svs_moving_base"`
+	ReferenceSource string  `json:"reference_source"` // "type41" | "moving_base"
 	RangeRefM       float64 `json:"range_ref_m"`
 	RangeDeltaM     float64 `json:"range_delta_m"`
 	RangeOK         bool    `json:"range_ok"`
@@ -59,16 +59,16 @@ type Engine struct {
 
 	lastBase35Heading *gsof.ReceivedBaseInfo
 	lastBase41Heading *gsof.BasePositionQualityInfo
-	headingSerial       string
+	headingSerial     string
 
 	lastBase35Moving *gsof.ReceivedBaseInfo
 	lastBase41Moving *gsof.BasePositionQualityInfo
 
-	lastHeadingRover *EpochSample
-	lastHeading27    *gsof.AttitudePoint
-	headingAttRing   []gsof.AttitudePoint
+	lastHeadingRover  *EpochSample
+	lastHeading27     *gsof.AttitudePoint
+	headingAttRing    []gsof.AttitudePoint
 	lastHeading38Text string
-	movingBaseSerial string
+	movingBaseSerial  string
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
@@ -127,7 +127,7 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 	e.headingAttRing = trimFront(e.headingAttRing, maxRing)
 	if len(w.Last38Payload) > 0 {
 		fields := gsof.Decode(38, w.Last38Payload)
-		e.lastHeading38Text = FormatGSOFFieldsForCard(fields)
+		e.lastHeading38Text = FormatHeading38Card(fields)
 	}
 	if len(w.Epochs) > 0 {
 		le := w.Epochs[len(w.Epochs)-1]
@@ -300,19 +300,19 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	snap := EngineSnapshot{
-		Version:               version,
-		Points:                append([]MatchedPoint(nil), e.points...),
-		Base35Heading:         e.lastBase35Heading,
-		Base41Heading:         e.lastBase41Heading,
-		HeadingSerial:         e.headingSerial,
-		HeadingRover:          e.lastHeadingRover,
-		HeadingType27:         e.lastHeading27,
-		Base35Moving:          e.lastBase35Moving,
-		Base41Moving:          e.lastBase41Moving,
-		MovingBaseSerial:      e.movingBaseSerial,
-		MovingBaseConfigured:  e.cfg.MovingBaseConfigured,
+		Version:              version,
+		Points:               append([]MatchedPoint(nil), e.points...),
+		Base35Heading:        e.lastBase35Heading,
+		Base41Heading:        e.lastBase41Heading,
+		HeadingSerial:        e.headingSerial,
+		HeadingRover:         e.lastHeadingRover,
+		HeadingType27:        e.lastHeading27,
+		Base35Moving:         e.lastBase35Moving,
+		Base41Moving:         e.lastBase41Moving,
+		MovingBaseSerial:     e.movingBaseSerial,
+		MovingBaseConfigured: e.cfg.MovingBaseConfigured,
 		HasHeadingType41Ring: len(e.heading41Ring) > 0,
-		NeedsMovingBase:       e.cfg.MovingBaseConfigured == false && len(e.heading41Ring) == 0,
+		NeedsMovingBase:      e.cfg.MovingBaseConfigured == false && len(e.heading41Ring) == 0,
 	}
 	cc := e.crossCheckHeading41VsMovingBaseLocked()
 	if cc != nil {
@@ -332,12 +332,12 @@ type HeadingCheckResult struct {
 	// Type27YawDeg is GSOF type-27 yaw (degrees).
 	Type27YawDeg float64 `json:"type27_yaw_deg"`
 	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
-	DeltaDeg    float64 `json:"delta_deg"`
-	AbsDeltaDeg float64 `json:"abs_delta_deg"`
+	DeltaDeg        float64 `json:"delta_deg"`
+	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
 	TowLastPointSec float64 `json:"tow_last_point_s"`
 	TowType27Sec    float64 `json:"tow_type27_s"`
 	TowDeltaSec     float64 `json:"tow_delta_s"`
-	Note            string `json:"note,omitempty"`
+	Note            string  `json:"note,omitempty"`
 }
 
 func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
@@ -407,11 +407,11 @@ func (e *Engine) crossCheckHeading41VsMovingBaseLocked() *CrossCheckHeading41Mov
 	mb, ok := e.nearestMovingBaseLocked(tow41)
 	if !ok {
 		return &CrossCheckHeading41Moving{
-			Active:         true,
-			HasPair:        false,
-			MatchOK:        false,
-			TowType41Sec:   tow41,
-			Note:           "no moving-base type 1/2 within match window of heading type 41 TOW",
+			Active:       true,
+			HasPair:      false,
+			MatchOK:      false,
+			TowType41Sec: tow41,
+			Note:         "no moving-base type 1/2 within match window of heading type 41 TOW",
 		}
 	}
 	hd := math.Abs(h41 - mb.HeightM)
@@ -439,12 +439,12 @@ type CrossCheckHeading41Moving struct {
 	// MatchOK is true when HasPair and horizontal and height deltas are within tolerance.
 	MatchOK bool `json:"match_ok"`
 	// HorizontalDiffM is great-circle distance between type-41 position and moving-base LLH (metres).
-	HorizontalDiffM float64 `json:"horizontal_diff_m"`
-	HeightDiffM     float64 `json:"height_diff_m"`
-	TowType41Sec    float64 `json:"tow_type41_s"`
+	HorizontalDiffM  float64 `json:"horizontal_diff_m"`
+	HeightDiffM      float64 `json:"height_diff_m"`
+	TowType41Sec     float64 `json:"tow_type41_s"`
 	TowMovingBaseSec float64 `json:"tow_moving_base_s"`
-	TowDeltaSec     float64 `json:"tow_delta_s"`
-	Note            string `json:"note,omitempty"`
+	TowDeltaSec      float64 `json:"tow_delta_s"`
+	Note             string  `json:"note,omitempty"`
 }
 
 const crossCheckHorizTolM = 5.0
@@ -452,7 +452,7 @@ const crossCheckHeightTolM = 5.0
 
 // EngineSnapshot is JSON-serializable UI state.
 type EngineSnapshot struct {
-	Version string `json:"version"`
+	Version string         `json:"version"`
 	Points  []MatchedPoint `json:"points"`
 
 	Base35Heading *gsof.ReceivedBaseInfo        `json:"base_35_heading,omitempty"`
@@ -474,6 +474,6 @@ type EngineSnapshot struct {
 	// Heading41VsMovingBase is set when moving base is configured and heading type 41 exists; compares to matched moving-base epoch.
 	Heading41VsMovingBase *CrossCheckHeading41Moving `json:"heading_41_vs_moving_base,omitempty"`
 
-	HeadingCheck *HeadingCheckResult `json:"heading_check,omitempty"`
-	HeadingType38 string               `json:"heading_type38,omitempty"`
+	HeadingCheck  *HeadingCheckResult `json:"heading_check,omitempty"`
+	HeadingType38 string              `json:"heading_type38,omitempty"`
 }
