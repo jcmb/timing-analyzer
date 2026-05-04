@@ -54,15 +54,19 @@ func main() {
 	mbPort := flag.Int("moving-base-port", 0, "Moving base: UDP listen or TCP port; 0 = disabled (not required when GSOF type 41 is on the heading stream)")
 
 	matchMax := flag.Float64("match-max-tow-delta-sec", 0.25, "Max GPS TOW gap (s, week-wrapped) between heading epoch and reference (type 41 or moving-base type 1)")
-	rangeTol := flag.Float64("range-check-tolerance-m", 0, "If > 0, flag rows where |slant range − reference| exceeds this (metres)")
-	expectedRange := flag.Float64("expected-range-m", 0, "Fixed reference range in metres (overrides type-27 when > 0)")
-	rangeFromAtt := flag.Bool("range-ref-from-attitude", false, "When -expected-range-m is 0 and tolerance > 0, use GSOF type-27 range at nearest TOW (heading stream when using type 41; moving-base stream when using moving-base LLH)")
+	rangeTol := flag.Float64("range-check-tolerance", 0.01, "Metres: pass if |computed slant − reference| is at most this (0 disables range check)")
+	expectedRange := flag.Float64("expected-range", 0, "Metres: fixed reference slant range; when > 0 overrides GSOF type-27. When 0, range check uses type-27 range from the heading stream when present (same TOW as type 1)")
 
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address")
 	webPort := flag.Int("web-port", 8091, "HTTP port for UI and /events SSE")
 	verbose := flag.Int("verbose", 0, "DCOL verbosity (same as gsof-dashboard)")
 	ignoreGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP: suppress warnings for a single skipped GSOF transmission id")
 	flag.Parse()
+
+	tol := *rangeTol
+	if *expectedRange > 0 && tol <= 0 {
+		tol = 0.01
+	}
 
 	mbEnabled := *mbPort != 0
 	cfgHeading := streamCfg(*headingIP, *headingHost, *headingPort, *verbose, *ignoreGap1)
@@ -73,9 +77,8 @@ func main() {
 
 	eng := gsofbaseline.NewEngine(gsofbaseline.EngineConfig{
 		MatchMaxTowDeltaSec:    *matchMax,
-		RangeCheckTolM:         *rangeTol,
+		RangeCheckTolM:         tol,
 		ExpectedRangeM:         *expectedRange,
-		RangeRefFromAttitude:   *rangeFromAtt,
 		MovingBaseConfigured:   mbEnabled,
 	})
 
@@ -181,14 +184,12 @@ func main() {
 	} else {
 		fmt.Fprintf(os.Stdout, "  moving base: (disabled — enable with -moving-base-port, or use GSOF type 41 on heading stream)\n")
 	}
-	if *rangeTol > 0 {
-		ref := "type-27 (heading or moving base, see -range-ref-from-attitude)"
+	if tol > 0 {
+		ref := "GSOF type-27 (heading stream, same TOW as type 1 when available)"
 		if *expectedRange > 0 {
 			ref = fmt.Sprintf("fixed expected %.3f m", *expectedRange)
-		} else if !*rangeFromAtt {
-			ref = "none (set -range-ref-from-attitude or -expected-range-m)"
 		}
-		fmt.Fprintf(os.Stdout, "  range check: tolerance %.3f m · reference: %s\n", *rangeTol, ref)
+		fmt.Fprintf(os.Stdout, "  range check: tolerance %.3f m · reference: %s\n", tol, ref)
 	}
 
 	go func() {

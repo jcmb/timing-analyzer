@@ -110,7 +110,6 @@
     .mb-title:first-child { margin-top: 0; }
     .ok { color: var(--ok); }
     .bad { color: var(--bad); }
-    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
     .theme-wrap { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
     .theme-wrap label { font-size: 0.8rem; color: var(--muted); }
     .theme-select {
@@ -134,6 +133,7 @@
           <option value="dark">Dark</option>
         </select>
       </div>
+      <button type="button" id="btnPause" title="Stop refreshing panels and charts from the stream">Pause updates</button>
       <button type="button" id="btnCopy" title="Copy all panel text">Copy all</button>
       <button type="button" id="btnPng" title="Stacked PNG of both chart panels">Save charts PNG</button>
     </div>
@@ -192,7 +192,6 @@
     <div class="card" data-card-id="chart-range" style="margin-bottom:1rem">
       <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading (°) and range (m)</span></button></h2>
       <div class="card-panel">
-        <p class="hint">Legend: click <strong>Slant range m</strong> to toggle that line.</p>
         <canvas id="ch1"></canvas>
       </div>
     </div>
@@ -209,6 +208,7 @@
   var chart1, chart2;
   var lastMbConfigured = null;
   var lastSnap = null;
+  var updatesPaused = false;
   var legendClickDefault = Chart.defaults.plugins.legend.onClick;
 
   var THEME_KEY = "gsof-baseline-theme";
@@ -538,7 +538,7 @@
       rows.push(
         row(
           "Note",
-          "Use type-27 range as ref. (-range-from-attitude) or set -expected-range with -range-tol to compare slant."
+          "No type-27 range at the solution TOW, or no slant yet. With -expected-range 0, reference is GSOF type-27 on the heading stream; comparison uses -range-check-tolerance (default 0.01 m)."
         )
       );
     }
@@ -664,6 +664,14 @@
       prompt("Copy this text:", t);
     });
   };
+  document.getElementById("btnPause").onclick = function () {
+    updatesPaused = !updatesPaused;
+    var b = document.getElementById("btnPause");
+    b.textContent = updatesPaused ? "Resume updates" : "Pause updates";
+    b.setAttribute("title", updatesPaused ? "Resume live updates from the stream" : "Stop refreshing panels and charts from the stream");
+    b.setAttribute("aria-pressed", updatesPaused ? "true" : "false");
+  };
+
   document.getElementById("btnPng").onclick = function () {
     if (!chart1 || !chart2) { alert("Charts not ready yet."); return; }
     var c1 = chart1.canvas;
@@ -685,6 +693,7 @@
     a.click();
   };
   es.onmessage = function (ev) {
+    if (updatesPaused) return;
     var d;
     try { d = JSON.parse(ev.data); } catch (err) { return; }
     lastSnap = d;
