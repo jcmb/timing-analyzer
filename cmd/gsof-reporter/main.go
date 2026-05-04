@@ -88,8 +88,12 @@ func main() {
 
 	go func() {
 		for pkt := range packetChan {
+			for _, w := range pkt.StreamWarnings {
+				stats.AddWarning(w)
+			}
+			tcp := !strings.EqualFold(cfg.IP, "udp")
 			if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
-				stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer)
+				stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp)
 			}
 		}
 	}()

@@ -95,8 +95,12 @@ func main() {
 		go stream.StartListener(cfg, packetChan)
 		go func() {
 			for pkt := range packetChan {
+				for _, w := range pkt.StreamWarnings {
+					embStats.AddWarning(w)
+				}
+				tcp := !strings.EqualFold(cfg.IP, "udp")
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
-					embStats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer)
+					embStats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp)
 				}
 			}
 		}()

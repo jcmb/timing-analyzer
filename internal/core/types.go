@@ -37,7 +37,11 @@ type PacketEvent struct {
 	StationID     int
 	IsLastInBurst bool
 	GSOFBuffer    []byte // The reassembled multi-page payload
-	SequenceNumber uint8  // Byte 4 of the GSOF packet
+	// SequenceNumber is the GSOF 0x40 transmission number (payload byte 4) when
+	// PacketType is 0x40; otherwise zero. It is not a monotonic transport sequence.
+	SequenceNumber uint8
+	// StreamWarnings are parser-side issues (e.g. undecoded bytes after sync) to merge into stats.
+	StreamWarnings []string `json:"-"`
 }
 
 type TelemetryEvent struct {

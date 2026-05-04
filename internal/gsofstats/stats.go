@@ -63,7 +63,7 @@ type Stats struct {
 	// ratePeriodEMA is an exponentially weighted mean period (s) per subtype for Hz inference.
 	ratePeriodEMA map[int]float64
 	lastSeen      map[int]time.Time
-	// lastSeenSeq is the DCOL sequence number when lastSeen[recType] was updated (per subtype).
+	// lastSeenSeq is the GSOF transmission number (Update seq arg) when lastSeen[recType] was updated (per subtype).
 	lastSeenSeq    map[int]uint8
 	lastSeq        uint8
 	lastSeqTime    time.Time
@@ -171,14 +171,18 @@ func (s *Stats) epochMinHzFromTOWLocked() float64 {
 	return gsof.JSONFloat(1.0 / s.epochTowPeriodEMA)
 }
 
-// Update processes one reassembled GSOF payload and transport sequence number.
-func (s *Stats) Update(seq uint8, buffer []byte) {
+// Update processes one reassembled GSOF payload. seq is the GSOF transmission number
+// (0x40 payload byte 4) when present; it may jump arbitrarily and is not a wire
+// transport sequence. tcpTransport suppresses sequence-gap warnings: on TCP,
+// coalescing/reordering and transmission numbers produce false "missed seq" alerts;
+// UDP callers may still use seq jumps (vs wall time) for rate inference.
+func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	now := time.Now()
 
-	if !s.lastSeqTime.IsZero() {
+	if !tcpTransport && !s.lastSeqTime.IsZero() {
 		expectedSeq := s.lastSeq + 1
 		if seq != expectedSeq && seq != s.lastSeq {
 			gap := (int(seq) + 256 - int(expectedSeq)) % 256
@@ -689,4 +693,11 @@ func (s *Stats) ClearWarnings() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.warnings = nil
+}
+
+// AddWarning appends a dashboard-visible warning (e.g. from the DCOL parser).
+func (s *Stats) AddWarning(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.warnings = append(s.warnings, msg)
 }

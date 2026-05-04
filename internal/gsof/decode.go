@@ -416,8 +416,14 @@ func decodeLatLonHeight(payload []byte) []Field {
 	}
 }
 
+// formatDecimalDegrees formats signed degrees to eight fractional digits. Strictly positive
+// values get a leading NBSP (same monospace alignment as formatSignedDecimalNBSP).
 func formatDecimalDegrees(deg float64) string {
-	return fmt.Sprintf("%.8f", deg)
+	s := fmt.Sprintf("%.8f", deg)
+	if deg > 0 {
+		return "\u00a0" + s
+	}
+	return s
 }
 
 // splitDMS breaks a non-negative degrees magnitude into ° ′ ″ (seconds with 5 dp).
@@ -480,8 +486,8 @@ func decodeLocalDatum(payload []byte) []Field {
 	datum := br.str8()
 	return []Field{
 		kv("Datum ID (8 chars)", datum),
-		kv("Local latitude (deg)", fmt.Sprintf("%.9g", br.f64())),
-		kv("Local longitude (deg)", fmt.Sprintf("%.9g", br.f64())),
+		kv("Local latitude (deg)", formatSignedDecimalNBSP(br.f64(), 9)),
+		kv("Local longitude (deg)", formatSignedDecimalNBSP(br.f64(), 9)),
 		kv("Local height (m)", formatMeters3(br.f64())),
 	}
 }
@@ -690,7 +696,7 @@ func decodeSigma(payload []byte) []Field {
 	out = append(out, kv("SEMI_MAJOR_AXIS (m)", formatMeters5F(maj)))
 	out = append(out, kv("SEMI_MINOR_AXIS (m)", formatMeters5F(minor)))
 	odeg := float64(orient)
-	out = append(out, kv("ORIENTATION (decimal °)", fmt.Sprintf("%.8f", odeg)))
+	out = append(out, kv("ORIENTATION (decimal °)", formatSignedDecimalNBSP(odeg, 8)))
 	out = append(out, kv("ORIENTATION (DMS)", formatOrientationDMS(odeg)))
 	out = append(out, kv("UNIT_VARIANCE", formatFloat32_5(uv)))
 	out = append(out, kv("NUMBER_EPOCHS", fmt.Sprintf("%d", epochs)))

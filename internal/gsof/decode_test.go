@@ -591,7 +591,7 @@ func TestDecode02LatLonRad(t *testing.T) {
 			height = f.Value
 		}
 	}
-	if latDec != "90.00000000" {
+	if latDec != "\u00a090.00000000" {
 		t.Fatalf("lat decimal: %q", latDec)
 	}
 	if !strings.HasPrefix(latDMS, "N 90°") || !strings.Contains(latDMS, "0.00000") {
@@ -655,7 +655,7 @@ func TestDecode12SigmaUnitsAndOrientation(t *testing.T) {
 	if got["COVAR_EAST_NORTH (m²)"] != "-1.00000 m²" {
 		t.Fatalf("COVAR: %q", got["COVAR_EAST_NORTH (m²)"])
 	}
-	if got["ORIENTATION (decimal °)"] != "45.00000000" {
+	if got["ORIENTATION (decimal °)"] != "\u00a045.00000000" {
 		t.Fatalf("orient dec: %q", got["ORIENTATION (decimal °)"])
 	}
 	if got["ORIENTATION (DMS)"] != "45° 0′ 0.00000″" {

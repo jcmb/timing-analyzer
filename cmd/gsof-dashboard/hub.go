@@ -221,8 +221,12 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 			case <-sctx.Done():
 				return
 			case pkt := <-ch:
+				for _, w := range pkt.StreamWarnings {
+					stats.AddWarning(w)
+				}
+				tcp := !strings.EqualFold(cfg.IP, "udp")
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
-					stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer)
+					stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp)
 				}
 			}
 		}

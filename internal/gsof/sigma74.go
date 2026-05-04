@@ -35,7 +35,7 @@ func decodeSigma74(payload []byte) []Field {
 	out = append(out, kv("SEMI_MAJOR_AXIS (m)", formatSigma74MeterScalar(maj)))
 	out = append(out, kv("SEMI_MINOR_AXIS (m)", formatSigma74MeterScalar(minor)))
 	odeg := float64(orient)
-	out = append(out, kv("ORIENTATION (decimal °)", fmt.Sprintf("%.8f", odeg)))
+	out = append(out, kv("ORIENTATION (decimal °)", formatSignedDecimalNBSP(odeg, 8)))
 	out = append(out, kv("ORIENTATION (DMS)", formatOrientationDMS(odeg)))
 	out = append(out, kv("UNIT_VARIANCE", formatFloat32_5(uv)))
 	out = append(out, kv("NUMBER_EPOCHS", fmt.Sprintf("%d", epochs)))

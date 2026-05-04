@@ -34,7 +34,7 @@ func TestTowDeltaSeconds_rejectNonPositiveOrHuge(t *testing.T) {
 func TestStats_UpdateAndDashboard(t *testing.T) {
 	s := NewStats(false)
 	// One GSOF record: type 1, len 0 (no payload bytes)
-	s.Update(1, []byte{0x01, 0x00})
+	s.Update(1, []byte{0x01, 0x00}, false)
 	d := s.BuildDashboard("udp", 2101, "test", "")
 	if len(d.Records) != 1 {
 		t.Fatalf("records %d", len(d.Records))
@@ -47,10 +47,23 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	}
 	s2 := NewStats(false)
 	// GSOF sub-record: type 1, 3-byte body 0xAA 0xBB 0xCC
-	s2.Update(1, []byte{0x01, 0x03, 0xAA, 0xBB, 0xCC})
+	s2.Update(1, []byte{0x01, 0x03, 0xAA, 0xBB, 0xCC}, false)
 	d2 := s2.BuildDashboard("udp", 2101, "test", "")
 	if len(d2.Records) != 1 || d2.Records[0].PayloadHex != "01 03 AA BB CC" {
 		t.Fatalf("payload_hex %q", d2.Records[0].PayloadHex)
+	}
+}
+
+func TestStats_TCPNoSequenceGapWarning(t *testing.T) {
+	s := NewStats(false)
+	buf := []byte{0x01, 0x00}
+	s.Update(1, buf, true)
+	s.Update(10, buf, true)
+	d := s.BuildDashboard("tcp", 2101, "", "")
+	for _, w := range d.Warnings {
+		if strings.Contains(w, "Sequence Gap") {
+			t.Fatalf("TCP should not emit sequence-gap warnings; got %q", w)
+		}
 	}
 }
 
@@ -60,11 +73,11 @@ func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
 	}
 	s := NewStats(false)
 	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	time.Sleep(2 * time.Millisecond)
-	s.Update(2, buf)
+	s.Update(2, buf, false)
 	time.Sleep(120 * time.Millisecond)
-	s.Update(3, buf)
+	s.Update(3, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -87,9 +100,9 @@ func TestStats_RateUsesSeqAdvanceAfterUDPLoss(t *testing.T) {
 	}
 	s := NewStats(false)
 	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	time.Sleep(520 * time.Millisecond)
-	s.Update(6, buf)
+	s.Update(6, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -119,13 +132,13 @@ func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
 	}
 	s := NewStats(false)
 	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	time.Sleep(105 * time.Millisecond)
-	s.Update(2, buf)
+	s.Update(2, buf, false)
 	time.Sleep(105 * time.Millisecond)
-	s.Update(3, buf)
+	s.Update(3, buf, false)
 	time.Sleep(215 * time.Millisecond)
-	s.Update(4, buf)
+	s.Update(4, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -152,7 +165,7 @@ func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
 		0x22, 0x0B,
 		0x01, 0x06, 0x00, 0x0a, 0x0b, 10, 0x01, 0x0e, 4, 8, 12,
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -190,7 +203,7 @@ func TestStats_Type48AllSVDetailedJSON(t *testing.T) {
 		0x01, 0x12, 0x01,
 		0x06, 0x00, 0x0a, 0x0b, 10, 0x01, 0x0e, 4, 8, 12,
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -217,7 +230,7 @@ func TestStats_Type48AllSVDetailedJSON(t *testing.T) {
 func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 33: count=1, PRN=4, system=0 (GPS), flags1=0x0F, flags2=0x30
-	s.Update(1, []byte{0x21, 0x05, 0x01, 0x04, 0x00, 0x0F, 0x30})
+	s.Update(1, []byte{0x21, 0x05, 0x01, 0x04, 0x00, 0x0F, 0x30}, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -241,7 +254,7 @@ func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 func TestStats_Type13SVBriefJSON(t *testing.T) {
 	s := NewStats(false)
 	// Type 13: count=1, PRN=5, flags1=0x0F, flags2=0x30
-	s.Update(1, []byte{0x0D, 0x04, 0x01, 0x05, 0x0F, 0x30})
+	s.Update(1, []byte{0x0D, 0x04, 0x01, 0x05, 0x0F, 0x30}, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -285,7 +298,7 @@ func TestStats_TangentHistoryFromType1And7(t *testing.T) {
 	buf = append(buf, f64be(0.1)...)
 	buf = append(buf, f64be(-0.2)...)
 	buf = append(buf, f64be(0.3)...)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -313,7 +326,7 @@ func TestStats_PositionTimeHistoryFromType1(t *testing.T) {
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
 		0x09, 0x0A, 0x1B, 0x03,
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -355,7 +368,7 @@ func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
 	if want := 12 + 2 + 44; len(buf) != want {
 		t.Fatalf("packet len %d want %d", len(buf), want)
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row97 *RecordRow
 	for i := range d.Records {
@@ -389,7 +402,7 @@ func TestStats_SecondAntenna102HistoryFromType1And102(t *testing.T) {
 	if want := 12 + 2 + 33; len(buf) != want {
 		t.Fatalf("packet len %d want %d", len(buf), want)
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row102 *RecordRow
 	for i := range d.Records {
@@ -417,7 +430,7 @@ func TestStats_Type99InvalidExtendedEmits243FullWireHex(t *testing.T) {
 	pl := []byte{0x00, 0x05, 0x00} // extended type 5 (<100)
 	buf = append(buf, 0x63, byte(len(pl)))
 	buf = append(buf, pl...)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row243 *RecordRow
 	for i := range d.Records {
@@ -450,7 +463,7 @@ func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
 	binary.BigEndian.PutUint64(pl[27:35], math.Float64bits(42))
 	buf = append(buf, 0x63, byte(len(pl)))
 	buf = append(buf, pl...)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row100 *RecordRow
 	for i := range d.Records {
@@ -488,7 +501,7 @@ func TestStats_LLHHistoryFromType1And2(t *testing.T) {
 	buf = append(buf, f64be(math.Pi/2)...)
 	buf = append(buf, f64be(0)...)
 	buf = append(buf, f64be(100.0)...)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -521,7 +534,7 @@ func TestStats_LLHMSLHistoryFromType1And70(t *testing.T) {
 	buf = append(buf, f64be(math.Pi/2)...)
 	buf = append(buf, f64be(0)...)
 	buf = append(buf, f64be(100.0)...)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -566,7 +579,7 @@ func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
 	buf = append(buf, f32be(0)...)
 	buf = append(buf, f32be(0)...)
 	buf = append(buf, 0x00, 0x01)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row9, row12 *RecordRow
 	for i := range d.Records {
@@ -616,7 +629,7 @@ func TestStats_Sigma74HistoryPairedWithType1TOW(t *testing.T) {
 	buf = append(buf, f32be(0)...)
 	buf = append(buf, f32be(0)...)
 	buf = append(buf, 0x00, 0x01)
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row74 *RecordRow
 	for i := range d.Records {
@@ -655,10 +668,10 @@ func TestStats_AttitudeHistoryFromType1And27(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		buf = append(buf, f32be(0)...)
 	}
-	if len(buf) != 10+2+70 {
+	if len(buf) != 84 { // type-1 (12) + type-0x1B sub-record (2+70)
 		t.Fatalf("packet len %d", len(buf))
 	}
-	s.Update(1, buf)
+	s.Update(1, buf, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {

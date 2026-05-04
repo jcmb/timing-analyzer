@@ -64,8 +64,22 @@ type GSOFSession struct {
 const maxDCOLBufWithoutSTX = 1 << 20 // 1 MiB
 
 type DCOLParser struct {
-	buf           []byte
-	gsofAssembler map[uint8]*GSOFSession // Map of transmission number to reassembly session
+	buf                   []byte
+	gsofAssembler         map[uint8]*GSOFSession // Map of transmission number to reassembly session
+	synced                bool                   // true after at least one complete DCOL frame was emitted
+	pendingStreamWarnings []string
+}
+
+func (p *DCOLParser) noteUndecodedAfterSync(n int, reason, remoteAddr string, verbose int) {
+	if !p.synced || n <= 0 {
+		return
+	}
+	msg := fmt.Sprintf("[%s] WARNING: %d undecoded byte(s) after DCOL sync (%s) remote=%s",
+		time.Now().Format("15:04:05"), n, reason, remoteAddr)
+	p.pendingStreamWarnings = append(p.pendingStreamWarnings, msg)
+	if verbose >= 2 {
+		fmt.Printf("[VERBOSE2] %s\n", msg)
+	}
 }
 
 func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time, remoteAddr string, verbose int, out chan<- core.PacketEvent) {
@@ -84,11 +98,13 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 				if verbose >= 1 {
 					fmt.Printf("[WARN] DCOL buffer %d bytes without STX (0x02); discarding to resync.\n", len(p.buf))
 				}
+				p.noteUndecodedAfterSync(len(p.buf), "discarded without STX (buffer cap)", remoteAddr, verbose)
 				p.buf = nil
 			}
 			return
 		}
 		if stxIdx > 0 {
+			p.noteUndecodedAfterSync(stxIdx, "leading bytes before STX", remoteAddr, verbose)
 			p.buf = p.buf[stxIdx:]
 		}
 		if len(p.buf) < 6 {
@@ -103,6 +119,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			return
 		}
 		if p.buf[totalExpectedLen-1] != 0x03 { // End of Transmission
+			p.noteUndecodedAfterSync(1, "invalid ETX (slipped 1 byte)", remoteAddr, verbose)
 			p.buf = p.buf[1:]
 			continue
 		}
@@ -115,6 +132,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			if verbose >= 1 {
 				fmt.Printf("[WARN] Checksum failed for packet type 0x%02X\n", pktType)
 			}
+			p.noteUndecodedAfterSync(1, "checksum mismatch (slipped 1 byte)", remoteAddr, verbose)
 			p.buf = p.buf[1:]
 			continue
 		}
@@ -226,6 +244,8 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		if len(gsofBuffer) > 0 {
 			gsofCopy = append([]byte(nil), gsofBuffer...)
 		}
+		warnings := append([]string(nil), p.pendingStreamWarnings...)
+		p.pendingStreamWarnings = p.pendingStreamWarnings[:0]
 		out <- core.PacketEvent{
 			BestTime:       bestTime,
 			GoTime:         goTime,
@@ -241,7 +261,9 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 			IsLastInBurst:  isLastInBurst,
 			GSOFBuffer:     gsofCopy,
 			SequenceNumber: gsofSeq,
+			StreamWarnings: warnings,
 		}
+		p.synced = true
 		p.buf = p.buf[totalExpectedLen:]
 	}
 }
