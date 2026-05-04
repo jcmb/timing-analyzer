@@ -422,9 +422,9 @@
       return [full(s.trim())];
     }
     return [
-      row("Computed bearing (reference → heading)", h.computed_bearing_deg.toFixed(3) + " °"),
+      row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
       row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
-      row("Δ (rover→reference − yaw)", h.delta_deg.toFixed(3) + " °"),
+      row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
       row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
       row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
     ];
@@ -482,7 +482,7 @@
     var p = pts[pts.length - 1];
     var rows = [
       row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
-      row("Bearing (reference → heading)", p.bearing_deg.toFixed(3) + " °"),
+      row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
       row("Horizontal range", p.horiz_m.toFixed(3) + " m"),
       row("Slant range", p.slant_m.toFixed(3) + " m"),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
@@ -532,8 +532,7 @@
   }
   function formatRangeRefSource(note) {
     if (!note) return "";
-    if (note === "type27_range_heading") return "GSOF type 27 range (heading stream)";
-    if (note === "type27_range_moving_base") return "GSOF type 27 range (moving base)";
+    if (note === "type27_range_heading" || note === "type27_range_moving_base") return "GSOF 27";
     if (note === "expected_range_param") return "Expected range (CLI)";
     if (note === "no_reference") return "No reference";
     return note;
@@ -562,7 +561,7 @@
           p.range_ref_m != null && !isNaN(p.range_ref_m) ? p.range_ref_m.toFixed(4) + " m" : "—"
         )
       );
-      rows.push(row("Range ref. source", formatRangeRefSource(note)));
+      rows.push(row("Ref source", formatRangeRefSource(note)));
     } else if (note === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) {
       rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
       rows.push(row("Source", formatRangeRefSource(note)));
@@ -573,7 +572,27 @@
     rows.push(row("Bearing reference", String(p.reference_source)));
     if (rangeCompareActive(p)) {
       rows.push(row("|slant − ref|", p.range_delta_m.toFixed(3) + " m"));
-      rows.push(row("Check vs reference", p.range_ok ? "within tolerance" : "outside tolerance"));
+      rows.push(
+        row(
+          "Check vs reference",
+          p.range_ok
+            ? "Within tolerance — |slant − ref| is within the CLI range tolerance."
+            : "Outside tolerance — |slant − ref| exceeds the CLI range tolerance."
+        )
+      );
+      if (fromT27) {
+        rows.push(
+          full(
+            "Why |slant − ref| may be small but not zero (e.g. 0.003 m): the slant range is computed from LLH (heading type 1/2 to the matched reference). The reference is the scalar range from GSOF type 27 at the same TOW. Those are not the same measurement path: the receiver’s type‑27 range uses its internal model (antenna / phase‑centre / filtering), while the slant uses your paired positions. Sub‑centimetre differences are normal and do not by themselves mean the data are wrong."
+          )
+        );
+      } else if (note === "expected_range_param") {
+        rows.push(
+          full(
+            "The reference is the fixed expected range from the command line; the slant is computed from the latest matched positions. |slant − ref| is compared to the CLI tolerance."
+          )
+        );
+      }
     }
     return rows;
   }
@@ -618,7 +637,7 @@
       row("SVs (moving base)", String(p.svs_moving_base))
     ];
     if (p.range_note) {
-      rows.push(row("Range ref. source", formatRangeRefSource(p.range_note)));
+      rows.push(row("Ref source", formatRangeRefSource(p.range_note)));
       if (p.range_ref_m != null && !isNaN(p.range_ref_m)) {
         rows.push(row("Reference range (m)", p.range_ref_m.toFixed(4)));
       }
@@ -820,7 +839,7 @@
         data: {
           labels: labels,
           datasets: [
-            { label: "Bearing ° (ref → heading)", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
+            { label: "Heading °", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
             { label: "Horiz range m", data: horiz, yAxisID: "y2", borderColor: "#3fb950", tension: 0.15, pointRadius: 0 },
             { label: "Slant range m", data: slant, yAxisID: "y2", borderColor: "#79c0ff", borderDash: [4, 3], tension: 0.15, pointRadius: 0, hidden: true }
           ]
@@ -830,7 +849,7 @@
           interaction: { mode: "index", intersect: false },
           scales: {
             x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) heading" } },
-            y: { type: "linear", position: "left", title: { display: true, text: "Bearing ° (ref → heading)" } },
+            y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
             y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
           },
           plugins: {

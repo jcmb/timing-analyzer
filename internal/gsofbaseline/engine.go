@@ -15,8 +15,7 @@ type MatchedPoint struct {
 	DeltaTowSec float64 `json:"delta_tow_s"`
 	HorizM      float64 `json:"horiz_m"`
 	SlantM      float64 `json:"slant_m"`
-	// BearingDeg is forward azimuth from the reference (type 41 or moving-base type 1+2 LLH) toward the heading rover (type 1+2), degrees [0,360).
-	BearingDeg float64 `json:"bearing_deg"`
+	BearingDeg  float64 `json:"bearing_deg"`
 	SVsHeading  int     `json:"svs_heading"`
 	// SVsMovingBase is moving-base SV count when reference_source is moving_base; otherwise 0.
 	SVsMovingBase   int     `json:"svs_moving_base"`
@@ -143,7 +142,7 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 		}
 		h := HaversineM(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
 		s := SlantM(h, ep.HeightM, tgt.h)
-		br := InitialBearingDeg(tgt.lat, tgt.lon, ep.LatDeg, ep.LonDeg)
+		br := InitialBearingDeg(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
 		pt := MatchedPoint{
 			GPSTOWSec:       ep.GPSTOWSec,
 			DeltaTowSec:     tgt.deltaTow,
@@ -333,11 +332,11 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 // type-27 sample exists within the same TOW match window as the last solution.
 type HeadingCheckResult struct {
 	Available bool `json:"available"`
-	// ComputedBearingDeg is initial bearing reference → heading rover (0–360°, same as MatchedPoint.BearingDeg).
+	// ComputedBearingDeg is initial bearing heading → reference (0–360°, MatchedPoint).
 	ComputedBearingDeg float64 `json:"computed_bearing_deg"`
 	// Type27YawDeg is GSOF type-27 yaw (degrees).
 	Type27YawDeg float64 `json:"type27_yaw_deg"`
-	// DeltaDeg is signed (rover→reference bearing − yaw), folded to (−180, 180]; ComputedBearingDeg is the reverse azimuth (reference → rover).
+	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
 	DeltaDeg        float64 `json:"delta_deg"`
 	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
 	TowLastPointSec float64 `json:"tow_last_point_s"`
@@ -377,9 +376,7 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 			TowLastPointSec: last.GPSTOWSec,
 		}
 	}
-	// MatchedPoint.BearingDeg is reference → rover; type-27 yaw check uses the reverse azimuth (rover → reference) on the same baseline.
-	roverToRef := math.Mod(last.BearingDeg+180, 360)
-	signed := AngleDiffDegSigned(roverToRef, best.YawDeg)
+	signed := AngleDiffDegSigned(last.BearingDeg, best.YawDeg)
 	return &HeadingCheckResult{
 		Available:          true,
 		ComputedBearingDeg: last.BearingDeg,
