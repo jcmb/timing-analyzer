@@ -30,6 +30,8 @@ type PacketWalkResult struct {
 	Base35         *gsof.ReceivedBaseInfo
 	Base41Records  []gsof.BasePositionQualityInfo
 	Serial15       *uint32
+	// LastAttitude27 is the last type-27 record in packet order (full attitude decode).
+	LastAttitude27 *gsof.AttitudePoint
 }
 
 // WalkGSOFPacket walks one flattened GSOF payload like gsofstats.ExpandGSOFStream.
@@ -48,6 +50,8 @@ func WalkGSOFPacket(gsofBuffer []byte) PacketWalkResult {
 					GPSTOWSec: ap.GPSTOWSec,
 					RangeM:    ap.RangeM,
 				})
+				cp := ap
+				out.LastAttitude27 = &cp
 			}
 		case 35:
 			if b, ok := gsof.ParseReceivedBaseInfo(pld); ok {

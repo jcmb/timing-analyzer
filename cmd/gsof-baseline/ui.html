@@ -13,15 +13,15 @@
     h1 { margin:0; font-size:1.1rem; font-weight:600; }
     .sub { color:var(--muted); font-size:0.85rem; margin-top:0.35rem; flex-basis:100%; }
     .hdr-actions { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
-    .hdr-actions label { font-size:0.85rem; color:var(--muted); display:flex; align-items:center; gap:0.35rem; cursor:pointer; user-select:none; }
     button { font: inherit; padding:0.45rem 0.85rem; border-radius:6px; border:1px solid var(--bd); background:var(--card); color:var(--tx); cursor:pointer; }
     button:hover { border-color: var(--accent); color: var(--accent); }
-    main { padding:1rem; max-width:1400px; margin:0 auto; flex:1; width:100%; box-sizing:border-box; }
-    .cols { display:grid; gap:1rem; align-items:start; }
-    .cols.one { grid-template-columns: 1fr; }
-    .cols.two { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr); }
-    @media (max-width:900px) { .cols.two { grid-template-columns: 1fr; } }
-    .stack { display:flex; flex-direction:column; gap:1rem; }
+    main { padding:1rem; max-width:1600px; margin:0 auto; flex:1; width:100%; box-sizing:border-box; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
     .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:0.75rem 1rem; }
     .card h2 { margin:0 0 0.5rem; font-size:0.95rem; color:var(--muted); font-weight:600; }
     pre { margin:0; font:12px/1.45 var(--mono); white-space:pre-wrap; word-break:break-all; }
@@ -30,59 +30,117 @@
     .mb-title:first-child { margin-top: 0; }
     .ok { color: var(--ok); }
     .bad { color: var(--bad); }
-    footer { margin-top:auto; padding:0.75rem 1.25rem; border-top:1px solid var(--bd); font:13px var(--mono); color:var(--muted); background:var(--card); }
-    footer strong { color: var(--tx); }
+    .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>GSOF baseline — heading receiver</h1>
-      <div class="sub">Left: heading stream. Optional right: moving base. Type <strong>41</strong> on heading supplies the bearing target when TOW-matched; otherwise moving-base type <strong>1+2</strong>. Build __VERSION__</div>
+      <div class="sub">Wide layout uses multiple columns. Click the <strong>Slant range m</strong> legend item on the range chart to show or hide that series. Build __VERSION__</div>
     </div>
     <div class="hdr-actions">
-      <label><input type="checkbox" id="chkSlant" /> Show slant range</label>
+      <button type="button" id="btnCopy" title="Tab-separated values for spreadsheets">Copy all (TSV)</button>
       <button type="button" id="btnPng" title="Stacked PNG of both chart panels">Save charts PNG</button>
     </div>
   </header>
   <main>
-    <div id="colsTop" class="cols one">
-      <div class="stack" id="colHeading">
-        <div class="card"><h2>Heading · base info (GSOF type 35)</h2><pre id="b35h">—</pre></div>
-        <div class="card"><h2>Heading · base position (GSOF type 41)</h2><pre id="b41h">—</pre></div>
-        <div class="card"><h2>Heading · bearing & range</h2><pre id="headingInfo">—</pre></div>
+    <div class="card-grid">
+      <div class="card"><h2>Status</h2><pre id="status">—</pre></div>
+      <div class="card"><h2>Heading · bearing &amp; range</h2><pre id="headingInfo">—</pre></div>
+      <div class="card"><h2>Range check</h2><pre id="rcheck">—</pre></div>
+      <div class="card"><h2>Heading · rover position (types 1+2)</h2><pre id="headingRover">—</pre></div>
+      <div class="card">
+        <h2>Heading · base station (types 35 &amp; 41)</h2>
+        <div class="mb-title">GSOF type 35</div>
+        <pre id="b35h">—</pre>
+        <div class="mb-title">GSOF type 41</div>
+        <pre id="b41h">—</pre>
       </div>
-      <div class="stack" id="wrapMb" style="display:none">
-        <div class="card">
-          <h2>Moving base stream (optional)</h2>
-          <div class="mb-title">Type 35</div>
-          <pre id="b35m">—</pre>
-          <div class="mb-title">Type 41</div>
-          <pre id="b41m">—</pre>
-        </div>
+      <div class="card"><h2>Heading · attitude (GSOF type 27)</h2><pre id="heading27">—</pre></div>
+      <div class="card"><h2>Receiver serial (type 15)</h2><pre id="serials">—</pre></div>
+      <div class="card" id="cardCross" style="display:none"><h2>Type 41 (heading) vs moving base (types 1+2)</h2><pre id="cross">—</pre></div>
+      <div class="card" id="cardMb" style="display:none">
+        <h2>Moving base stream</h2>
+        <div class="mb-title">Type 35</div>
+        <pre id="b35m">—</pre>
+        <div class="mb-title">Type 41</div>
+        <pre id="b41m">—</pre>
       </div>
     </div>
-    <div class="card" style="margin-top:1rem"><h2>Status</h2><pre id="status">—</pre></div>
-    <div class="card" style="margin-top:1rem" id="cardCross"><h2>Type 41 (heading) vs moving base (types 1+2)</h2><pre id="cross">—</pre></div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Range check</h2>
-      <pre id="rcheck">—</pre>
-    </div>
-    <div class="card" style="margin-top:1rem">
-      <h2>Heading (°) and horizontal range (m)</h2>
+    <div class="card" style="margin-bottom:1rem">
+      <h2>Heading (°) and range (m)</h2>
+      <p class="hint">Legend: click <strong>Slant range m</strong> to toggle that line.</p>
       <canvas id="ch1"></canvas>
     </div>
-    <div class="card" style="margin-top:1rem">
+    <div class="card">
       <h2>SV counts (GSOF type 1)</h2>
       <canvas id="ch2"></canvas>
     </div>
   </main>
-  <footer id="footSerial">Receiver serial (GSOF type 15): <strong>—</strong></footer>
   <script>
 (function () {
-  const es = new EventSource("/events");
-  let chart1, chart2;
-  let lastMbConfigured = null;
+  var es = new EventSource("/events");
+  var chart1, chart2;
+  var lastMbConfigured = null;
+  var lastSnap = null;
+  var legendClickDefault = Chart.defaults.plugins.legend.onClick;
+
+  function esc(s) {
+    if (s == null || s === undefined) return "";
+    return String(s).replace(/\r|\n|\t/g, " ");
+  }
+  function row(label, val) {
+    return esc(label) + "\t" + esc(val);
+  }
+  function snapToTSV(d) {
+    if (!d) return "";
+    var o = [];
+    o.push(row("section", "value"));
+    o.push(row("version", d.version));
+    o.push(row("", ""));
+    o.push(row("## status", ""));
+    o.push(row("status", document.getElementById("status").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_bearing_range", ""));
+    o.push(row("heading_bearing_range", document.getElementById("headingInfo").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## range_check", ""));
+    o.push(row("range_check", document.getElementById("rcheck").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_rover", ""));
+    o.push(row("heading_rover", document.getElementById("headingRover").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_base_type35", ""));
+    o.push(row("heading_base_type35", document.getElementById("b35h").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_base_type41", ""));
+    o.push(row("heading_base_type41", document.getElementById("b41h").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## heading_type27", ""));
+    o.push(row("heading_type27", document.getElementById("heading27").textContent.replace(/\n/g, " | ")));
+    o.push(row("", ""));
+    o.push(row("## serials", ""));
+    o.push(row("serials", document.getElementById("serials").textContent.replace(/\n/g, " | ")));
+    if (d.moving_base_configured) {
+      o.push(row("", ""));
+      o.push(row("## type41_vs_moving_base", ""));
+      o.push(row("type41_vs_moving_base", document.getElementById("cross").textContent.replace(/\n/g, " | ")));
+      o.push(row("", ""));
+      o.push(row("## moving_base_type35", ""));
+      o.push(row("moving_base_type35", document.getElementById("b35m").textContent.replace(/\n/g, " | ")));
+      o.push(row("", ""));
+      o.push(row("## moving_base_type41", ""));
+      o.push(row("moving_base_type41", document.getElementById("b41m").textContent.replace(/\n/g, " | ")));
+    }
+    if (d.points && d.points.length) {
+      o.push(row("", ""));
+      o.push(row("## last_point_json", ""));
+      o.push(row("last_point", JSON.stringify(d.points[d.points.length - 1])));
+    }
+    return o.join("\n");
+  }
+
   function fmtBase35(x) {
     if (!x) return "—";
     return [
@@ -105,6 +163,38 @@
       "Height m: " + x.height_m,
       x.quality_label
     ].join("\n");
+  }
+  function fmtHeadingRover(r) {
+    if (!r) return "—\n(No heading type 1+2 yet.)";
+    return [
+      "GPS TOW s (type 1): " + r.gps_tow_s,
+      "Latitude °: " + r.lat_deg,
+      "Longitude °: " + r.lon_deg,
+      "Height m (type 2): " + r.height_m,
+      "SVs used (type 1): " + r.svs_used
+    ].join("\n");
+  }
+  function fmtType27(a) {
+    if (!a) return "—\n(No GSOF type 27 on heading stream yet.)";
+    return [
+      "GPS TOW s: " + a.gps_tow_s,
+      "Pitch °: " + a.pitch_deg,
+      "Yaw °: " + a.yaw_deg,
+      "Roll °: " + a.roll_deg,
+      "Range m: " + a.range_m,
+      "Pitch var (rad²): " + a.pitch_var_rad2,
+      "Yaw var (rad²): " + a.yaw_var_rad2,
+      "Roll var (rad²): " + a.roll_var_rad2,
+      "Range var (m²): " + a.range_var_m2
+    ].join("\n");
+  }
+  function fmtSerials(d) {
+    var h = d.heading_serial ? d.heading_serial : "—";
+    var lines = ["Heading receiver: " + h];
+    if (d.moving_base_configured) {
+      lines.push("Moving base: " + (d.moving_base_serial ? d.moving_base_serial : "— (not received)"));
+    }
+    return lines.join("\n");
   }
   function fmtHeadingInfo(d) {
     var pts = d.points || [];
@@ -163,15 +253,6 @@
     }
     return s;
   }
-  function setSerial(text) {
-    document.getElementById("footSerial").innerHTML = "Receiver serial (GSOF type 15): <strong>" + (text || "—") + "</strong>";
-  }
-  function applyLayout(mbOn) {
-    var top = document.getElementById("colsTop");
-    var wrap = document.getElementById("wrapMb");
-    top.className = "cols " + (mbOn ? "two" : "one");
-    wrap.style.display = mbOn ? "flex" : "none";
-  }
   function buildChart2(labels, svH, svM, mbOn) {
     var datasets = [{ label: "SVs heading", data: svH, borderColor: "#d29922", stepped: true, pointRadius: 0 }];
     if (mbOn) {
@@ -190,6 +271,15 @@
       }
     });
   }
+  document.getElementById("btnCopy").onclick = function () {
+    var t = snapToTSV(lastSnap);
+    if (!t) { alert("No data yet."); return; }
+    navigator.clipboard.writeText(t).then(function () {
+      alert("Copied TSV to clipboard.");
+    }).catch(function () {
+      prompt("Copy this text:", t);
+    });
+  };
   document.getElementById("btnPng").onclick = function () {
     if (!chart1 || !chart2) { alert("Charts not ready yet."); return; }
     var c1 = chart1.canvas;
@@ -210,21 +300,20 @@
     a.href = out.toDataURL("image/png");
     a.click();
   };
-  document.getElementById("chkSlant").onchange = function () {
-    if (!chart1 || chart1.data.datasets.length < 3) return;
-    var on = document.getElementById("chkSlant").checked;
-    chart1.setDatasetVisibility(2, on);
-    chart1.update();
-  };
   es.onmessage = function (ev) {
     var d;
     try { d = JSON.parse(ev.data); } catch (err) { return; }
+    lastSnap = d;
     var mbOn = !!d.moving_base_configured;
-    applyLayout(mbOn);
+    document.getElementById("cardMb").style.display = mbOn ? "" : "none";
     document.getElementById("status").textContent = statusText(d);
+    document.getElementById("headingInfo").textContent = fmtHeadingInfo(d);
+    document.getElementById("rcheck").textContent = lastRangeLine(d.points || []);
+    document.getElementById("headingRover").textContent = fmtHeadingRover(d.heading_rover);
     document.getElementById("b35h").textContent = fmtBase35(d.base_35_heading);
     document.getElementById("b41h").textContent = fmtBase41(d.base_41_heading);
-    document.getElementById("headingInfo").textContent = fmtHeadingInfo(d);
+    document.getElementById("heading27").textContent = fmtType27(d.heading_type27);
+    document.getElementById("serials").textContent = fmtSerials(d);
     if (mbOn) {
       document.getElementById("b35m").textContent = fmtBase35(d.base_35_moving);
       document.getElementById("b41m").textContent = fmtBase41(d.base_41_moving);
@@ -239,8 +328,6 @@
     } else {
       cardCross.style.display = "none";
     }
-    document.getElementById("rcheck").textContent = lastRangeLine(d.points || []);
-    setSerial(d.heading_serial);
     var pts = d.points || [];
     var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
     var bear = pts.map(function (p) { return p.bearing_deg; });
@@ -248,7 +335,6 @@
     var slant = pts.map(function (p) { return p.slant_m; });
     var svH = pts.map(function (p) { return p.svs_heading; });
     var svM = pts.map(function (p) { return p.svs_moving_base; });
-    var slantOn = document.getElementById("chkSlant").checked;
     if (!chart1) {
       chart1 = new Chart(document.getElementById("ch1").getContext("2d"), {
         type: "line",
@@ -268,10 +354,22 @@
             y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
             y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
           },
-          plugins: { legend: { position: "bottom" } }
+          plugins: {
+            legend: {
+              position: "bottom",
+              onClick: function (evt, item, legend) {
+                if (item.datasetIndex === 2) {
+                  var ch = legend.chart;
+                  ch.setDatasetVisibility(2, !ch.isDatasetVisible(2));
+                  ch.update();
+                  return;
+                }
+                if (legendClickDefault) legendClickDefault.call(this, evt, item, legend);
+              }
+            }
+          }
         }
       });
-      chart1.setDatasetVisibility(2, slantOn);
       chart2 = buildChart2(labels, svH, svM, mbOn);
       lastMbConfigured = mbOn;
     } else {
@@ -284,7 +382,6 @@
       chart1.data.datasets[0].data = bear;
       chart1.data.datasets[1].data = horiz;
       chart1.data.datasets[2].data = slant;
-      chart1.setDatasetVisibility(2, slantOn);
       chart1.update("none");
       chart2.data.labels = labels;
       chart2.data.datasets[0].data = svH;

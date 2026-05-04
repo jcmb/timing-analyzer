@@ -63,6 +63,10 @@ type Engine struct {
 
 	lastBase35Moving *gsof.ReceivedBaseInfo
 	lastBase41Moving *gsof.BasePositionQualityInfo
+
+	lastHeadingRover *EpochSample
+	lastHeading27    *gsof.AttitudePoint
+	movingBaseSerial string
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
@@ -111,6 +115,15 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 	}
 	e.hAtt = append(e.hAtt, w.AttitudeRanges...)
 	e.hAtt = trimFront(e.hAtt, maxRing)
+	if w.LastAttitude27 != nil {
+		v := *w.LastAttitude27
+		e.lastHeading27 = &v
+	}
+	if len(w.Epochs) > 0 {
+		le := w.Epochs[len(w.Epochs)-1]
+		cp := le
+		e.lastHeadingRover = &cp
+	}
 
 	for _, ep := range w.Epochs {
 		tgt, ok := e.resolveTargetLocked(ep.GPSTOWSec)
@@ -197,6 +210,9 @@ func (e *Engine) IngestMovingBase(gsofBuffer []byte) {
 		cp := last
 		e.lastBase41Moving = &cp
 	}
+	if w.Serial15 != nil {
+		e.movingBaseSerial = fmt.Sprintf("%d", *w.Serial15)
+	}
 	e.bEpochs = append(e.bEpochs, w.Epochs...)
 	e.bEpochs = trimFront(e.bEpochs, maxRing)
 	e.bAtt = append(e.bAtt, w.AttitudeRanges...)
@@ -279,8 +295,11 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 		Base35Heading:         e.lastBase35Heading,
 		Base41Heading:         e.lastBase41Heading,
 		HeadingSerial:         e.headingSerial,
+		HeadingRover:          e.lastHeadingRover,
+		HeadingType27:         e.lastHeading27,
 		Base35Moving:          e.lastBase35Moving,
 		Base41Moving:          e.lastBase41Moving,
+		MovingBaseSerial:      e.movingBaseSerial,
 		MovingBaseConfigured:  e.cfg.MovingBaseConfigured,
 		HasHeadingType41Ring: len(e.heading41Ring) > 0,
 		NeedsMovingBase:       e.cfg.MovingBaseConfigured == false && len(e.heading41Ring) == 0,
@@ -366,11 +385,14 @@ type EngineSnapshot struct {
 	Base35Heading *gsof.ReceivedBaseInfo        `json:"base_35_heading,omitempty"`
 	Base41Heading *gsof.BasePositionQualityInfo `json:"base_41_heading,omitempty"`
 	HeadingSerial string                        `json:"heading_serial,omitempty"`
+	HeadingRover  *EpochSample                  `json:"heading_rover,omitempty"`
+	HeadingType27 *gsof.AttitudePoint           `json:"heading_type27,omitempty"`
 
 	Base35Moving *gsof.ReceivedBaseInfo        `json:"base_35_moving,omitempty"`
 	Base41Moving *gsof.BasePositionQualityInfo `json:"base_41_moving,omitempty"`
 
-	MovingBaseConfigured bool `json:"moving_base_configured"`
+	MovingBaseSerial     string `json:"moving_base_serial,omitempty"`
+	MovingBaseConfigured bool   `json:"moving_base_configured"`
 	// HasHeadingType41Ring is true once at least one type 41 sample was seen on the heading stream.
 	HasHeadingType41Ring bool `json:"has_heading_type41"`
 	// NeedsMovingBase is true when no type-41 ring on heading and moving base transport was not configured (cannot use LLH fallback).
