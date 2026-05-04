@@ -285,24 +285,97 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 		HasHeadingType41Ring: len(e.heading41Ring) > 0,
 		NeedsMovingBase:       e.cfg.MovingBaseConfigured == false && len(e.heading41Ring) == 0,
 	}
+	cc := e.crossCheckHeading41VsMovingBaseLocked()
+	if cc != nil {
+		snap.Heading41VsMovingBase = cc
+	}
 	return snap
 }
+
+func (e *Engine) crossCheckHeading41VsMovingBaseLocked() *CrossCheckHeading41Moving {
+	if !e.cfg.MovingBaseConfigured {
+		return nil
+	}
+	var tow41, lat41, lon41, h41 float64
+	var have41 bool
+	if e.lastBase41Heading != nil {
+		tow41 = e.lastBase41Heading.GPSTOWSec
+		lat41 = e.lastBase41Heading.LatDeg
+		lon41 = e.lastBase41Heading.LonDeg
+		h41 = e.lastBase41Heading.HeightM
+		have41 = true
+	} else if len(e.heading41Ring) > 0 {
+		s := e.heading41Ring[len(e.heading41Ring)-1]
+		tow41, lat41, lon41, h41 = s.GPSTOWSec, s.LatDeg, s.LonDeg, s.HeightM
+		have41 = true
+	}
+	if !have41 {
+		return nil
+	}
+	mb, ok := e.nearestMovingBaseLocked(tow41)
+	if !ok {
+		return &CrossCheckHeading41Moving{
+			Active:         true,
+			HasPair:        false,
+			MatchOK:        false,
+			TowType41Sec:   tow41,
+			Note:           "no moving-base type 1/2 within match window of heading type 41 TOW",
+		}
+	}
+	hd := math.Abs(h41 - mb.HeightM)
+	horiz := HaversineM(lat41, lon41, mb.LatDeg, mb.LonDeg)
+	dTow := TowAbsDiffSeconds(tow41, mb.GPSTOWSec)
+	okMatch := horiz <= crossCheckHorizTolM && hd <= crossCheckHeightTolM
+	return &CrossCheckHeading41Moving{
+		Active:           true,
+		HasPair:          true,
+		MatchOK:          okMatch,
+		HorizontalDiffM:  horiz,
+		HeightDiffM:      hd,
+		TowType41Sec:     tow41,
+		TowMovingBaseSec: mb.GPSTOWSec,
+		TowDeltaSec:      dTow,
+	}
+}
+
+// CrossCheckHeading41Moving compares heading-stream type 41 to moving-base type 1+2 LLH
+// when both streams are in use (same physical base / rover at base site).
+type CrossCheckHeading41Moving struct {
+	Active bool `json:"active"`
+	// HasPair is true when a moving-base type 1/2 epoch was found within the TOW match window.
+	HasPair bool `json:"has_pair"`
+	// MatchOK is true when HasPair and horizontal and height deltas are within tolerance.
+	MatchOK bool `json:"match_ok"`
+	// HorizontalDiffM is great-circle distance between type-41 position and moving-base LLH (metres).
+	HorizontalDiffM float64 `json:"horizontal_diff_m"`
+	HeightDiffM     float64 `json:"height_diff_m"`
+	TowType41Sec    float64 `json:"tow_type41_s"`
+	TowMovingBaseSec float64 `json:"tow_moving_base_s"`
+	TowDeltaSec     float64 `json:"tow_delta_s"`
+	Note            string `json:"note,omitempty"`
+}
+
+const crossCheckHorizTolM = 5.0
+const crossCheckHeightTolM = 5.0
 
 // EngineSnapshot is JSON-serializable UI state.
 type EngineSnapshot struct {
 	Version string `json:"version"`
 	Points  []MatchedPoint `json:"points"`
 
-	Base35Heading *gsof.ReceivedBaseInfo          `json:"base_35_heading,omitempty"`
-	Base41Heading *gsof.BasePositionQualityInfo   `json:"base_41_heading,omitempty"`
-	HeadingSerial string                          `json:"heading_serial,omitempty"`
+	Base35Heading *gsof.ReceivedBaseInfo        `json:"base_35_heading,omitempty"`
+	Base41Heading *gsof.BasePositionQualityInfo `json:"base_41_heading,omitempty"`
+	HeadingSerial string                        `json:"heading_serial,omitempty"`
 
-	Base35Moving *gsof.ReceivedBaseInfo           `json:"base_35_moving,omitempty"`
-	Base41Moving *gsof.BasePositionQualityInfo    `json:"base_41_moving,omitempty"`
+	Base35Moving *gsof.ReceivedBaseInfo        `json:"base_35_moving,omitempty"`
+	Base41Moving *gsof.BasePositionQualityInfo `json:"base_41_moving,omitempty"`
 
 	MovingBaseConfigured bool `json:"moving_base_configured"`
 	// HasHeadingType41Ring is true once at least one type 41 sample was seen on the heading stream.
 	HasHeadingType41Ring bool `json:"has_heading_type41"`
 	// NeedsMovingBase is true when no type-41 ring on heading and moving base transport was not configured (cannot use LLH fallback).
 	NeedsMovingBase bool `json:"needs_moving_base"`
+
+	// Heading41VsMovingBase is set when moving base is configured and heading type 41 exists; compares to matched moving-base epoch.
+	Heading41VsMovingBase *CrossCheckHeading41Moving `json:"heading_41_vs_moving_base,omitempty"`
 }
