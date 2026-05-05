@@ -148,10 +148,10 @@
       right: 0;
       top: calc(100% + 4px);
       z-index: 40;
-      min-width: min(100%, 14rem);
-      max-width: min(22rem, calc(100vw - 2rem));
-      padding: 0.55rem 0.65rem;
-      font: 11px/1.45 var(--sans);
+      /* Anchor is only the (i) button — % width would collapse; size from viewport */
+      width: min(44rem, calc(100vw - 2rem));
+      padding: 0.65rem 0.85rem;
+      font: 12px/1.5 var(--sans);
       color: var(--tx);
       background: var(--card);
       border: 1px solid var(--bd);
@@ -390,18 +390,8 @@
     blockRows(lines, "HEADING — BEARING AND RANGE", rowsHeadingInfo(d));
     if (d.heading_type27) {
       blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
-      if (d.heading_check && d.heading_check.available) {
-        lines.push("Notes (same as WebUI ⓘ):");
-        lines.push(POP_NOTE_HEADING_CHECK);
-        lines.push("");
-      }
     }
     blockRows(lines, "RANGE", rowsRangeCheck(d.points || []));
-    if (d.points && d.points.length) {
-      lines.push("Notes (same as WebUI ⓘ):");
-      lines.push(POP_NOTE_RANGE);
-      lines.push("");
-    }
     blockRows(lines, "HEADING POSITION", rowsHeadingRover(d.heading_rover));
     blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
     blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
