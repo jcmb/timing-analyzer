@@ -40,7 +40,7 @@ To build all binaries:
 ```bash
 ./build.sh
 ```
-Cross-compiled executables land under **`bin/<application>/`** (for example `bin/cli/cli-linux-amd64`, `bin/webserver/server-linux-amd64`, `bin/gsof-dashboard/…`, `bin/gsof-baseline/…`), each filename still including OS and architecture (and `.exe` on Windows).
+Executables will be deposited in the `/bin` folder, tagged with their respective OS, architecture, and target (`cli` vs `server`).
 
 ## Web Server Lifecycle Management
 The Web Server relies heavily on `context.Context` to prevent memory leaks.
@@ -63,7 +63,7 @@ User=your_username
 WorkingDirectory=/home/your_username/
 # Include --base-path if hosting on a sub-route
 # Include --bind 127.0.0.1 to secure the port from external access
-ExecStart=/home/your_username/bin/webserver/server-linux-amd64 --port=8080 --base-path=/jitter --bind=127.0.0.1
+ExecStart=/home/your_username/timing-analyzer-server-linux-amd64 --port=8080 --base-path=/jitter --bind=127.0.0.1
 Restart=always
 
 [Install]
