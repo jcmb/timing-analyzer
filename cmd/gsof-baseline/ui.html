@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>
+    (function () {
+      try {
+        var k = "gsof-baseline-theme";
+        var t = localStorage.getItem(k);
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GSOF baseline · __VERSION__</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0f1419;
+      --card: #1a2332;
+      --bd: #2d3a4d;
+      --tx: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --ok: #3fb950;
+      --bad: #f85149;
+      --mono: ui-monospace, Menlo, monospace;
+      --sans: system-ui, sans-serif;
+      --chart-d0: #58a6ff;
+      --chart-d1: #3fb950;
+      --chart-d2: #79c0ff;
+      --chart-d3: #d29922;
+      --chart-d4: #a371f7;
+      --grid-fade: rgba(45, 58, 77, 0.45);
+    }
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #f6f8fa;
+      --card: #ffffff;
+      --bd: #d0d7de;
+      --tx: #1f2328;
+      --muted: #59636e;
+      --accent: #0969da;
+      --ok: #1a7f37;
+      --bad: #cf222e;
+      --chart-d0: #0969da;
+      --chart-d1: #1a7f37;
+      --chart-d2: #0550ae;
+      --chart-d3: #9a6700;
+      --chart-d4: #8250df;
+      --grid-fade: rgba(208, 215, 222, 0.65);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme]) {
+        color-scheme: light;
+        --bg: #f6f8fa;
+        --card: #ffffff;
+        --bd: #d0d7de;
+        --tx: #1f2328;
+        --muted: #59636e;
+        --accent: #0969da;
+        --ok: #1a7f37;
+        --bad: #cf222e;
+        --chart-d0: #0969da;
+        --chart-d1: #1a7f37;
+        --chart-d2: #0550ae;
+        --chart-d3: #9a6700;
+        --chart-d4: #8250df;
+        --grid-fade: rgba(208, 215, 222, 0.65);
+      }
+    }
+    html { height: 100%; }
+    body { margin:0; min-height:100%; font-family:var(--sans); background:var(--bg); color:var(--tx); display:flex; flex-direction:column; }
+    header { padding:1rem 1.25rem; border-bottom:1px solid var(--bd); display:flex; flex-wrap:wrap; align-items:center; gap:0.75rem; justify-content:space-between; }
+    h1 { margin:0; font-size:1.1rem; font-weight:600; }
+    .hdr-actions { display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+    button { font: inherit; padding:0.45rem 0.85rem; border-radius:6px; border:1px solid var(--bd); background:var(--card); color:var(--tx); cursor:pointer; }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    main { padding:1rem; max-width:1600px; margin:0 auto; flex:1; width:100%; box-sizing:border-box; }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .card { background:var(--card); border:1px solid var(--bd); border-radius:8px; padding:0.75rem 1rem; }
+    .card-h2 { margin:0 0 0.5rem; font-size:0.95rem; color:var(--muted); font-weight:600; }
+    .card-toggle {
+      width:100%; display:flex; align-items:center; gap:0.55rem; margin:0; padding:0.35rem 0;
+      border:none; border-radius:4px; background:transparent; color:inherit;
+      font:inherit; font-weight:600; font-size:1rem; cursor:pointer; text-align:left;
+    }
+    .card-toggle:hover { color:var(--accent); }
+    .card-chev { flex:0 0 auto; width:1.35em; text-align:center; font-size:1.15rem; line-height:1; opacity:0.9; }
+    .card-title-text { flex:1; min-width:0; font-size:1rem; }
+    .card-panel[hidden] { display:none !important; }
+    .kv-grid {
+      display:grid; grid-template-columns:auto minmax(0,1fr);
+      column-gap:1rem; row-gap:0.35rem; font:12px/1.45 var(--mono); text-align:left;
+    }
+    .kv-l { color:var(--muted); justify-self:start; text-align:left; max-width:42ch; }
+    .kv-v { justify-self:start; text-align:left; word-break:break-word; white-space:pre-wrap; }
+    .kv-full { grid-column:1 / -1; word-break:break-word; white-space:pre-wrap; font:12px/1.45 var(--mono); }
+    .kv-grid.ok .kv-v { color: var(--ok); }
+    .kv-grid.bad .kv-v { color: var(--bad); }
+    pre { margin:0; font:12px/1.45 var(--mono); white-space:pre-wrap; word-break:break-all; }
+    canvas { max-height:320px; }
+    .mb-title { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 0.75rem 0 0.35rem; }
+    .mb-title:first-child { margin-top: 0; }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .theme-wrap { display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap; }
+    .theme-wrap label { font-size: 0.8rem; color: var(--muted); }
+    .theme-select {
+      font: inherit; padding: 0.4rem 0.65rem; border-radius: 6px; border: 1px solid var(--bd);
+      background: var(--card); color: var(--tx); min-width: 8.5rem; cursor: pointer;
+    }
+    .theme-select:hover { border-color: var(--accent); }
+    .card-h2-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.35rem;
+    }
+    .card-h2-row .card-toggle { flex: 1; min-width: 0; width: auto; }
+    .card-info-anchor { position: relative; flex-shrink: 0; margin-top: 0.15rem; }
+    .card-info-btn {
+      font: inherit;
+      width: 1.5rem;
+      height: 1.5rem;
+      padding: 0;
+      border-radius: 50%;
+      border: 1px solid var(--bd);
+      background: var(--card);
+      color: var(--muted);
+      cursor: pointer;
+      line-height: 1;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .card-info-btn:hover, .card-info-btn:focus-visible {
+      border-color: var(--accent);
+      color: var(--accent);
+      outline: none;
+    }
+    .card-info-popover {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 40;
+      /* Anchor is only the (i) button — % width would collapse; size from viewport */
+      width: min(44rem, calc(100vw - 2rem));
+      padding: 0.65rem 0.85rem;
+      font: 12px/1.5 var(--sans);
+      color: var(--tx);
+      background: var(--card);
+      border: 1px solid var(--bd);
+      border-radius: 6px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    html[data-theme="light"] .card-info-popover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>GSOF baseline — heading receiver</h1>
+    </div>
+    <div class="hdr-actions">
+      <div class="theme-wrap" title="Appearance">
+        <label for="themeSelect">Theme</label>
+        <select id="themeSelect" class="theme-select">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </div>
+      <button type="button" id="btnPause" title="Stop refreshing panels and charts from the stream">Pause updates</button>
+      <button type="button" id="btnCopy" title="Copy all panel text">Copy all</button>
+      <button type="button" id="btnPng" title="Stacked PNG of both chart panels">Save charts PNG</button>
+    </div>
+  </header>
+  <main>
+    <div class="card-grid">
+      <div class="card" data-card-id="status">
+        <h2 class="card-h2">Status</h2>
+        <div class="card-panel"><div id="status" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-info">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · bearing &amp; range</span></button></h2>
+        <div class="card-panel"><div id="headingInfo" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-check">
+        <h2 class="card-h2 card-h2-row">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading check</span></button>
+          <div class="card-info-anchor">
+            <button type="button" class="card-info-btn" title="Hover or click for notes on bearing vs yaw" aria-label="Notes on heading check" aria-expanded="false" aria-controls="pop-heading-check" id="btn-info-heading-check">i</button>
+            <div id="pop-heading-check" class="card-info-popover" hidden role="region" aria-labelledby="btn-info-heading-check"></div>
+          </div>
+        </h2>
+        <div class="card-panel"><div id="headingCheck" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="range-check">
+        <h2 class="card-h2 card-h2-row">
+          <button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Range</span></button>
+          <div class="card-info-anchor">
+            <button type="button" class="card-info-btn" title="Hover or click for notes on slant, ref, and tolerance" aria-label="Notes on range readout" aria-expanded="false" aria-controls="pop-range-check" id="btn-info-range-check">i</button>
+            <div id="pop-range-check" class="card-info-popover" hidden role="region" aria-labelledby="btn-info-range-check"></div>
+          </div>
+        </h2>
+        <div class="card-panel"><div id="rcheck" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-rover">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading position</span></button></h2>
+        <div class="card-panel"><div id="headingRover" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-base-41">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · base (GSOF type 41)</span></button></h2>
+        <div class="card-panel"><div id="b41h" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMb35" data-card-id="moving-base-35" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base · GSOF type 35</span></button></h2>
+        <div class="card-panel"><div id="b35m" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-27">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · attitude (GSOF type 27)</span></button></h2>
+        <div class="card-panel"><div id="heading27" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-38">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Position type</span></button></h2>
+        <div class="card-panel"><div id="heading38" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="serials">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Receiver serial (type 15)</span></button></h2>
+        <div class="card-panel"><div id="serials" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardCross" data-card-id="cross" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Type 41 (heading) vs moving base (types 1+2)</span></button></h2>
+        <div class="card-panel"><div id="cross" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMb" data-card-id="moving-base" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Base information</span></button></h2>
+        <div class="card-panel"><div id="b41m" class="kv-grid"></div></div>
+      </div>
+    </div>
+    <div class="card" data-card-id="chart-range" style="margin-bottom:1rem">
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading (°) and range (m)</span></button></h2>
+      <div class="card-panel">
+        <canvas id="ch1"></canvas>
+      </div>
+    </div>
+    <div class="card" data-card-id="chart-sv">
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">SV counts (GSOF type 1)</span></button></h2>
+      <div class="card-panel">
+        <canvas id="ch2"></canvas>
+      </div>
+    </div>
+  </main>
+  <script>
+(function () {
+  var es = new EventSource("/events");
+  var chart1, chart2;
+  var lastMbConfigured = null;
+  var lastSnap = null;
+  var updatesPaused = false;
+  var legendClickDefault = Chart.defaults.plugins.legend.onClick;
+
+  var THEME_KEY = "gsof-baseline-theme";
+  function setTheme(mode) {
+    try {
+      if (mode === "light" || mode === "dark") {
+        localStorage.setItem(THEME_KEY, mode);
+        document.documentElement.setAttribute("data-theme", mode);
+      } else {
+        localStorage.removeItem(THEME_KEY);
+        document.documentElement.removeAttribute("data-theme");
+      }
+    } catch (e) {}
+    updateThemeButtons();
+    applyChartColors();
+  }
+  function updateThemeButtons() {
+    var sel = document.getElementById("themeSelect");
+    if (!sel) return;
+    var cur = null;
+    try {
+      cur = localStorage.getItem(THEME_KEY);
+    } catch (e) {}
+    sel.value = cur === "light" || cur === "dark" ? cur : "system";
+  }
+  function cssVar(name, fallback) {
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+  function applyChartColors() {
+    var tx = cssVar("--tx", "#e6edf3");
+    var grid = cssVar("--grid-fade", "rgba(128,128,128,0.3)");
+    var d0 = cssVar("--chart-d0", "#3d8bfd");
+    var d1 = cssVar("--chart-d1", "#3fb950");
+    var d2 = cssVar("--chart-d2", "#79c0ff");
+    var d3 = cssVar("--chart-d3", "#d29922");
+    var d4 = cssVar("--chart-d4", "#a371f7");
+    Chart.defaults.color = tx;
+    function paintScale(ch, key) {
+      var sc = ch.options.scales[key];
+      if (!sc) return;
+      sc.ticks = sc.ticks || {};
+      sc.ticks.color = tx;
+      if (sc.title) sc.title.color = tx;
+      if (sc.grid) sc.grid.color = grid;
+    }
+    if (chart1) {
+      chart1.data.datasets[0].borderColor = d0;
+      chart1.data.datasets[1].borderColor = d1;
+      chart1.data.datasets[2].borderColor = d2;
+      paintScale(chart1, "x");
+      paintScale(chart1, "y");
+      paintScale(chart1, "y2");
+      chart1.update("none");
+    }
+    if (chart2) {
+      chart2.data.datasets[0].borderColor = d3;
+      if (chart2.data.datasets[1]) chart2.data.datasets[1].borderColor = d4;
+      paintScale(chart2, "x");
+      paintScale(chart2, "y");
+      chart2.update("none");
+    }
+  }
+  function underline(title) {
+    return title.replace(/./g, "=");
+  }
+  function row(l, v) {
+    return { l: l, v: v };
+  }
+  function full(t) {
+    return { full: t };
+  }
+  /** GPS / GSOF time-of-week for display (2 decimal places). */
+  function fmtTowSec2(v) {
+    if (v == null || v === undefined) return "—";
+    var n = typeof v === "number" ? v : parseFloat(v);
+    if (isNaN(n)) return String(v);
+    return n.toFixed(2) + " s";
+  }
+  function escHtml(s) {
+    var d = document.createElement("div");
+    d.textContent = s == null || s === undefined ? "" : String(s);
+    return d.innerHTML;
+  }
+  function plainFromRows(rows) {
+    return rows
+      .map(function (r) {
+        if (r.full !== undefined) return r.full;
+        return r.l + ": " + r.v;
+      })
+      .join("\n");
+  }
+  function renderKv(elId, rows) {
+    var el = document.getElementById(elId);
+    if (!el || !rows) return;
+    var html = rows
+      .map(function (r) {
+        if (r.full !== undefined) return '<div class="kv-full">' + escHtml(r.full) + "</div>";
+        return '<div class="kv-l">' + escHtml(r.l) + '</div><div class="kv-v">' + escHtml(r.v) + "</div>";
+      })
+      .join("");
+    el.innerHTML = html;
+  }
+  function blockRows(lines, title, rows) {
+    lines.push(title);
+    lines.push(underline(title));
+    lines.push(plainFromRows(rows));
+    lines.push("");
+  }
+  var POP_NOTE_HEADING_CHECK =
+    "Bearing here is the horizontal initial bearing on the ellipsoid from heading positions toward the reference. Type 27 yaw is body attitude (rotation about the receiver's vertical axis in its attitude frame). Pitch and roll tilt that frame: the horizontal direction implied by yaw is not automatically the same as geographic bearing, and non-level mounting can widen the gap without either value being wrong. Large |Δ| with large |pitch| or |roll| often points to this geometry mismatch rather than a bad solution.";
+  var POP_NOTE_RANGE =
+    "Check vs reference compares |slant − ref| to the range tolerance set on the command line (-range-check-tolerance).\n\nWhen ref is GSOF 27: slant is from LLH (heading type 1/2 to the matched reference); ref is the GSOF type-27 range at that TOW. These are different definitions, so a steady offset is common. If |slant − ref| barely moves as epochs update, you are usually seeing a bias between those two ranges, not random jitter. Five decimal places are shown on slant, horizontal range, and |slant − ref| so tiny drift is visible.\n\nWhen ref is from the CLI expected range: the reference is the fixed value you supplied; slant comes from the latest matched positions.";
+  function buildPlainTextExport(d) {
+    if (!d) return "";
+    var lines = [];
+    lines.push("GSOF BASELINE — TEXT EXPORT");
+    lines.push("===========================");
+    lines.push("");
+    lines.push("Version: " + (d.version || ""));
+    lines.push("");
+    blockRows(lines, "STATUS", rowsStatus(d));
+    blockRows(lines, "HEADING — BEARING AND RANGE", rowsHeadingInfo(d));
+    if (d.heading_type27) {
+      blockRows(lines, "HEADING CHECK (computed bearing vs type 27 yaw)", rowsHeadingCheck(d.heading_check));
+    }
+    blockRows(lines, "RANGE", rowsRangeCheck(d.points || []));
+    blockRows(lines, "HEADING POSITION", rowsHeadingRover(d.heading_rover));
+    blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
+    blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
+    blockRows(lines, "POSITION TYPE", rowsPositionType(d));
+    blockRows(lines, "RECEIVER SERIAL (type 15)", rowsSerials(d));
+    if (d.moving_base_configured) {
+      blockRows(lines, "TYPE 41 (HEADING) VS MOVING BASE (types 1 and 2)", rowsCross(d.heading_41_vs_moving_base));
+      blockRows(lines, "MOVING BASE — TYPE 35", rowsBase35(d.base_35_moving));
+      if (d.base_41_moving && !d.base_35_moving) {
+        blockRows(lines, "BASE INFORMATION (moving base · GSOF type 41)", rowsBase41(d.base_41_moving));
+      }
+    }
+    if (d.points && d.points.length) {
+      blockRows(lines, "LAST MATCHED POINT", rowsLastPoint(d));
+    }
+    return lines.join("\n").replace(/\n+$/, "");
+  }
+
+  function rowsBase35(x) {
+    if (!x) return [row("Status", "—")];
+    return [
+      row("Name", String(x.name)),
+      row("Base ID", String(x.base_id)),
+      row("Valid", String(x.info_valid)),
+      row("Latitude °", String(x.lat_deg)),
+      row("Longitude °", String(x.lon_deg)),
+      row("Height m", String(x.height_m)),
+      row("Flags", String(x.flags_detail))
+    ];
+  }
+  function rowsBase41(x) {
+    if (!x) return [row("Status", "—")];
+    return [
+      row("GPS week", String(x.gps_week)),
+      row("GPS TOW s", fmtTowSec2(x.gps_tow_s)),
+      row("Latitude °", String(x.lat_deg)),
+      row("Longitude °", String(x.lon_deg)),
+      row("Height m", String(x.height_m)),
+      row("Quality", String(x.quality_label))
+    ];
+  }
+  function rowsHeadingRover(r) {
+    if (!r) return [full("—\n(No heading type 1+2 yet.)")];
+    var hm = r.height_m;
+    var hs =
+      typeof hm === "number" && !isNaN(hm)
+        ? hm.toFixed(3)
+        : hm == null || hm === undefined
+          ? "—"
+          : String(hm);
+    return [
+      row("GPS TOW s (type 1)", fmtTowSec2(r.gps_tow_s)),
+      row("Latitude °", String(r.lat_deg)),
+      row("Longitude °", String(r.lon_deg)),
+      row("Height m (type 2)", hs),
+      row("SVs used (type 1)", String(r.svs_used))
+    ];
+  }
+  function rowsType27(a) {
+    if (!a) return [full("—\n(No GSOF type 27 on heading stream yet.)")];
+    var rm = a.range_m;
+    var rs =
+      typeof rm === "number" && !isNaN(rm)
+        ? rm.toFixed(4) + " m"
+        : rm == null || rm === undefined
+          ? "—"
+          : String(rm);
+    return [
+      row("GPS TOW s", fmtTowSec2(a.gps_tow_s)),
+      row("Yaw °", String(a.yaw_deg)),
+      row("Pitch °", String(a.pitch_deg)),
+      row("Roll °", String(a.roll_deg)),
+      row("Range m", rs)
+    ];
+  }
+  function rowsHeadingCheck(h) {
+    if (!h) return [full("—\n(No check data.)")];
+    if (!h.available && h.note === "no_bearing_solution") return [full("—\n(No bearing solution yet.)")];
+    if (!h.available) {
+      var s =
+        h.note === "no_type27_same_tow"
+          ? "Computed bearing vs type 27 yaw: not compared (no type 27 at the same GPS TOW as the solution epoch)."
+          : "Computed bearing vs type 27 yaw: not compared.";
+      if (h.tow_last_point_s != null && !isNaN(h.tow_last_point_s)) {
+        s += "\nLast solution TOW s: " + fmtTowSec2(h.tow_last_point_s);
+      }
+      if (h.note && h.note !== "no_type27_same_tow") s += "\nNote: " + h.note;
+      return [full(s.trim())];
+    }
+    var pitch =
+      typeof h.type27_pitch_deg === "number" && !isNaN(h.type27_pitch_deg) ? h.type27_pitch_deg.toFixed(3) : "—";
+    var roll =
+      typeof h.type27_roll_deg === "number" && !isNaN(h.type27_roll_deg) ? h.type27_roll_deg.toFixed(3) : "—";
+    var rows = [
+      row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
+      row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
+      row("Type 27 pitch / roll (reported)", pitch + " ° / " + roll + " °"),
+      row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
+      row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
+      row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
+    ];
+    return rows;
+  }
+  function parseType38TextBlock(text) {
+    return String(text)
+      .split("\n")
+      .filter(function (ln) {
+        return ln.length;
+      })
+      .map(function (line) {
+        var idx = line.indexOf(": ");
+        if (idx === -1) return full(line);
+        return row(line.slice(0, idx), line.slice(idx + 2));
+      });
+  }
+  function rowsPositionType(d) {
+    var h = d.heading_type38 && String(d.heading_type38).trim();
+    var m =
+      d.moving_base_configured &&
+      d.moving_base_type38 &&
+      String(d.moving_base_type38).trim();
+    if (!h && !m) {
+      return [full("—\n(No GSOF type 38 on heading or moving-base stream yet.)")];
+    }
+    var rows = [];
+    if (h) {
+      rows.push(full("Heading receiver"));
+      rows = rows.concat(parseType38TextBlock(h));
+    }
+    if (m) {
+      if (rows.length) rows.push(full(""));
+      rows.push(full("Moving base"));
+      rows = rows.concat(parseType38TextBlock(m));
+    }
+    return rows;
+  }
+  function rowsSerials(d) {
+    var h = d.heading_serial ? d.heading_serial : "—";
+    var rows = [row("Heading receiver", h)];
+    if (d.moving_base_configured) {
+      rows.push(row("Moving base", d.moving_base_serial ? d.moving_base_serial : "— (not received)"));
+    }
+    return rows;
+  }
+  function rowsHeadingInfo(d) {
+    var pts = d.points || [];
+    if (!pts.length) {
+      return [
+        full(
+          "No matched solution yet.\nEmit heading type 1+2 and either heading type 41 (TOW-matched) or moving-base type 1+2."
+        )
+      ];
+    }
+    var p = pts[pts.length - 1];
+    var rows = [
+      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
+      row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
+      row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
+      row("Slant range", p.slant_m.toFixed(5) + " m"),
+      row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
+      row("Reference", String(p.reference_source)),
+      row("SVs used (heading)", String(p.svs_heading))
+    ];
+    if (d.moving_base_configured) {
+      rows.push(row("SVs used (moving base)", String(p.svs_moving_base)));
+    }
+    return rows;
+  }
+  function rowsCross(cc) {
+    if (!cc) return [full("—\n(Requires heading type 41 and moving base stream enabled.)")];
+    if (!cc.active) return [full("—\n" + (cc.note || ""))];
+    if (!cc.has_pair) return [full(cc.note || "Waiting for a moving-base type 1/2 epoch near the heading type 41 TOW.")];
+    var rows = [
+      row("Great-circle vs type 1/2 LLH", cc.horizontal_diff_m.toFixed(3) + " m"),
+      row("|Δ height|", cc.height_diff_m.toFixed(3) + " m"),
+      row("Type 41 TOW s", fmtTowSec2(cc.tow_type41_s)),
+      row("Moving-base TOW s", fmtTowSec2(cc.tow_moving_base_s)),
+      row("|ΔTOW|", fmtTowSec2(cc.tow_delta_s)),
+      row("Match (≤5 m horiz, ≤5 m height)", cc.match_ok ? "YES" : "NO")
+    ];
+    return rows;
+  }
+  function rowsStatus(d) {
+    var rows = [
+      row("Moving base transport", d.moving_base_configured ? "enabled" : "disabled"),
+      row(
+        "Type 41 on heading stream",
+        d.has_heading_type41 ? "yes (used for bearing when TOW-matched)" : "not seen yet"
+      )
+    ];
+    if (d.needs_moving_base) {
+      rows.push(
+        row(
+          "Note",
+          "enable moving base (-moving-base-port) or emit GSOF type 41 on the heading stream to compute bearing/range."
+        )
+      );
+    }
+    var pts = d.points || [];
+    if (pts.length) {
+      rows.push(row("Last reference", String(pts[pts.length - 1].reference_source)));
+    }
+    return rows;
+  }
+  function formatRangeRefSource(note) {
+    if (!note) return "";
+    if (note === "type27_range_heading" || note === "type27_range_moving_base") return "GSOF 27";
+    if (note === "expected_range_param") return "Expected range (CLI)";
+    if (note === "no_reference") return "No reference";
+    return note;
+  }
+  /** True when slant was compared to a CLI or type-27 reference (engine filled range_ref_m). */
+  function rangeCompareActive(p) {
+    if (!p) return false;
+    var note = p.range_note || "";
+    var fromT27 = note.indexOf("type27") >= 0;
+    return (
+      (fromT27 || note === "expected_range_param") &&
+      p.range_ref_m != null &&
+      !isNaN(p.range_ref_m)
+    );
+  }
+  function rowsRangeCheck(pts) {
+    if (!pts.length) return [full("No matched points yet.")];
+    var p = pts[pts.length - 1];
+    var note = p.range_note || "";
+    var rows = [];
+    if (note.indexOf("type27") >= 0) {
+      rows.push(
+        row(
+          "Type 27 range (GSOF)",
+          p.range_ref_m != null && !isNaN(p.range_ref_m) ? p.range_ref_m.toFixed(4) + " m" : "—"
+        )
+      );
+      rows.push(row("Ref source", formatRangeRefSource(note)));
+    } else if (note === "expected_range_param" && p.range_ref_m != null && !isNaN(p.range_ref_m)) {
+      rows.push(row("Reference range", p.range_ref_m.toFixed(4) + " m"));
+      rows.push(row("Source", formatRangeRefSource(note)));
+    }
+    rows.push(row("Slant range (computed)", p.slant_m.toFixed(5) + " m"));
+    rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(5) + " m"));
+    rows.push(row("Position Latency", p.delta_tow_s.toFixed(3) + " s"));
+    rows.push(row("Bearing reference", String(p.reference_source)));
+    if (rangeCompareActive(p)) {
+      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
+      rows.push(row("Check vs reference", p.range_ok ? "Within tolerance" : "Outside tolerance"));
+    }
+    return rows;
+  }
+  var cardWasShown = {};
+  function revealCardPanel(el) {
+    if (!el) return;
+    var panel = el.querySelector(".card-panel");
+    if (panel) panel.hidden = false;
+    var btn = el.querySelector(".card-toggle");
+    if (btn) btn.setAttribute("aria-expanded", "true");
+    var chev = el.querySelector(".card-chev");
+    if (chev) chev.textContent = "▾";
+  }
+  function setDataCardVisible(id, show) {
+    var el = document.querySelector('.card[data-card-id="' + id + '"]');
+    if (!el) return;
+    var prev = cardWasShown[id];
+    cardWasShown[id] = !!show;
+    el.style.display = show ? "" : "none";
+    if (show && !prev) revealCardPanel(el);
+  }
+  function setMbCardVisible(el, show) {
+    if (!el) return;
+    var key = el.id || el.getAttribute("data-card-id") || "";
+    var prev = cardWasShown[key];
+    cardWasShown[key] = !!show;
+    el.style.display = show ? "" : "none";
+    if (show && !prev) revealCardPanel(el);
+  }
+  function rowsLastPoint(d) {
+    var pts = d.points || [];
+    if (!pts.length) return [full("No matched points.")];
+    var p = pts[pts.length - 1];
+    var rows = [
+      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
+      row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
+      row("Bearing", p.bearing_deg.toFixed(3) + " °"),
+      row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
+      row("Slant range", p.slant_m.toFixed(5) + " m"),
+      row("Reference", String(p.reference_source)),
+      row("SVs (heading)", String(p.svs_heading)),
+      row("SVs (moving base)", String(p.svs_moving_base))
+    ];
+    if (p.range_note) {
+      rows.push(row("Ref source", formatRangeRefSource(p.range_note)));
+      if (p.range_ref_m != null && !isNaN(p.range_ref_m)) {
+        rows.push(row("Reference range (m)", p.range_ref_m.toFixed(4)));
+      }
+    }
+    if (rangeCompareActive(p)) {
+      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
+      rows.push(row("Range OK", p.range_ok ? "yes" : "no"));
+    }
+    return rows;
+  }
+
+  var CARD_STATE_KEY = "gsof-baseline-card-open";
+  function readCardOpenMap() {
+    try {
+      var raw = localStorage.getItem(CARD_STATE_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function writeCardOpenMap(m) {
+    try {
+      localStorage.setItem(CARD_STATE_KEY, JSON.stringify(m));
+    } catch (e) {}
+  }
+  function applyCardCollapsed(card, collapsed) {
+    var panel = card.querySelector(".card-panel");
+    var btn = card.querySelector(".card-toggle");
+    var chev = card.querySelector(".card-chev");
+    if (panel) panel.hidden = collapsed;
+    if (btn) btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    if (chev) chev.textContent = collapsed ? "▸" : "▾";
+  }
+  function initCollapsibleCards() {
+    var map = readCardOpenMap();
+    document.querySelectorAll(".card[data-card-id]").forEach(function (card) {
+      var id = card.getAttribute("data-card-id");
+      if (id === "status") {
+        applyCardCollapsed(card, false);
+        return;
+      }
+      applyCardCollapsed(card, map[id] === false);
+      var btn = card.querySelector(".card-toggle");
+      if (!btn) return;
+      btn.addEventListener("click", function () {
+        var panel = card.querySelector(".card-panel");
+        var willCollapse = panel && !panel.hidden;
+        applyCardCollapsed(card, willCollapse);
+        var m = readCardOpenMap();
+        m[id] = !willCollapse;
+        writeCardOpenMap(m);
+        if (!willCollapse) {
+          requestAnimationFrame(function () {
+            if (id === "chart-range" && chart1) chart1.resize();
+            if (id === "chart-sv" && chart2) chart2.resize();
+          });
+        }
+      });
+    });
+  }
+  function wireInfoPopover(anchor, pop, btn) {
+    if (!anchor || !pop || !btn) return;
+    var hideT;
+    function open() {
+      clearTimeout(hideT);
+      pop.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+    }
+    function close() {
+      hideT = setTimeout(function () {
+        pop.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }, 280);
+    }
+    anchor.addEventListener("mouseenter", open);
+    anchor.addEventListener("mouseleave", close);
+    btn.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      if (pop.hidden) open();
+      else {
+        clearTimeout(hideT);
+        pop.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+  function initCardInfoAnchors() {
+    var ph = document.getElementById("pop-heading-check");
+    var bh = document.getElementById("btn-info-heading-check");
+    if (ph && bh) {
+      ph.textContent = POP_NOTE_HEADING_CHECK;
+      wireInfoPopover(bh.closest(".card-info-anchor"), ph, bh);
+    }
+    var pr = document.getElementById("pop-range-check");
+    var br = document.getElementById("btn-info-range-check");
+    if (pr && br) {
+      pr.textContent = POP_NOTE_RANGE;
+      wireInfoPopover(br.closest(".card-info-anchor"), pr, br);
+    }
+    document.addEventListener("click", function (ev) {
+      document.querySelectorAll(".card-info-anchor").forEach(function (a) {
+        if (a.contains(ev.target)) return;
+        var p = a.querySelector(".card-info-popover");
+        var b = a.querySelector(".card-info-btn");
+        if (p && !p.hidden) {
+          p.hidden = true;
+          if (b) b.setAttribute("aria-expanded", "false");
+        }
+      });
+    });
+  }
+  function buildChart2(labels, svH, svM, mbOn) {
+    var datasets = [{ label: "SVs heading", data: svH, borderColor: "#d29922", stepped: true, pointRadius: 0 }];
+    if (mbOn) {
+      datasets.push({ label: "SVs moving base", data: svM, borderColor: "#a371f7", stepped: true, pointRadius: 0 });
+    }
+    return new Chart(document.getElementById("ch2").getContext("2d"), {
+      type: "line",
+      data: { labels: labels, datasets: datasets },
+      options: {
+        responsive: true,
+        scales: {
+          x: { ticks: { maxTicksLimit: 12 } },
+          y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: "SVs used" } }
+        },
+        plugins: { legend: { position: "bottom" } }
+      }
+    });
+  }
+  document.getElementById("themeSelect").onchange = function () {
+    setTheme(this.value);
+  };
+  var mqSys = window.matchMedia("(prefers-color-scheme: light)");
+  function onSystemSchemeChange() {
+    try {
+      if (localStorage.getItem(THEME_KEY)) return;
+    } catch (e) {}
+    applyChartColors();
+  }
+  if (mqSys.addEventListener) mqSys.addEventListener("change", onSystemSchemeChange);
+  else if (mqSys.addListener) mqSys.addListener(onSystemSchemeChange);
+
+  document.getElementById("btnCopy").onclick = function () {
+    var t = buildPlainTextExport(lastSnap);
+    if (!t) { alert("No data yet."); return; }
+    navigator.clipboard.writeText(t).then(function () {
+      alert("Copied information.");
+    }).catch(function () {
+      prompt("Copy this text:", t);
+    });
+  };
+  document.getElementById("btnPause").onclick = function () {
+    updatesPaused = !updatesPaused;
+    var b = document.getElementById("btnPause");
+    b.textContent = updatesPaused ? "Resume updates" : "Pause updates";
+    b.setAttribute("title", updatesPaused ? "Resume live updates from the stream" : "Stop refreshing panels and charts from the stream");
+    b.setAttribute("aria-pressed", updatesPaused ? "true" : "false");
+  };
+
+  document.getElementById("btnPng").onclick = function () {
+    if (!chart1 || !chart2) { alert("Charts not ready yet."); return; }
+    var c1 = chart1.canvas;
+    var c2 = chart2.canvas;
+    var gap = 24;
+    var w = Math.max(c1.width, c2.width);
+    var h = c1.height + gap + c2.height;
+    var out = document.createElement("canvas");
+    out.width = w;
+    out.height = h;
+    var g = out.getContext("2d");
+    g.fillStyle = cssVar("--bg", "#0f1419");
+    g.fillRect(0, 0, w, h);
+    g.drawImage(c1, 0, 0);
+    g.drawImage(c2, 0, c1.height + gap);
+    var a = document.createElement("a");
+    a.download = "gsof-baseline-charts.png";
+    a.href = out.toDataURL("image/png");
+    a.click();
+  };
+  es.onmessage = function (ev) {
+    if (updatesPaused) return;
+    var d;
+    try { d = JSON.parse(ev.data); } catch (err) { return; }
+    lastSnap = d;
+    var mbOn = !!d.moving_base_configured;
+    var pts = d.points || [];
+    var hasPts = pts.length > 0;
+
+    setDataCardVisible("heading-info", hasPts);
+    setDataCardVisible("heading-check", !!d.heading_type27);
+    setDataCardVisible("range-check", hasPts);
+    setDataCardVisible("heading-rover", !!d.heading_rover);
+    setDataCardVisible("heading-base-41", !!d.base_41_heading);
+    setMbCardVisible(
+      document.getElementById("cardMb35"),
+      mbOn && !!d.base_35_moving
+    );
+    setDataCardVisible("heading-27", !!d.heading_type27);
+    setDataCardVisible(
+      "heading-38",
+      !!(
+        (d.heading_type38 && String(d.heading_type38).trim()) ||
+        (mbOn && d.moving_base_type38 && String(d.moving_base_type38).trim())
+      )
+    );
+    setDataCardVisible(
+      "serials",
+      !!(d.heading_serial || (mbOn && d.moving_base_serial))
+    );
+    setMbCardVisible(
+      document.getElementById("cardMb"),
+      mbOn && !!d.base_41_moving && !d.base_35_moving
+    );
+    setDataCardVisible("chart-range", hasPts);
+    setDataCardVisible("chart-sv", hasPts);
+
+    renderKv("status", rowsStatus(d));
+    renderKv("headingInfo", rowsHeadingInfo(d));
+    renderKv("headingCheck", rowsHeadingCheck(d.heading_check));
+    renderKv("rcheck", rowsRangeCheck(d.points || []));
+    renderKv("headingRover", rowsHeadingRover(d.heading_rover));
+    renderKv("b41h", rowsBase41(d.base_41_heading));
+    renderKv("heading27", rowsType27(d.heading_type27));
+    renderKv("heading38", rowsPositionType(d));
+    renderKv("serials", rowsSerials(d));
+    if (mbOn) {
+      renderKv("b35m", rowsBase35(d.base_35_moving));
+      renderKv("b41m", rowsBase41(d.base_41_moving));
+    }
+    var cc = d.heading_41_vs_moving_base;
+    var cardCross = document.getElementById("cardCross");
+    if (mbOn && d.has_heading_type41) {
+      setMbCardVisible(cardCross, true);
+      var crossEl = document.getElementById("cross");
+      renderKv("cross", rowsCross(cc));
+      crossEl.className =
+        "kv-grid " + (cc && cc.has_pair && cc.match_ok ? "ok" : cc && cc.has_pair ? "bad" : "");
+    } else {
+      setMbCardVisible(cardCross, false);
+    }
+    var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
+    var bear = pts.map(function (p) { return p.bearing_deg; });
+    var horiz = pts.map(function (p) { return p.horiz_m; });
+    var slant = pts.map(function (p) { return p.slant_m; });
+    var svH = pts.map(function (p) { return p.svs_heading; });
+    var svM = pts.map(function (p) { return p.svs_moving_base; });
+    if (!chart1) {
+      chart1 = new Chart(document.getElementById("ch1").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            { label: "Heading °", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
+            { label: "Horiz range m", data: horiz, yAxisID: "y2", borderColor: "#3fb950", tension: 0.15, pointRadius: 0 },
+            { label: "Slant range m", data: slant, yAxisID: "y2", borderColor: "#79c0ff", borderDash: [4, 3], tension: 0.15, pointRadius: 0, hidden: true }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) heading" } },
+            y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
+            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
+          },
+          plugins: {
+            legend: {
+              position: "bottom",
+              onClick: function (evt, item, legend) {
+                if (item.datasetIndex === 2) {
+                  var ch = legend.chart;
+                  ch.setDatasetVisibility(2, !ch.isDatasetVisible(2));
+                  ch.update();
+                  return;
+                }
+                if (legendClickDefault) legendClickDefault.call(this, evt, item, legend);
+              }
+            }
+          }
+        }
+      });
+      chart2 = buildChart2(labels, svH, svM, mbOn);
+      lastMbConfigured = mbOn;
+      applyChartColors();
+    } else {
+      if (lastMbConfigured !== mbOn) {
+        chart2.destroy();
+        chart2 = buildChart2(labels, svH, svM, mbOn);
+        lastMbConfigured = mbOn;
+        applyChartColors();
+      }
+      chart1.data.labels = labels;
+      chart1.data.datasets[0].data = bear;
+      chart1.data.datasets[1].data = horiz;
+      chart1.data.datasets[2].data = slant;
+      chart1.update("none");
+      chart2.data.labels = labels;
+      chart2.data.datasets[0].data = svH;
+      if (mbOn && chart2.data.datasets.length > 1) {
+        chart2.data.datasets[1].data = svM;
+      }
+      chart2.update("none");
+    }
+  };
+  es.onerror = function () {};
+  initCollapsibleCards();
+  initCardInfoAnchors();
+  updateThemeButtons();
+})();
+  </script>
+</body>
+</html>
