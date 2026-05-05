@@ -117,7 +117,7 @@
         const statsMap = {};
 
         // Setup Server-Sent Events (SSE)
-        const evtSource = new EventSource("/events");
+        const evtSource = new EventSource("events");
         const statusDiv = document.getElementById('connection-status');
 
         let isPaused = false;

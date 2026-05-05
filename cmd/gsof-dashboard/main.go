@@ -38,7 +38,8 @@ func setNoCacheHeaders(w http.ResponseWriter) {
 }
 
 func main() {
-	ipFlag := flag.String("ip", "udp", "tcp or udp (embedded CLI stream only; ignored when UI sessions own the stream)")
+	ipFlag := flag.String("ip", "tcp", "tcp or udp (embedded CLI stream only; ignored when UI sessions own the stream)")
+	udp := flag.Bool("udp", false, "Use UDP transport for the embedded stream/default UI session hint (default transport is TCP)")
 	host := flag.String("host", "", "Optional host for a single embedded TCP stream (forces tcp). If empty and the web UI owns streams (-embedded-stream=false or -hub), users set host/port in the browser.")
 	port := flag.Int("port", 2101, "Port for embedded stream or default suggested in the connection form when UI sessions are enabled")
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address. 0.0.0.0 or :: defaults to per-browser streams unless -embedded-stream is set (shared hosting, e.g. trimbletools.com).")
@@ -46,7 +47,7 @@ func main() {
 	verbose := flag.Int("verbose", 0, "DCOL / stream verbosity: 0=off, 1=checksum/page warnings, 2=each GSOF sub-record payload as spaced hex (types 0x01/len/payload…), 3=full parser debug")
 	showExpectedReserved := flag.Bool("show-expected-reserved-bits", false, "Include spec-cleared reserved flag rows (types 1/8/10) and the GSOF type 57 radio channel column; default hides them")
 	embeddedStream := flag.Bool("embedded-stream", true, "Run one server-side GSOF transport from -ip/-host/-port. Omit or set false for multi-user mode: each browser starts its own session via the Web UI (see -hub).")
-	hub := flag.Bool("hub", false, "Shorthand for shared hosting: -embedded-stream=false, -web-host=0.0.0.0 (each visitor configures TCP or UDP in the UI; use -advertise-host for public UDP)")
+	hub := flag.Bool("hub", true, "Shorthand for shared hosting: -embedded-stream=false, -web-host=0.0.0.0 (each visitor configures TCP or UDP in the UI; use -advertise-host for public UDP)")
 	maxUISessions := flag.Int("max-ui-sessions", 64, "Maximum concurrent UI-defined GSOF sessions (hub / -embedded-stream=false)")
 	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "Allow UI/API TCP targets that resolve to loopback or RFC1918 addresses (lab only)")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
@@ -55,17 +56,24 @@ func main() {
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved
 
-	if *hub {
-		*embeddedStream = false
-		*webHost = "0.0.0.0"
+	if *udp {
+		*ipFlag = "udp"
 	}
 
 	embeddedStreamSet := false
+	hubSet := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "embedded-stream" {
 			embeddedStreamSet = true
 		}
+		if f.Name == "hub" {
+			hubSet = true
+		}
 	})
+	if *hub && (hubSet || !embeddedStreamSet) {
+		*embeddedStream = false
+		*webHost = "0.0.0.0"
+	}
 	wh := strings.TrimSpace(*webHost)
 	if !*hub && !embeddedStreamSet && (wh == "0.0.0.0" || wh == "::") {
 		// Bind-all without an explicit stream choice: prefer per-browser sessions so many users can share one process.

@@ -59,6 +59,8 @@ func main() {
 
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address")
 	webPort := flag.Int("web-port", 8091, "HTTP port for UI and /events SSE")
+	embeddedStream := flag.Bool("embedded-stream", true, "Run one embedded heading stream (and optional moving base) from CLI flags; set false for per-browser session setup in the web UI")
+	hub := flag.Bool("hub", true, "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0 (configure streams from browser)")
 	verbose := flag.Int("verbose", 0, "DCOL verbosity (same as gsof-dashboard)")
 	ignoreGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP: suppress warnings for a single skipped GSOF transmission id")
 	flag.Parse()
@@ -68,11 +70,74 @@ func main() {
 		tol = 0.01
 	}
 
+	embeddedStreamSet := false
+	hubSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "embedded-stream" {
+			embeddedStreamSet = true
+		}
+		if f.Name == "hub" {
+			hubSet = true
+		}
+	})
+	if *hub && (hubSet || !embeddedStreamSet) {
+		*embeddedStream = false
+		*webHost = "0.0.0.0"
+	}
+
 	mbEnabled := *mbPort != 0
 	cfgHeading := streamCfg(*headingIP, *headingHost, *headingPort, *verbose, *ignoreGap1)
 	var cfgMB core.Config
 	if mbEnabled {
 		cfgMB = streamCfg(*mbIP, *mbHost, *mbPort, *verbose, *ignoreGap1)
+	}
+
+	addr := net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
+	if !*embeddedStream {
+		h := newBaselineHub()
+		mux := http.NewServeMux()
+		defaultMB := baselineStreamRequest{Transport: "udp", Port: 0}
+		if mbEnabled {
+			defaultMB = baselineDefaultStreamReq(cfgMB)
+		}
+		defaultHeading := baselineDefaultStreamReq(cfgHeading)
+		mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			h.handleConfig(w, false, defaultHeading, defaultMB)
+		})
+		mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
+			h.handleCreateSession(w, r, false, EngineSessionDefaults{
+				Verbose:             *verbose,
+				IgnoreGap1:          *ignoreGap1,
+				MatchMaxTowDeltaSec: *matchMax,
+				RangeCheckTolM:      tol,
+				ExpectedRangeM:      *expectedRange,
+			})
+		})
+		mux.HandleFunc("/api/sessions/", h.handleSessionDelete)
+		mux.HandleFunc("/s/", func(w http.ResponseWriter, r *http.Request) {
+			h.serveSessionBranch(w, r, uiHTMLLive, h.brokerForID)
+		})
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/" {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write(baselineConnectHTML(defaultHeading, defaultMB))
+		})
+		srv := &http.Server{Addr: addr, Handler: mux}
+		fmt.Fprintf(os.Stdout, "gsof-baseline version %s\n  web UI:  http://%s\n  mode:    hub (configure streams in browser)\n", Version, addr)
+		slog.Info("gsof-baseline hub listening", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("http", "error", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	eng := gsofbaseline.NewEngine(gsofbaseline.EngineConfig{
@@ -174,7 +239,6 @@ func main() {
 		_, _ = w.Write(uiHTMLLive)
 	})
 
-	addr := net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
 	srv := &http.Server{Addr: addr, Handler: mux}
 
 	fmt.Fprintf(os.Stdout, "gsof-baseline version %s\n  web UI:  http://%s\n  heading: %s\n",
