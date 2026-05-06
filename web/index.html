@@ -116,8 +116,10 @@
         const maxDataPoints = 100;
         const statsMap = {};
 
-        // Setup Server-Sent Events (SSE)
-        const evtSource = new EventSource("events");
+        // Setup Server-Sent Events (SSE). Path must work at "/" (embedded CLI) and "/s/<id>/" (hub);
+        // a relative "events" from "/s/<id>" (no trailing slash) incorrectly resolves to "/s/events".
+        const sseBase = window.location.pathname.endsWith("/") ? window.location.pathname : window.location.pathname + "/";
+        const evtSource = new EventSource(sseBase + "events");
         const statusDiv = document.getElementById('connection-status');
 
         let isPaused = false;

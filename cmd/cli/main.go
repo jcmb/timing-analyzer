@@ -9,8 +9,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -82,6 +86,64 @@ func parseJitter(v string) (float64, bool, error) {
 	return val, false, err
 }
 
+// hubFlag implements flag.Value with strict parsing so typos like -hub=falsse fail instead of being ignored.
+type hubFlag struct {
+	v bool
+}
+
+func (h *hubFlag) String() string {
+	if h.v {
+		return "true"
+	}
+	return "false"
+}
+
+func (h *hubFlag) Set(s string) error {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "t", "yes", "y", "on":
+		h.v = true
+		return nil
+	case "false", "0", "f", "no", "n", "off":
+		h.v = false
+		return nil
+	default:
+		return fmt.Errorf("invalid value %q for -hub (use true or false, e.g. -hub=false)", s)
+	}
+}
+
+func (h *hubFlag) IsBoolFlag() bool { return true }
+
+func browserURLHost(bind string) string {
+	switch bind {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1"
+	default:
+		return bind
+	}
+}
+
+func cliWebAppURL(bind string, port int) string {
+	u := &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(browserURLHost(bind), strconv.Itoa(port)),
+		Path:   "/",
+	}
+	return u.String()
+}
+
+func launchBrowser(rawURL string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	return cmd.Start()
+}
+
 func cliConnectHTML(cfg cliConfigResp) []byte {
 	b, _ := json.Marshal(cfg)
 	return []byte(fmt.Sprintf(`<!doctype html>
@@ -135,7 +197,8 @@ func main() {
 	webPort := flag.Int("web-port", 8080, "Port for the live web dashboard")
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address")
 	embeddedStream := flag.Bool("embedded-stream", true, "Run one embedded stream from CLI flags; set false for per-browser sessions")
-	hub := flag.Bool("hub", true, "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0")
+	hub := hubFlag{v: true}
+	flag.Var(&hub, "hub", "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0 (true|false; use -hub=false to disable)")
 	rate := flag.Float64("rate", 1.0, "Expected update rate in Hz")
 	jitterFlag := flag.String("jitter", "10%", "Allowable jitter (e.g. '5ms' or '10%')")
 	timeoutExit := flag.Bool("timeout-exit", true, "Exit with error if no data in 100 epochs")
@@ -144,6 +207,10 @@ func main() {
 	decode := flag.String("decode", "none", "Protocol decoder: 'none', 'dcol', or 'mb-cmr'")
 	csvFile := flag.String("csv", "", "Output filename for CSV logging")
 	flag.Parse()
+	if extras := flag.Args(); len(extras) > 0 {
+		slog.Error("unexpected command-line arguments after flags (check -hub spelling; use -hub=false)", "args", extras)
+		os.Exit(2)
+	}
 
 	fmt.Printf("Starting Timing Analyzer CLI %s\n", AppVersion)
 
@@ -160,7 +227,7 @@ func main() {
 			hubSet = true
 		}
 	})
-	if *hub && (hubSet || !embeddedStreamSet) {
+	if hub.v && (hubSet || !embeddedStreamSet) {
 		*embeddedStream = false
 		*webHost = "0.0.0.0"
 	}
@@ -321,7 +388,7 @@ func main() {
 			h.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(cliSessionResp{ID: id, DashboardPath: "/s/" + id})
+			_ = json.NewEncoder(w).Encode(cliSessionResp{ID: id, DashboardPath: "/s/" + id + "/"})
 		})
 		mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodDelete {
@@ -339,9 +406,25 @@ func main() {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
-		addr := fmt.Sprintf("%s:%d", *webHost, cfg.WebPort)
-		slog.Info("Starting Timing Analyzer Hub", "url", "http://"+addr)
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		webAddr := net.JoinHostPort(*webHost, strconv.Itoa(cfg.WebPort))
+		slog.Info("Starting Timing Analyzer Hub", "addr", webAddr)
+		ln, err := net.Listen("tcp", webAddr)
+		if err != nil {
+			slog.Error("Listen failed", "addr", webAddr, "error", err)
+			os.Exit(1)
+		}
+		if hub.v {
+			openURL := cliWebAppURL(*webHost, cfg.WebPort)
+			go func() {
+				if err := launchBrowser(openURL); err != nil {
+					slog.Warn("Could not open browser", "url", openURL, "error", err)
+				} else {
+					slog.Info("Opened browser", "url", openURL)
+				}
+			}()
+		}
+		srv := &http.Server{Handler: mux}
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("Web server failed", "error", err)
 		}
 		return
@@ -355,10 +438,26 @@ func main() {
 		w.Write(web.IndexHTML) // Using the exported variable from the web package!
 	})
 	mux.Handle("/events", broker)
+	webAddr := net.JoinHostPort(*webHost, strconv.Itoa(cfg.WebPort))
+	slog.Info("Starting Web Dashboard", "addr", webAddr)
+	ln, err := net.Listen("tcp", webAddr)
+	if err != nil {
+		slog.Error("Listen failed", "addr", webAddr, "error", err)
+		os.Exit(1)
+	}
+	if hub.v {
+		openURL := cliWebAppURL(*webHost, cfg.WebPort)
+		go func() {
+			if err := launchBrowser(openURL); err != nil {
+				slog.Warn("Could not open browser", "url", openURL, "error", err)
+			} else {
+				slog.Info("Opened browser", "url", openURL)
+			}
+		}()
+	}
 	go func() {
-		addr := fmt.Sprintf("%s:%d", *webHost, cfg.WebPort)
-		slog.Info("Starting Web Dashboard", "url", fmt.Sprintf("http://%s", addr))
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		srv := &http.Server{Handler: mux}
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("Web server failed", "error", err)
 		}
 	}()
