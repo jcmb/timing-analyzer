@@ -116,13 +116,6 @@
             </select>
         </div>
 
-        <div class="form-group" style="margin-top: 15px;">
-            <label style="display: flex; align-items: center; cursor: pointer; color: #fff;">
-                <input type="checkbox" id="verbose" style="width: auto; margin-right: 10px;">
-                Enable Verbose Telemetry (Detailed Event Log)
-            </label>
-        </div>
-
         <button onclick="startSession()">Connect & Analyze</button>
         <div id="setup-error" style="color: #F44336; margin-top: 10px; text-align: center; display: none;"></div>
     </div>
@@ -240,8 +233,7 @@
                 mode: mode,
                 rate: parseFloat(document.getElementById('rate').value),
                 jitter: document.getElementById('jitter').value,
-                decode: document.getElementById('decode').value,
-                verbose: document.getElementById('verbose').checked
+                decode: document.getElementById('decode').value
             };
 
             if (mode === 'ibss') {

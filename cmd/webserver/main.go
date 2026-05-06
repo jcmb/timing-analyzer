@@ -58,7 +58,6 @@ type StartRequest struct {
 	Rate       float64 `json:"rate"`
 	Jitter     string  `json:"jitter"`
 	Decode     string  `json:"decode"`
-	Verbose    bool    `json:"verbose"`
 }
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
@@ -95,26 +94,20 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	sessionID := generateSessionID()
 
-	// Map the UI Verbose toggle to the Core Config level
-	verboseLevel := 0
-	if req.Verbose {
-		verboseLevel = 2
-	}
-
 	cfg := core.Config{
-		IP:            "tcp",
-		Host:          req.Host,
-		Port:          req.Port,
-		Mountpoint:    req.Mountpoint,
-		Username:      req.Username,
-		Password:      req.Password,
-		RateHz:        req.Rate,
-		JitterVal:     jitterVal,
-		JitterPct:     jitterPct,
-		Decode:        req.Decode,
-		Verbose:       verboseLevel,
-		SessionID:     sessionID,
-		TimeoutExit:   false,
+		IP:          "tcp",
+		Host:        req.Host,
+		Port:        req.Port,
+		Mountpoint:  req.Mountpoint,
+		Username:    req.Username,
+		Password:    req.Password,
+		RateHz:      req.Rate,
+		JitterVal:   jitterVal,
+		JitterPct:   jitterPct,
+		Decode:      req.Decode,
+		Verbose:     0,
+		SessionID:   sessionID,
+		TimeoutExit: false,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
