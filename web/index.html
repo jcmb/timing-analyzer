@@ -25,6 +25,15 @@
             transition: background 0.2s;
         }
         #connection-status:hover { background: #333; }
+        #connection-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        #hub-paused-actions { display: none; align-items: center; gap: 8px; }
+        #hub-paused-actions button {
+            padding: 8px 14px; border-radius: 6px; border: 1px solid #444;
+            background: #2a2a2a; color: #e0e0e0; cursor: pointer; font-size: 13px; font-weight: 600;
+        }
+        #hub-paused-actions button:hover { background: #333; }
+        #btn-resume { border-color: #4CAF50 !important; color: #81C784 !important; }
+        #btn-new-session { border-color: #2196F3 !important; color: #64B5F6 !important; }
 
         /* Table Styles */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
@@ -50,7 +59,13 @@
     <script type="application/json" id="ta-cli-launch-data">__TA_CLI_LAUNCH_JSON__</script>
     <div class="header">
         <h1 style="margin: 0; color: #fff; font-size: 24px;">Network Jitter Telemetry</h1>
-        <div id="connection-status" title="Click to Pause/Resume">Connecting...</div>
+        <div id="connection-controls">
+            <div id="connection-status" title="Live: click to pause. Paused (hub): use Resume or New connection.">Connecting...</div>
+            <span id="hub-paused-actions">
+                <button type="button" id="btn-resume">Resume</button>
+                <button type="button" id="btn-new-session">New connection</button>
+            </span>
+        </div>
     </div>
 
     <div id="cli-launch-banner" class="card full-width" style="display:none;margin-bottom:18px;">
@@ -96,6 +111,24 @@
     </div>
 
     <script>
+        (function hubReloadGoesToSetup() {
+            const path = window.location.pathname;
+            if (!path.startsWith('/s/')) return;
+            function isReload() {
+                try {
+                    const n = performance.getEntriesByType && performance.getEntriesByType('navigation')[0];
+                    if (n && n.type) return n.type === 'reload';
+                } catch (e) {}
+                try {
+                    return performance.navigation && performance.navigation.type === 1;
+                } catch (e2) {}
+                return false;
+            }
+            if (isReload()) {
+                window.location.replace('/');
+            }
+        })();
+
         (function cliLaunchBanner() {
             const dataEl = document.getElementById('ta-cli-launch-data');
             const banner = document.getElementById('cli-launch-banner');
@@ -167,28 +200,55 @@
         const sseBase = window.location.pathname.endsWith("/") ? window.location.pathname : window.location.pathname + "/";
         const evtSource = new EventSource(sseBase + "events");
         const statusDiv = document.getElementById('connection-status');
+        const hubPausedWrap = document.getElementById('hub-paused-actions');
+        const btnResume = document.getElementById('btn-resume');
+        const btnNewSession = document.getElementById('btn-new-session');
+        const isHubSession = /^\/s\/[^/]+\/?$/.test(window.location.pathname);
 
         let isPaused = false;
         let isConnected = false;
 
-        // Toggle pause state on click
-        statusDiv.addEventListener('click', () => {
-            if (!isConnected) return; // Don't allow toggling if server is down
-            isPaused = !isPaused;
-            if (isPaused) {
-                statusDiv.innerHTML = "Paused &#10074;&#10074;"; // Pause bars icon
+        function setPausedUI(paused) {
+            isPaused = paused;
+            if (paused) {
+                statusDiv.innerHTML = "Paused &#10074;&#10074;";
                 statusDiv.style.color = "#FF9800";
+                if (isHubSession && hubPausedWrap) hubPausedWrap.style.display = "flex";
             } else {
-                statusDiv.textContent = "Live \u25CF"; // Circle icon
+                statusDiv.textContent = "Live \u25CF";
                 statusDiv.style.color = "#4CAF50";
+                if (hubPausedWrap) hubPausedWrap.style.display = "none";
             }
+        }
+
+        statusDiv.addEventListener('click', () => {
+            if (!isConnected) return;
+            if (isHubSession && isPaused) return;
+            setPausedUI(!isPaused);
         });
+
+        if (btnResume) {
+            btnResume.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!isConnected) return;
+                setPausedUI(false);
+            });
+        }
+        if (btnNewSession) {
+            btnNewSession.addEventListener('click', (e) => {
+                e.stopPropagation();
+                window.location.href = '/';
+            });
+        }
 
         evtSource.onopen = () => {
             isConnected = true;
             if (!isPaused) {
                 statusDiv.textContent = "Live \u25CF";
                 statusDiv.style.color = "#4CAF50";
+                if (hubPausedWrap) hubPausedWrap.style.display = "none";
+            } else if (isHubSession && hubPausedWrap) {
+                hubPausedWrap.style.display = "flex";
             }
         };
 
@@ -196,6 +256,7 @@
             isConnected = false;
             statusDiv.textContent = "Disconnected \u25CF";
             statusDiv.style.color = "#F44336";
+            if (hubPausedWrap) hubPausedWrap.style.display = "none";
         };
 
         function getOrCreateDataset(chartObj, labelName) {
