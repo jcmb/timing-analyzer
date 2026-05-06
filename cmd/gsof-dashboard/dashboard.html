@@ -874,7 +874,7 @@
       <label for="connHost">Host</label>
       <input id="connHost" type="text" inputmode="text" autocomplete="off" placeholder="e.g. 192.0.2.10" title="TCP hostname or IP of the GSOF source" />
       <label for="connPort">Port</label>
-      <input id="connPort" type="number" min="0" max="65535" value="2101" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
+      <input id="connPort" type="number" min="0" max="65535" value="5018" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
       <button type="button" id="connBtn">Connect</button>
       <p id="connHint" class="meta"></p>
       <p id="connErr" class="meta" hidden></p>
@@ -902,7 +902,47 @@
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
     const THEME_STORAGE_KEY = "gsof-dashboard-theme";
+    /** Last connection form (transport / host / port) for multi-user UI; restored on next visit. */
+    const CONN_FORM_STORAGE_KEY = "gsof-dashboard-last-connection-v1";
     const themeSelect = document.getElementById("themeSelect");
+
+    function saveConnFormToStorage(transport, host, port) {
+      try {
+        localStorage.setItem(
+          CONN_FORM_STORAGE_KEY,
+          JSON.stringify({
+            transport: transport,
+            host: host || "",
+            port: port,
+          }),
+        );
+      } catch (e) {}
+    }
+
+    function loadConnFormFromStorage() {
+      try {
+        const raw = localStorage.getItem(CONN_FORM_STORAGE_KEY);
+        if (!raw) {
+          return;
+        }
+        const o = JSON.parse(raw);
+        const tr = document.getElementById("connTransport");
+        if (tr && (o.transport === "tcp" || o.transport === "udp")) {
+          tr.value = o.transport;
+        }
+        const hostEl = document.getElementById("connHost");
+        if (hostEl && typeof o.host === "string") {
+          hostEl.value = o.host;
+        }
+        const portEl = document.getElementById("connPort");
+        if (portEl && o.port != null) {
+          const p = parseInt(String(o.port), 10);
+          if (!Number.isNaN(p) && p >= 0 && p <= 65535) {
+            portEl.value = String(p);
+          }
+        }
+      } catch (e) {}
+    }
 
     function applyThemeChoice(mode) {
       if (mode === "light" || mode === "dark") {
@@ -7673,6 +7713,7 @@
             return JSON.parse(text);
           })
           .then((data) => {
+            saveConnFormToStorage(transport, host, port);
             if (data.listen && data.advertise_host) {
               statusEl.textContent =
                 "UDP " + data.advertise_host + ":" + data.listen.port + " — opening dashboard…";
@@ -7724,6 +7765,7 @@
         .then((cfg) => {
           if (cfg.ui_sessions_enabled) {
             applyCliStreamHints(cfg);
+            loadConnFormFromStorage();
             showStreamSetupPanel();
             return;
           }

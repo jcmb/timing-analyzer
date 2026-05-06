@@ -65,7 +65,7 @@ func validateTCPStreamHost(host string, allowPrivate bool) error {
 	if !allowPrivate {
 		if ip := parseLiteralIP(h); ip != nil {
 			if isDisallowedStreamIP(ip) {
-				return fmt.Errorf("host is a private, loopback, or link-local address (use -allow-private-gsof-targets to allow)")
+				return fmt.Errorf("host is a private, loopback, or link-local address (in hub mode use -allow-private-gsof-targets to allow)")
 			}
 			return nil
 		}
@@ -78,7 +78,7 @@ func validateTCPStreamHost(host string, allowPrivate bool) error {
 		}
 		for _, ip := range ips {
 			if isDisallowedStreamIP(ip) {
-				return fmt.Errorf("host resolves to a private, loopback, or link-local address (use -allow-private-gsof-targets to allow)")
+				return fmt.Errorf("host resolves to a private, loopback, or link-local address (in hub mode use -allow-private-gsof-targets to allow)")
 			}
 		}
 	}

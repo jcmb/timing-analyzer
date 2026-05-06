@@ -37,6 +37,14 @@ const ratePeriodEMAAlpha = 0.04
 // cadence; larger gaps are treated as outages or discontinuous time, not epoch rate.
 const maxTowDeltaForEpoch = 10.0
 
+// staleSilencePeriodMultiplier is how many expected periods of silence before a subtype
+// row is marked stale. Larger values tolerate jitter and slower broadcast subtypes.
+const staleSilencePeriodMultiplier = 8.0
+
+// streamSilenceLostAfter is how long without any DCOL/GSOF frame after type 0x01 was seen
+// before the dashboard treats the stream as lost (separate from per-subtype stale).
+const streamSilenceLostAfter = 30 * time.Second
+
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
 // (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
 func payloadBytesToSpacedHex(b []byte) string {
@@ -512,7 +520,7 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	streamOK := !(s.hasSeenType01 && !s.lastSeqTime.IsZero() && now.Sub(s.lastSeqTime) > 10*time.Second)
+	streamOK := !(s.hasSeenType01 && !s.lastSeqTime.IsZero() && now.Sub(s.lastSeqTime) > streamSilenceLostAfter)
 
 	keys := make([]int, 0, len(s.counts))
 	for k := range s.counts {
@@ -523,20 +531,25 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 	rows := make([]RecordRow, 0, len(keys))
 	epochHz := s.epochMinHzFromTOWLocked()
 	for _, subType := range keys {
+		// Displayed rate is always per-subtype inferred cadence (each GSOF sub-record type
+		// can have its own output rate). Epoch TOW rate is not substituted here — that
+		// previously made every row show the same Hz as the position-time epoch.
 		rateStr := s.displayHz[subType]
 		if rateStr == "" {
 			rateStr = "calc..."
 		}
-		effHz := s.hz[subType]
-		if epochHz > effHz {
-			effHz = epochHz
-			rateStr = fmt.Sprintf("%.0f Hz", effHz)
-		} else if effHz <= 0 && epochHz > 0 {
-			effHz = epochHz
-			rateStr = fmt.Sprintf("%.0f Hz", effHz)
+		inferredHz := float64(s.hz[subType])
+		// Stale detection: require silence for longer than this many "expected periods".
+		// Use max(inferred, epoch) only as the timing floor so mis-inferred slow Hz does
+		// not mark a stream that still tracks epoch cadence as stale too aggressively.
+		staleCheckHz := inferredHz
+		if epochHz > staleCheckHz {
+			staleCheckHz = epochHz
+		} else if inferredHz <= 0 && epochHz > 0 {
+			staleCheckHz = epochHz
 		}
 		stale := false
-		if effHz > 0 && now.Sub(s.lastSeen[subType]).Seconds() > (1.0/effHz)*3.0 {
+		if staleCheckHz > 0 && now.Sub(s.lastSeen[subType]).Seconds() > (1.0/staleCheckHz)*staleSilencePeriodMultiplier {
 			rateStr = "stale"
 			stale = true
 		}
@@ -651,14 +664,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 func (s *Stats) ExportNagios() (hz map[int]float64, counts map[int]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	epochHz := s.epochMinHzFromTOWLocked()
 	hz = make(map[int]float64, len(s.hz))
 	for k, v := range s.hz {
-		out := v
-		if epochHz > out {
-			out = epochHz
-		}
-		hz[k] = gsof.JSONFloat(out)
+		hz[k] = v
 	}
 	counts = make(map[int]int, len(s.counts))
 	for k, v := range s.counts {
@@ -674,7 +682,7 @@ func (s *Stats) StreamLost() bool {
 	if !s.hasSeenType01 || s.lastSeqTime.IsZero() {
 		return false
 	}
-	return time.Since(s.lastSeqTime) > 10*time.Second
+	return time.Since(s.lastSeqTime) > streamSilenceLostAfter
 }
 
 // WarningsTail returns up to the last n warnings (copy).

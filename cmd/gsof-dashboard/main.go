@@ -11,7 +11,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -37,22 +39,64 @@ func setNoCacheHeaders(w http.ResponseWriter) {
 	w.Header().Set("Surrogate-Control", "no-store")
 }
 
+func dashboardBrowserURLHost(bind string) string {
+	switch strings.TrimSpace(bind) {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1"
+	default:
+		return strings.TrimSpace(bind)
+	}
+}
+
+func dashboardAppURL(bind string, port int) string {
+	return "http://" + net.JoinHostPort(dashboardBrowserURLHost(bind), strconv.Itoa(port)) + "/"
+}
+
+func launchDashboardBrowser(rawURL string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	return cmd.Start()
+}
+
 func main() {
 	ipFlag := flag.String("ip", "tcp", "tcp or udp (embedded CLI stream only; ignored when UI sessions own the stream)")
 	udp := flag.Bool("udp", false, "Use UDP transport for the embedded stream/default UI session hint (default transport is TCP)")
 	host := flag.String("host", "", "Optional host for a single embedded TCP stream (forces tcp). If empty and the web UI owns streams (-embedded-stream=false or -hub), users set host/port in the browser.")
-	port := flag.Int("port", 2101, "Port for embedded stream or default suggested in the connection form when UI sessions are enabled")
+	port := flag.Int("port", 5018, "Port for embedded stream or default suggested in the connection form when UI sessions are enabled")
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address. 0.0.0.0 or :: defaults to per-browser streams unless -embedded-stream is set (shared hosting, e.g. trimbletools.com).")
 	webPort := flag.Int("web-port", 8080, "HTTP port for the dashboard")
+	openBrowserFlag := flag.Bool("open-browser", false, "Open the dashboard URL in the default browser after listen (default: on when -hub=false, off when -hub=true)")
 	verbose := flag.Int("verbose", 0, "DCOL / stream verbosity: 0=off, 1=checksum/page warnings, 2=each GSOF sub-record payload as spaced hex (types 0x01/len/payload…), 3=full parser debug")
 	showExpectedReserved := flag.Bool("show-expected-reserved-bits", false, "Include spec-cleared reserved flag rows (types 1/8/10) and the GSOF type 57 radio channel column; default hides them")
 	embeddedStream := flag.Bool("embedded-stream", true, "Run one server-side GSOF transport from -ip/-host/-port. Omit or set false for multi-user mode: each browser starts its own session via the Web UI (see -hub).")
 	hub := flag.Bool("hub", true, "Shorthand for shared hosting: -embedded-stream=false, -web-host=0.0.0.0 (each visitor configures TCP or UDP in the UI; use -advertise-host for public UDP)")
 	maxUISessions := flag.Int("max-ui-sessions", 64, "Maximum concurrent UI-defined GSOF sessions (hub / -embedded-stream=false)")
-	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "Allow UI/API TCP targets that resolve to loopback or RFC1918 addresses (lab only)")
+	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "In hub mode (-hub), allow UI/API TCP targets that resolve to loopback or RFC1918 (off by default). Non-hub runs always allow private targets.")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
 	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats/parser warnings for a single skipped GSOF transmission id; applies to embedded streams and (with -embedded-stream=false) is merged into each browser-started session")
 	flag.Parse()
+
+	openBrowserFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "open-browser" {
+			openBrowserFlagSet = true
+		}
+	})
+	openBrowser := *openBrowserFlag
+	if !openBrowserFlagSet {
+		openBrowser = !*hub
+	}
+
+	// Hub/shared hosting: block private TCP targets unless -allow-private-gsof-targets.
+	// Local (-hub=false): allow LAN / loopback targets without extra flags.
+	effectiveAllowPrivateGSOF := !*hub || *allowPrivateGSOF
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved
 
@@ -138,7 +182,7 @@ func main() {
 		h.handleAPIConfig(w, *embeddedStream, cfg)
 	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
-		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, *allowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1)
+		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, effectiveAllowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1)
 	})
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		h.handleAPIDeleteSession(w, r, *embeddedStream)
@@ -180,9 +224,26 @@ func main() {
 		fmt.Fprintf(os.Stdout, "  mode:    multi-user (open http://%s/ and set TCP or UDP in the header)\n", webAddr)
 	}
 
+	ln, err := net.Listen("tcp", webAddr)
+	if err != nil {
+		slog.Error("http listen failed", "addr", webAddr, "error", err)
+		os.Exit(1)
+	}
+
+	if openBrowser {
+		openURL := dashboardAppURL(*webHost, *webPort)
+		go func() {
+			if err := launchDashboardBrowser(openURL); err != nil {
+				slog.Warn("Could not open browser", "url", openURL, "error", err)
+			} else {
+				slog.Info("Opened browser", "url", openURL)
+			}
+		}()
+	}
+
 	go func() {
 		slog.Info("GSOF dashboard listening", "version", Version, "addr", webAddr, "stream", streamDesc, "embedded_stream", *embeddedStream)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server", "error", err)
 			os.Exit(1)
 		}
