@@ -57,8 +57,10 @@ type TelemetryEvent struct {
 	ExpectedMs    int64  `json:"expected_ms"`
 	OSDelayUs     int64  `json:"os_delay_us"`
 	IsUDP         bool   `json:"is_udp"`
-	Status        string `json:"status"`
-	Message       string `json:"message"`
+	// HasOSDelay is true when kernel/hardware RX time was available so OS wakeup latency is meaningful (typically Linux UDP; often false on macOS).
+	HasOSDelay bool   `json:"has_os_delay,omitempty"`
+	Status     string `json:"status"`
+	Message    string `json:"message"`
 }
 
 type LogEntry struct {

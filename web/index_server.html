@@ -131,6 +131,7 @@
         <div class="dash-header header">
             <div>
                 <h1>Live Telemetry</h1>
+                <button class="btn-secondary" type="button" onclick="saveJitterChartPNG()">Save chart</button>
                 <button class="btn-secondary" onclick="stopSession()">&#9632; Stop & New Setup</button>
                 <div id="target-label" style="color:#aaa; font-size:14px; margin-top:8px;"></div>
             </div>
@@ -361,6 +362,28 @@
             data: { labels: [], datasets: [] },
             options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { title: { display: true, text: 'Delta (ms)', color: '#888' }, grid: { color: '#333' } } } }
         });
+
+        function chartToPNGDataURL(chart) {
+            if (typeof chart.toBase64Image === 'function') {
+                return chart.toBase64Image('image/png', 1);
+            }
+            return chart.canvas.toDataURL('image/png');
+        }
+
+        function downloadDataURL(dataUrl, filename) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function saveJitterChartPNG() {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            downloadDataURL(chartToPNGDataURL(jitterChart), `jitter-chart-${ts}.png`);
+        }
 
         const colors = ['#4CAF50', '#2196F3', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4'];
         let colorIdx = 0;

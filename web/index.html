@@ -34,6 +34,11 @@
         #hub-paused-actions button:hover { background: #333; }
         #btn-resume { border-color: #4CAF50 !important; color: #81C784 !important; }
         #btn-new-session { border-color: #2196F3 !important; color: #64B5F6 !important; }
+        #btn-save-charts {
+            padding: 8px 14px; border-radius: 6px; border: 1px solid #555;
+            background: #2a2a2a; color: #e0e0e0; cursor: pointer; font-size: 13px; font-weight: 600;
+        }
+        #btn-save-charts:hover { background: #383838; }
 
         /* Table Styles */
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
@@ -60,6 +65,7 @@
     <div class="header">
         <h1 style="margin: 0; color: #fff; font-size: 24px;">Network Jitter Telemetry</h1>
         <div id="connection-controls">
+            <button type="button" id="btn-save-charts" title="Download chart images (PNG)">Save charts</button>
             <div id="connection-status" title="Live: click to pause. Paused (hub): use Resume or New connection.">Connecting...</div>
             <span id="hub-paused-actions">
                 <button type="button" id="btn-resume">Resume</button>
@@ -241,6 +247,34 @@
             });
         }
 
+        function chartToPNGDataURL(chart) {
+            if (typeof chart.toBase64Image === 'function') {
+                return chart.toBase64Image('image/png', 1);
+            }
+            return chart.canvas.toDataURL('image/png');
+        }
+
+        function downloadDataURL(dataUrl, filename) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        document.getElementById('btn-save-charts').addEventListener('click', () => {
+            const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            downloadDataURL(chartToPNGDataURL(jitterChart), `jitter-chart-${ts}.png`);
+            const osCard = document.getElementById('os-chart-card');
+            const osShown = osCard && window.getComputedStyle(osCard).display !== 'none';
+            const osHasPoints = osChart.data.datasets.some(d => d.data && d.data.length > 0);
+            if (osShown && osHasPoints) {
+                downloadDataURL(chartToPNGDataURL(osChart), `os-wakeup-${ts}.png`);
+            }
+        });
+
         evtSource.onopen = () => {
             isConnected = true;
             if (!isPaused) {
@@ -318,25 +352,22 @@
                 }
                 jitterChart.update();
 
-                // Update OS Chart Display Logic
+                // OS wakeup chart only when the backend has kernel RX timestamps (unavailable on many macOS UDP paths).
                 const osCard = document.getElementById('os-chart-card');
-                if (data.is_udp) {
+                if (data.has_os_delay) {
                     if (osCard.style.display === 'none') {
                         osCard.style.display = 'block';
                     }
+                    const osDataset = getOrCreateDataset(osChart, data.display_key);
+                    osChart.data.labels.push(data.timestamp);
+                    osDataset.data.push(data.os_delay_us);
 
-                    if (!data.message.includes('N/A')) {
-                        const osDataset = getOrCreateDataset(osChart, data.display_key);
-                        osChart.data.labels.push(data.timestamp);
-                        osDataset.data.push(data.os_delay_us);
-
-                        if (osChart.data.labels.length > maxDataPoints) {
-                            osChart.data.labels.shift();
-                            osChart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
-                        }
-                        osChart.update();
+                    if (osChart.data.labels.length > maxDataPoints) {
+                        osChart.data.labels.shift();
+                        osChart.data.datasets.forEach(d => d.data.length > maxDataPoints ? d.data.shift() : null);
                     }
-                } else {
+                    osChart.update();
+                } else if (!data.is_udp) {
                     osCard.style.display = 'none';
                 }
             }
