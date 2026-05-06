@@ -151,17 +151,69 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 			slog.Info("Listening for UDP packets", "port", cfg.Port)
 		}
 
-		// Kernel SCM timestamps require recvmsg (ReadMsgUDP). On several platforms that path
-		// returns immediate errors while ReadFromUDP works; we prefer reliable delivery for
-		// DCOL/GSOF and use wall-clock time for UDP (same as TCP path).
+		// Prefer recvmsg (ReadMsg) + SO_TIMESTAMP when available so KernelTime / OS wakeup latency
+		// can be computed (Linux and Darwin). Fall back to ReadFromUDP if setsockopt or ReadMsg fails.
 		buf := make([]byte, 65536)
+		oob := make([]byte, 1024)
 		parsers := make(map[string]*parser.DCOLParser)
+		useKernel := enableUDPKernelTimestamps(conn)
+		if useKernel {
+			slog.Info("UDP kernel RX timestamps enabled", "port", cfg.Port)
+		}
 
 		for {
 			if ctx.Err() != nil {
 				return nil
 			}
-			n, remoteAddr, err := conn.ReadFromUDP(buf)
+
+			var n int
+			var remoteAddr *net.UDPAddr
+			var err error
+			var kernelTime time.Time
+
+			if useKernel {
+				var hasK bool
+				n, remoteAddr, kernelTime, hasK, err = readUDPWithOOB(conn, buf, oob)
+				goTime := time.Now()
+				if err != nil {
+					if ctx.Err() != nil {
+						return nil
+					}
+					slog.Warn("UDP ReadMsg failed; falling back to ReadFromUDP", "error", err)
+					useKernel = false
+					continue
+				}
+				if n <= 0 || remoteAddr == nil {
+					continue
+				}
+				if !hasK {
+					kernelTime = time.Time{}
+				}
+				ip := remoteAddr.String()
+				bestTime := goTime
+				if !kernelTime.IsZero() {
+					bestTime = kernelTime
+				}
+				if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {
+					if parsers[ip] == nil {
+						parsers[ip] = &parser.DCOLParser{}
+					}
+					parsers[ip].Process(buf[:n], bestTime, goTime, kernelTime, ip, cfg, packetChan)
+				} else {
+					packetChan <- core.PacketEvent{
+						BestTime:      bestTime,
+						GoTime:        goTime,
+						KernelTime:    kernelTime,
+						Length:        n,
+						RemoteAddr:    ip,
+						PacketType:    -1,
+						IsLastInBurst: true,
+					}
+				}
+				continue
+			}
+
+			n, remoteAddr, err = conn.ReadFromUDP(buf)
 			goTime := time.Now()
 			if err != nil {
 				if ctx.Err() != nil {
@@ -180,7 +232,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 			}
 
 			ip := remoteAddr.String()
-			var kernelTime time.Time
+			kernelTime = time.Time{}
 			bestTime := goTime
 
 			if cfg.Decode == "dcol" || cfg.Decode == "mb-cmr" {

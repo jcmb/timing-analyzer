@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -22,6 +23,13 @@ import (
 
 // Global Application Version
 const AppVersion = "v1.3.3"
+
+// webListenPortMin/Max restrict inbound listener ports for the multi-tenant web UI
+// so sessions do not collide with other well-known services on the host.
+const (
+	webListenPortMin = 20000
+	webListenPortMax = 29999
+)
 
 type Session struct {
 	ID     string
@@ -54,7 +62,32 @@ type StartRequest struct {
 	Rate       float64 `json:"rate"`
 	Jitter     string  `json:"jitter"`
 	Decode     string  `json:"decode"`
-	Verbose    bool    `json:"verbose"`
+}
+
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+func probeTCPListenPort(port int) error {
+	ln, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return err
+	}
+	return ln.Close()
+}
+
+func probeUDPListenPort(port int) error {
+	addr, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		return err
+	}
+	c, err := net.ListenUDP("udp4", addr)
+	if err != nil {
+		return err
+	}
+	return c.Close()
 }
 
 func handleStart(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +98,15 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 
 	var req StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	mode := strings.ToLower(strings.TrimSpace(req.Mode))
+	switch mode {
+	case "tcp", "ntrip", "ibss", "tcp_listen", "udp_listen":
+	default:
+		writeJSONError(w, http.StatusBadRequest, "invalid connection mode")
 		return
 	}
 
@@ -76,41 +117,76 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		jitterPct = true
 		val, err := strconv.ParseFloat(strings.TrimSuffix(jitterStr, "%"), 64)
 		if err != nil {
-			http.Error(w, "Invalid jitter percentage", http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, "Invalid jitter percentage")
 			return
 		}
 		jitterVal = val
 	} else {
 		val, err := strconv.ParseFloat(strings.TrimSuffix(strings.ToLower(jitterStr), "ms"), 64)
 		if err != nil {
-			http.Error(w, "Invalid jitter value", http.StatusBadRequest)
+			writeJSONError(w, http.StatusBadRequest, "Invalid jitter value")
 			return
 		}
 		jitterVal = val
 	}
 
-	sessionID := generateSessionID()
-
-	// Map the UI Verbose toggle to the Core Config level
-	verboseLevel := 0
-	if req.Verbose {
-		verboseLevel = 2
+	switch mode {
+	case "tcp_listen", "udp_listen":
+		if req.Port < webListenPortMin || req.Port > webListenPortMax {
+			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("listen port must be between %d and %d (inclusive)", webListenPortMin, webListenPortMax))
+			return
+		}
+		if mode == "tcp_listen" {
+			if err := probeTCPListenPort(req.Port); err != nil {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("cannot listen on TCP port %d: %v", req.Port, err))
+				return
+			}
+		} else {
+			if err := probeUDPListenPort(req.Port); err != nil {
+				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("cannot listen on UDP port %d: %v", req.Port, err))
+				return
+			}
+		}
+	default:
+		if strings.TrimSpace(req.Host) == "" || req.Port < 1 || req.Port > 65535 {
+			writeJSONError(w, http.StatusBadRequest, "host and port are required")
+			return
+		}
 	}
 
+	sessionID := generateSessionID()
+
 	cfg := core.Config{
-		IP:            "tcp",
-		Host:          req.Host,
-		Port:          req.Port,
-		Mountpoint:    req.Mountpoint,
-		Username:      req.Username,
-		Password:      req.Password,
-		RateHz:        req.Rate,
-		JitterVal:     jitterVal,
-		JitterPct:     jitterPct,
-		Decode:        req.Decode,
-		Verbose:       verboseLevel,
-		SessionID:     sessionID,
-		TimeoutExit:   false,
+		IP:          "tcp",
+		Host:        strings.TrimSpace(req.Host),
+		Port:        req.Port,
+		Mountpoint:  strings.TrimSpace(req.Mountpoint),
+		Username:    req.Username,
+		Password:    req.Password,
+		RateHz:      req.Rate,
+		JitterVal:   jitterVal,
+		JitterPct:   jitterPct,
+		Decode:      req.Decode,
+		Verbose:     0,
+		SessionID:   sessionID,
+		TimeoutExit: false,
+	}
+
+	switch mode {
+	case "tcp_listen":
+		cfg.IP = "tcp"
+		cfg.Host = ""
+		cfg.Mountpoint = ""
+		cfg.Username = ""
+		cfg.Password = ""
+	case "udp_listen":
+		cfg.IP = "udp"
+		cfg.Host = ""
+		cfg.Mountpoint = ""
+		cfg.Username = ""
+		cfg.Password = ""
+	default:
+		// outbound TCP/NTRIP/IBSS: cfg already uses tcp client + Host/Port/NTRIP fields
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -127,16 +203,32 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	manager.sessions[sessionID] = session
 	manager.mu.Unlock()
 
-	slog.Info("Created new session", "session", sessionID, "mode", req.Mode, "target", req.Host)
+	switch mode {
+	case "tcp_listen":
+		slog.Info("Created new session", "session", sessionID, "mode", mode, "listen", "tcp", "port", req.Port)
+	case "udp_listen":
+		slog.Info("Created new session", "session", sessionID, "mode", mode, "listen", "udp", "port", req.Port)
+	default:
+		slog.Info("Created new session", "session", sessionID, "mode", mode, "target", req.Host)
+	}
 
-	// Use StartNTRIPClient for all web-based TCP/NTRIP/IBSS connections.
-	// It handles raw TCP automatically if Mountpoint is empty and supports Context cancellation.
-	go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
+	switch mode {
+	case "tcp_listen", "udp_listen":
+		go func() {
+			if err := stream.StartListenerContext(ctx, cfg, packetChan, nil); err != nil && ctx.Err() == nil {
+				slog.Warn("listen session ended", "session", sessionID, "error", err)
+			}
+		}()
+	default:
+		// Outbound TCP/NTRIP/IBSS: StartNTRIPClient handles raw TCP when Mountpoint is empty.
+		go stream.StartNTRIPClient(ctx, cfg, packetChan, broker.Notifier)
+	}
 
 	go timing.Run(ctx, cfg, packetChan, broker.Notifier)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"session_id": sessionID})
 }
 
 func handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -213,7 +305,14 @@ func main() {
 	address := fmt.Sprintf("%s:%d", *bindIP, *port)
 	slog.Info(fmt.Sprintf("Starting Timing Analyzer Web Server %s", AppVersion), "address", address, "base_path", path)
 
-	if err := http.ListenAndServe(address, nil); err != nil {
+	ln, err := net.Listen("tcp", address)
+	if err != nil {
+		slog.Error("Listen failed", "error", err)
+		return
+	}
+
+	srv := &http.Server{Handler: nil}
+	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		slog.Error("Server crashed", "error", err)
 	}
 }

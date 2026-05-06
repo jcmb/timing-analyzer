@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,8 +10,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,8 +27,8 @@ import (
 	"timing-analyzer/web"
 )
 
-
-const AppVersion = "v1.1.0"
+// AppVersion is shown on the hub connect page; increment when user-visible CLI behavior changes.
+const AppVersion = "v1.2.3"
 const maxCLISessionBodyBytes = 8192
 
 type cliSession struct {
@@ -82,7 +87,101 @@ func parseJitter(v string) (float64, bool, error) {
 	return val, false, err
 }
 
-func cliConnectHTML(cfg cliConfigResp) []byte {
+// hubFlag implements flag.Value with strict parsing so typos like -hub=falsse fail instead of being ignored.
+type hubFlag struct {
+	v bool
+}
+
+func (h *hubFlag) String() string {
+	if h.v {
+		return "true"
+	}
+	return "false"
+}
+
+func (h *hubFlag) Set(s string) error {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "t", "yes", "y", "on":
+		h.v = true
+		return nil
+	case "false", "0", "f", "no", "n", "off":
+		h.v = false
+		return nil
+	default:
+		return fmt.Errorf("invalid value %q for -hub (use true or false, e.g. -hub=false)", s)
+	}
+}
+
+func (h *hubFlag) IsBoolFlag() bool { return true }
+
+func browserURLHost(bind string) string {
+	switch bind {
+	case "", "0.0.0.0", "::", "[::]":
+		return "127.0.0.1"
+	default:
+		return bind
+	}
+}
+
+func cliWebAppURL(bind string, port int) string {
+	u := &url.URL{
+		Scheme: "http",
+		Host:   net.JoinHostPort(browserURLHost(bind), strconv.Itoa(port)),
+		Path:   "/",
+	}
+	return u.String()
+}
+
+func launchBrowser(rawURL string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	return cmd.Start()
+}
+
+// cliLaunchJSONPlaceholder is replaced once with JSON for the dashboard banner (see web/index.html).
+const cliLaunchJSONPlaceholder = "__TA_CLI_LAUNCH_JSON__"
+
+func embedCLIIntoIndexHTML(cfg core.Config, argv []string, jitterDisplay string, showCLIBanner bool) []byte {
+	if !showCLIBanner {
+		return bytes.Replace(web.IndexHTML, []byte(cliLaunchJSONPlaceholder), []byte("null"), 1)
+	}
+	payload := struct {
+		Argv      string  `json:"argv"`
+		Transport string  `json:"transport"`
+		Host      string  `json:"host"`
+		Port      int     `json:"port"`
+		Rate      float64 `json:"rate"`
+		Jitter    string  `json:"jitter"`
+		Decode    string  `json:"decode"`
+		Verbose   int     `json:"verbose"`
+		Warmup    int     `json:"warmup"`
+	}{
+		Argv:      strings.Join(argv, " "),
+		Transport: cfg.IP,
+		Host:      cfg.Host,
+		Port:      cfg.Port,
+		Rate:      cfg.RateHz,
+		Jitter:    jitterDisplay,
+		Decode:    cfg.Decode,
+		Verbose:   cfg.Verbose,
+		Warmup:    cfg.WarmupPackets,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return web.IndexHTML
+	}
+	out := bytes.Replace(web.IndexHTML, []byte(cliLaunchJSONPlaceholder), raw, 1)
+	return out
+}
+
+func cliConnectHTML(cfg cliConfigResp, version string) []byte {
 	b, _ := json.Marshal(cfg)
 	return []byte(fmt.Sprintf(`<!doctype html>
 <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -95,8 +194,10 @@ label{display:block;color:#aaa;font-size:.9rem;margin-bottom:.2rem}
 input,select{width:100%%;box-sizing:border-box;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;padding:.5rem}
 button{padding:.55rem .95rem;border-radius:6px;border:1px solid #444;background:#4CAF50;color:#fff;cursor:pointer}
 #err{color:#F44336;min-height:1.2rem}
+.cli-version{color:#888;font-size:0.9rem;margin:0 0 0.75rem 0}
 </style></head><body>
 <h1>Timing Analyzer Hub</h1>
+<p class="cli-version">Timing Analyzer CLI <strong>%s</strong></p>
 <p>Configure stream parameters and open a session dashboard.</p>
 <div class="card">
   <div class="row">
@@ -114,17 +215,44 @@ button{padding:.55rem .95rem;border-radius:6px;border:1px solid #444;background:
 </div>
 <script>
 const cfg=%s;
+const LS_KEY="timing-analyzer-cli-hub-form";
 transport.value=cfg.transport||"tcp";host.value=cfg.host||"";port.value=String(cfg.port||2101);
 rate.value=String(cfg.rate||1.0);jitter.value=cfg.jitter||"10%%";decode.value=cfg.decode||"none";
+function loadSavedForm(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const o=JSON.parse(raw);
+    if(o.transport==="tcp"||o.transport==="udp") transport.value=o.transport;
+    if(typeof o.host==="string") host.value=o.host;
+    if(o.port!==undefined&&o.port!==null&&String(o.port)!=="") port.value=String(o.port);
+    if(o.rate!==undefined&&o.rate!==null&&String(o.rate)!=="") rate.value=String(o.rate);
+    if(typeof o.jitter==="string"&&o.jitter) jitter.value=o.jitter;
+    if(o.decode==="none"||o.decode==="dcol"||o.decode==="mb-cmr") decode.value=o.decode;
+  }catch(e){}
+}
+function saveForm(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify({
+      transport:transport.value,
+      host:host.value,
+      port:port.value,
+      rate:rate.value,
+      jitter:jitter.value,
+      decode:decode.value
+    }));
+  }catch(e){}
+}
+loadSavedForm();
 function syncHost(){host.disabled=(transport.value==="udp");}
 transport.addEventListener("change",syncHost);syncHost();
 connect.addEventListener("click",async()=>{err.textContent="";
   const body={transport:transport.value,host:(host.value||"").trim(),port:parseInt(port.value,10),rate:parseFloat(rate.value),jitter:jitter.value,decode:decode.value};
   try{const r=await fetch("/api/sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); window.location.href=out.dashboard_path;
+    const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); saveForm(); window.location.href=out.dashboard_path;
   }catch(e){err.textContent=String(e.message||e);}
 });
-</script></body></html>`, string(b)))
+</script></body></html>`, version, string(b)))
 }
 
 func main() {
@@ -135,7 +263,8 @@ func main() {
 	webPort := flag.Int("web-port", 8080, "Port for the live web dashboard")
 	webHost := flag.String("web-host", "127.0.0.1", "HTTP listen address")
 	embeddedStream := flag.Bool("embedded-stream", true, "Run one embedded stream from CLI flags; set false for per-browser sessions")
-	hub := flag.Bool("hub", true, "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0")
+	hub := hubFlag{v: true}
+	flag.Var(&hub, "hub", "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0 (true|false; use -hub=false to disable)")
 	rate := flag.Float64("rate", 1.0, "Expected update rate in Hz")
 	jitterFlag := flag.String("jitter", "10%", "Allowable jitter (e.g. '5ms' or '10%')")
 	timeoutExit := flag.Bool("timeout-exit", true, "Exit with error if no data in 100 epochs")
@@ -144,26 +273,49 @@ func main() {
 	decode := flag.String("decode", "none", "Protocol decoder: 'none', 'dcol', or 'mb-cmr'")
 	csvFile := flag.String("csv", "", "Output filename for CSV logging")
 	flag.Parse()
+	if extras := flag.Args(); len(extras) > 0 {
+		slog.Error("unexpected command-line arguments after flags (check -hub spelling; use -hub=false)", "args", extras)
+		os.Exit(2)
+	}
 
 	fmt.Printf("Starting Timing Analyzer CLI %s\n", AppVersion)
 
 	if *udp {
 		*ipFlag = "udp"
 	}
-	embeddedStreamSet := false
-	hubSet := false
+	var embeddedStreamSet, hubSet, udpSet, portSet, hostSet, ipSet bool
+	cliFlagCount := 0
+	bannerFlagCount := 0
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "embedded-stream" {
-			embeddedStreamSet = true
+		cliFlagCount++
+		if f.Name != "verbose" {
+			bannerFlagCount++
 		}
-		if f.Name == "hub" {
+		switch f.Name {
+		case "embedded-stream":
+			embeddedStreamSet = true
+		case "hub":
 			hubSet = true
+		case "udp":
+			udpSet = true
+		case "port":
+			portSet = true
+		case "host":
+			hostSet = true
+		case "ip":
+			ipSet = true
 		}
 	})
-	if *hub && (hubSet || !embeddedStreamSet) {
+	streamFlagsFromCLI := udpSet || portSet || hostSet || ipSet
+	// Prefer embedded (single stream from flags) when the user set transport/endpoint flags,
+	// unless they explicitly opted into hub mode with -hub.
+	forceHub := hub.v && (hubSet || (!embeddedStreamSet && !streamFlagsFromCLI))
+	if forceHub {
 		*embeddedStream = false
 		*webHost = "0.0.0.0"
 	}
+	// Browser auto-open follows -hub only; -hub=false never opens a window (even with -udp/-port/etc.).
+	autoOpenBrowser := hub.v
 
 	if *host != "" {
 		*ipFlag = "tcp"
@@ -197,6 +349,8 @@ func main() {
 	cfg.IP = strings.ToLower(strings.TrimSpace(cfg.IP))
 	cfg.Host = strings.TrimSpace(cfg.Host)
 
+	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag, bannerFlagCount > 0)
+
 	if !*embeddedStream {
 		h := newCLIHub()
 		mux := http.NewServeMux()
@@ -215,20 +369,30 @@ func main() {
 					Rate:           cfg.RateHz,
 					Jitter:         *jitterFlag,
 					Decode:         cfg.Decode,
-				}))
+				}, AppVersion))
 				return
 			}
 			id := strings.TrimPrefix(r.URL.Path, "/s/")
 			id = strings.TrimSuffix(id, "/")
 			if strings.HasSuffix(id, "/events") {
-				id = strings.TrimSuffix(id, "/events")
+				sid := strings.TrimSuffix(id, "/events")
+				sid = strings.TrimSuffix(sid, "/")
 				h.mu.Lock()
-				s := h.sessions[id]
+				s := h.sessions[sid]
 				h.mu.Unlock()
 				if s == nil {
 					http.NotFound(w, r)
 					return
 				}
+				// Cancel listener + timing when the browser drops SSE (e.g. New connection), so the
+				// port is released before the next POST /api/sessions with the same settings.
+				defer func() {
+					slog.Info("Hub session ended (SSE disconnected)", "session", sid)
+					s.cancel()
+					h.mu.Lock()
+					delete(h.sessions, sid)
+					h.mu.Unlock()
+				}()
 				s.broker.ServeHTTP(w, r)
 				return
 			}
@@ -240,7 +404,7 @@ func main() {
 				return
 			}
 			w.Header().Set("Content-Type", "text/html")
-			_, _ = w.Write(web.IndexHTML)
+			_, _ = w.Write(indexHTMLBody)
 		})
 		mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -321,7 +485,7 @@ func main() {
 			h.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusCreated)
-			_ = json.NewEncoder(w).Encode(cliSessionResp{ID: id, DashboardPath: "/s/" + id})
+			_ = json.NewEncoder(w).Encode(cliSessionResp{ID: id, DashboardPath: "/s/" + id + "/"})
 		})
 		mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodDelete {
@@ -339,12 +503,35 @@ func main() {
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
-		addr := fmt.Sprintf("%s:%d", *webHost, cfg.WebPort)
-		slog.Info("Starting Timing Analyzer Hub", "url", "http://"+addr)
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		webAddr := net.JoinHostPort(*webHost, strconv.Itoa(cfg.WebPort))
+		slog.Info("Starting Timing Analyzer Hub", "addr", webAddr)
+		ln, err := net.Listen("tcp", webAddr)
+		if err != nil {
+			slog.Error("Listen failed", "addr", webAddr, "error", err)
+			os.Exit(1)
+		}
+		if autoOpenBrowser {
+			openURL := cliWebAppURL(*webHost, cfg.WebPort)
+			go func() {
+				if err := launchBrowser(openURL); err != nil {
+					slog.Warn("Could not open browser", "url", openURL, "error", err)
+				} else {
+					slog.Info("Opened browser", "url", openURL)
+				}
+			}()
+		}
+		srv := &http.Server{Handler: mux}
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("Web server failed", "error", err)
 		}
 		return
+	}
+
+	if streamFlagsFromCLI {
+		slog.Info("Embedded stream from CLI flags", "transport", cfg.IP, "host", cfg.Host, "port", cfg.Port,
+			"rate_hz", cfg.RateHz, "jitter", *jitterFlag, "decode", cfg.Decode)
+		fmt.Fprintln(os.Stdout, strings.Join(os.Args, " "))
+		fmt.Fprintf(os.Stdout, "Web dashboard: %s\n", cliWebAppURL(*webHost, cfg.WebPort))
 	}
 
 	// 1. Setup the UI Web Server
@@ -352,13 +539,29 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write(web.IndexHTML) // Using the exported variable from the web package!
+		w.Write(indexHTMLBody)
 	})
 	mux.Handle("/events", broker)
+	webAddr := net.JoinHostPort(*webHost, strconv.Itoa(cfg.WebPort))
+	slog.Info("Starting Web Dashboard", "addr", webAddr)
+	ln, err := net.Listen("tcp", webAddr)
+	if err != nil {
+		slog.Error("Listen failed", "addr", webAddr, "error", err)
+		os.Exit(1)
+	}
+	if autoOpenBrowser {
+		openURL := cliWebAppURL(*webHost, cfg.WebPort)
+		go func() {
+			if err := launchBrowser(openURL); err != nil {
+				slog.Warn("Could not open browser", "url", openURL, "error", err)
+			} else {
+				slog.Info("Opened browser", "url", openURL)
+			}
+		}()
+	}
 	go func() {
-		addr := fmt.Sprintf("%s:%d", *webHost, cfg.WebPort)
-		slog.Info("Starting Web Dashboard", "url", fmt.Sprintf("http://%s", addr))
-		if err := http.ListenAndServe(addr, mux); err != nil {
+		srv := &http.Server{Handler: mux}
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("Web server failed", "error", err)
 		}
 	}()
@@ -370,4 +573,3 @@ func main() {
 	go stream.StartListener(cfg, packetChan)
 	timing.Run(context.Background(), cfg, packetChan, broker.Notifier)
 }
-

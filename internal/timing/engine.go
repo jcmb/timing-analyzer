@@ -127,6 +127,7 @@ func logAndEmit(telemetryChan chan<- core.TelemetryEvent, csvWriter *csv.Writer,
 			ExpectedMs:    e.Expected,
 			OSDelayUs:     e.OSDelayUs,
 			IsUDP:         e.IsUDP,
+			HasOSDelay:    e.IsUDP && e.HasKernelTime,
 			Status:        statusStr,
 			Message:       extraStr,
 		}
