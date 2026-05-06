@@ -775,7 +775,7 @@
                 const modeLabel = document.getElementById('connType').value === 'udp_listen' ? 'UDP' : 'TCP';
                 banner.style.display = 'block';
                 msgEl.textContent =
-                    `Listening for incoming ${modeLabel} data (no packets yet). Corporate proxies often block live streams — if the timer below reaches 0:00 with no data, check your network.`;
+                    `Listening for incoming ${modeLabel} data (no packets yet). Corporate firewalls may block outgoing streams — if the timer below reaches 0:00 with no data, check your network.`;
 
                 let secLeft = LISTEN_FIRST_DATA_SEC;
                 cdEl.textContent = formatCountdownMMSS(secLeft);
