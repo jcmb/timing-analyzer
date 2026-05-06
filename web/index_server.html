@@ -174,7 +174,81 @@
 
     <script>
         // --- Form Interaction Logic ---
-        window.onload = () => toggleFields();
+        const LAST_SETUP_STORAGE_KEY = 'timing-analyzer-webserver-last-setup-v1';
+
+        function saveLastConnectionForm() {
+            const mode = document.getElementById('connType').value;
+            const o = {
+                connType: mode,
+                rate: document.getElementById('rate').value,
+                jitter: document.getElementById('jitter').value,
+                decode: document.getElementById('decode').value,
+                port: document.getElementById('port').value,
+                host: document.getElementById('host').value,
+                org: document.getElementById('org').value,
+                mountpoint: document.getElementById('mountpoint').value,
+                username: document.getElementById('username').value,
+                password: document.getElementById('password').value
+            };
+            try {
+                localStorage.setItem(LAST_SETUP_STORAGE_KEY, JSON.stringify(o));
+            } catch (e) { /* quota or private mode */ }
+        }
+
+        function loadLastConnectionForm() {
+            let raw = null;
+            try {
+                raw = localStorage.getItem(LAST_SETUP_STORAGE_KEY);
+            } catch (e) {
+                toggleFields();
+                return;
+            }
+            if (!raw) {
+                toggleFields();
+                return;
+            }
+            let s;
+            try {
+                s = JSON.parse(raw);
+            } catch (e) {
+                toggleFields();
+                return;
+            }
+            if (!s || typeof s !== 'object') {
+                toggleFields();
+                return;
+            }
+            const allowed = { tcp: 1, tcp_listen: 1, udp_listen: 1, ntrip: 1, ibss: 1 };
+            if (s.connType && allowed[s.connType]) {
+                document.getElementById('connType').value = s.connType;
+            }
+            if (s.rate != null && s.rate !== '') document.getElementById('rate').value = String(s.rate);
+            if (s.jitter != null) document.getElementById('jitter').value = String(s.jitter);
+            if (s.decode) document.getElementById('decode').value = s.decode;
+            if (s.org != null) document.getElementById('org').value = String(s.org);
+            if (s.mountpoint != null) document.getElementById('mountpoint').value = String(s.mountpoint);
+            if (s.username != null) document.getElementById('username').value = String(s.username);
+            if (s.password != null) document.getElementById('password').value = String(s.password);
+
+            toggleFields();
+
+            const mode = document.getElementById('connType').value;
+            if (mode === 'tcp' || mode === 'ntrip') {
+                if (s.host != null) document.getElementById('host').value = String(s.host);
+                if (s.port != null && s.port !== '') document.getElementById('port').value = String(s.port);
+            } else if (mode === 'tcp_listen' || mode === 'udp_listen') {
+                if (s.port != null && s.port !== '') document.getElementById('port').value = String(s.port);
+                const p = parseInt(document.getElementById('port').value, 10);
+                if (isNaN(p) || p < 20000 || p > 29999) {
+                    document.getElementById('port').value = '21001';
+                }
+            } else if (mode === 'ibss') {
+                updateIBSSHost();
+            }
+            updatePrivateHostNotice();
+        }
+
+        window.onload = () => loadLastConnectionForm();
 
         function isPrivateOrLocalHost(host) {
             const h = (host || '').trim().toLowerCase();
@@ -373,6 +447,8 @@
                     if (!response.ok) throw new Error('Failed to start session');
                 }
                 if (!response.ok) throw new Error(result.error || 'Failed to start session');
+
+                saveLastConnectionForm();
 
                 document.getElementById('setup-view').style.display = 'none';
                 document.getElementById('dashboard-view').style.display = 'block';
