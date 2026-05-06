@@ -148,7 +148,10 @@ func launchBrowser(rawURL string) error {
 // cliLaunchJSONPlaceholder is replaced once with JSON for the dashboard banner (see web/index.html).
 const cliLaunchJSONPlaceholder = "__TA_CLI_LAUNCH_JSON__"
 
-func embedCLIIntoIndexHTML(cfg core.Config, argv []string, jitterDisplay string) []byte {
+func embedCLIIntoIndexHTML(cfg core.Config, argv []string, jitterDisplay string, showCLIBanner bool) []byte {
+	if !showCLIBanner {
+		return bytes.Replace(web.IndexHTML, []byte(cliLaunchJSONPlaceholder), []byte("null"), 1)
+	}
 	payload := struct {
 		Argv      string  `json:"argv"`
 		Transport string  `json:"transport"`
@@ -210,14 +213,41 @@ button{padding:.55rem .95rem;border-radius:6px;border:1px solid #444;background:
 </div>
 <script>
 const cfg=%s;
+const LS_KEY="timing-analyzer-cli-hub-form";
 transport.value=cfg.transport||"tcp";host.value=cfg.host||"";port.value=String(cfg.port||2101);
 rate.value=String(cfg.rate||1.0);jitter.value=cfg.jitter||"10%%";decode.value=cfg.decode||"none";
+function loadSavedForm(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const o=JSON.parse(raw);
+    if(o.transport==="tcp"||o.transport==="udp") transport.value=o.transport;
+    if(typeof o.host==="string") host.value=o.host;
+    if(o.port!==undefined&&o.port!==null&&String(o.port)!=="") port.value=String(o.port);
+    if(o.rate!==undefined&&o.rate!==null&&String(o.rate)!=="") rate.value=String(o.rate);
+    if(typeof o.jitter==="string"&&o.jitter) jitter.value=o.jitter;
+    if(o.decode==="none"||o.decode==="dcol"||o.decode==="mb-cmr") decode.value=o.decode;
+  }catch(e){}
+}
+function saveForm(){
+  try{
+    localStorage.setItem(LS_KEY,JSON.stringify({
+      transport:transport.value,
+      host:host.value,
+      port:port.value,
+      rate:rate.value,
+      jitter:jitter.value,
+      decode:decode.value
+    }));
+  }catch(e){}
+}
+loadSavedForm();
 function syncHost(){host.disabled=(transport.value==="udp");}
 transport.addEventListener("change",syncHost);syncHost();
 connect.addEventListener("click",async()=>{err.textContent="";
   const body={transport:transport.value,host:(host.value||"").trim(),port:parseInt(port.value,10),rate:parseFloat(rate.value),jitter:jitter.value,decode:decode.value};
   try{const r=await fetch("/api/sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
-    const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); window.location.href=out.dashboard_path;
+    const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); saveForm(); window.location.href=out.dashboard_path;
   }catch(e){err.textContent=String(e.message||e);}
 });
 </script></body></html>`, string(b)))
@@ -252,7 +282,9 @@ func main() {
 		*ipFlag = "udp"
 	}
 	var embeddedStreamSet, hubSet, udpSet, portSet, hostSet, ipSet bool
+	cliFlagCount := 0
 	flag.Visit(func(f *flag.Flag) {
+		cliFlagCount++
 		switch f.Name {
 		case "embedded-stream":
 			embeddedStreamSet = true
@@ -276,7 +308,8 @@ func main() {
 		*embeddedStream = false
 		*webHost = "0.0.0.0"
 	}
-	autoOpenBrowser := hub.v || streamFlagsFromCLI
+	// Browser auto-open follows -hub only; -hub=false never opens a window (even with -udp/-port/etc.).
+	autoOpenBrowser := hub.v
 
 	if *host != "" {
 		*ipFlag = "tcp"
@@ -310,7 +343,7 @@ func main() {
 	cfg.IP = strings.ToLower(strings.TrimSpace(cfg.IP))
 	cfg.Host = strings.TrimSpace(cfg.Host)
 
-	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag)
+	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag, cliFlagCount > 0)
 
 	if !*embeddedStream {
 		h := newCLIHub()
