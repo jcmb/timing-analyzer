@@ -184,6 +184,12 @@
         // --- Form Interaction Logic ---
         const LAST_SETUP_STORAGE_KEY = 'timing-analyzer-webserver-last-setup-v1';
 
+        function randomListenPortStr() {
+            const lo = 20000;
+            const hi = 29999;
+            return String(lo + Math.floor(Math.random() * (hi - lo + 1)));
+        }
+
         let cachedListenIPv4 = null;
 
         function setupBasePath() {
@@ -322,7 +328,7 @@
                 }
                 const p = parseInt(document.getElementById('port').value, 10);
                 if (isNaN(p) || p < 20000 || p > 29999) {
-                    document.getElementById('port').value = '21001';
+                    document.getElementById('port').value = randomListenPortStr();
                 }
             }
 
@@ -404,7 +410,7 @@
                 portInput.max = '29999';
                 let p = parseInt(portInput.value, 10);
                 if (isNaN(p) || p < 20000 || p > 29999) {
-                    portInput.value = '21001';
+                    portInput.value = randomListenPortStr();
                 }
                 orgGroup.style.display = 'none';
                 mountGroup.style.display = 'none';
@@ -452,6 +458,13 @@
 
         // --- Session Connection Logic ---
         let evtSource = null;
+        // Closing SSE on page navigation tears down the HTTP request so the server drops the TCP session backing this tab.
+        window.addEventListener('pagehide', () => {
+            if (evtSource) {
+                try { evtSource.close(); } catch (e) { /* noop */ }
+                evtSource = null;
+            }
+        }, { passive: true });
         let chartSaveSlug = '';
         let isPaused = false;
         let isConnected = false;
@@ -536,12 +549,21 @@
                 });
 
                 let result = {};
-                try {
-                    result = await response.json();
-                } catch (_) {
-                    if (!response.ok) throw new Error('Failed to start session');
+                const bodyText = await response.text();
+                if (bodyText) {
+                    try {
+                        result = JSON.parse(bodyText);
+                    } catch (_) {
+                        if (!response.ok) {
+                            throw new Error(bodyText.trim() || 'Failed to start session');
+                        }
+                        throw new Error('Invalid response from server');
+                    }
                 }
-                if (!response.ok) throw new Error(result.error || 'Failed to start session');
+                if (!response.ok) {
+                    const msg = (result && typeof result.error === 'string' && result.error) || bodyText.trim() || 'Failed to start session';
+                    throw new Error(msg);
+                }
 
                 saveLastConnectionForm();
 

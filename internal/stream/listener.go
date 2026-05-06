@@ -76,7 +76,7 @@ func runTCPOutboundClient(ctx context.Context, cfg core.Config, packetChan chan<
 		cur = conn
 		mu.Unlock()
 
-		handleTCPConn(conn, cfg, packetChan)
+		handleTCPConn(ctx, conn, cfg, packetChan)
 
 		mu.Lock()
 		cur = nil
@@ -121,7 +121,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 				}
 				continue
 			}
-			go handleTCPConn(conn, cfg, packetChan)
+			go handleTCPConn(ctx, conn, cfg, packetChan)
 		}
 
 	case "udp":
@@ -270,8 +270,18 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 	}()
 }
 
-func handleTCPConn(conn net.Conn, cfg core.Config, packetChan chan<- core.PacketEvent) {
+func handleTCPConn(ctx context.Context, conn net.Conn, cfg core.Config, packetChan chan<- core.PacketEvent) {
+	closedOnDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-closedOnDone:
+		}
+	}()
+	defer close(closedOnDone)
 	defer conn.Close()
+
 	buf := make([]byte, 2048)
 	remoteIP := conn.RemoteAddr().String()
 	slog.Info("TCP connection established", "remote_addr", remoteIP)
@@ -279,6 +289,12 @@ func handleTCPConn(conn net.Conn, cfg core.Config, packetChan chan<- core.Packet
 	dcolParser := &parser.DCOLParser{}
 
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		n, err := conn.Read(buf)
 		goTime := time.Now()
 		if err != nil {

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"timing-analyzer/internal/core"
@@ -20,6 +21,17 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 	slog.Info("Starting Web TCP/NTRIP client", "target", address, "session", cfg.SessionID)
 
 	dcolParser := &parser.DCOLParser{}
+
+	var curMu sync.Mutex
+	var curConn net.Conn
+	go func() {
+		<-ctx.Done()
+		curMu.Lock()
+		if curConn != nil {
+			_ = curConn.Close()
+		}
+		curMu.Unlock()
+	}()
 
 	// Helper to push connection errors directly to the Web UI
 	reportFatal := func(msg string) {
@@ -50,6 +62,10 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 			reportFatal(fmt.Sprintf("Connection Failed: %v", err))
 			return // Exit immediately so the user can fix their setup
 		}
+
+		curMu.Lock()
+		curConn = conn
+		curMu.Unlock()
 
 		// Perform NTRIP Handshake if a mountpoint is requested
 		if cfg.Mountpoint != "" {
@@ -85,6 +101,9 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 				slog.Error("Failed to read NTRIP response", "error", err, "session", cfg.SessionID)
 				reportFatal("Failed to read NTRIP response from caster")
 				conn.Close()
+				curMu.Lock()
+				curConn = nil
+				curMu.Unlock()
 				return
 			}
 
@@ -98,6 +117,9 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 				slog.Error("NTRIP connection rejected", "response", errMsg, "session", cfg.SessionID)
 				reportFatal(fmt.Sprintf("Caster Rejected Connection: %s", errMsg))
 				conn.Close()
+				curMu.Lock()
+				curConn = nil
+				curMu.Unlock()
 				return // Exit immediately on 401/404 errors
 			}
 			slog.Info("NTRIP connected successfully", "mountpoint", cfg.Mountpoint, "session", cfg.SessionID)
@@ -116,7 +138,10 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 			// Check if the user closed the browser tab
 			select {
 			case <-ctx.Done():
-				conn.Close()
+				_ = conn.Close()
+				curMu.Lock()
+				curConn = nil
+				curMu.Unlock()
 				return
 			default:
 			}
@@ -129,6 +154,9 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 			if err != nil {
 				slog.Info("Connection closed or timed out", "error", err, "session", cfg.SessionID)
 				conn.Close()
+				curMu.Lock()
+				curConn = nil
+				curMu.Unlock()
 				break // Break inner loop to trigger a reconnect or exit
 			}
 
@@ -145,6 +173,10 @@ func StartNTRIPClient(ctx context.Context, cfg core.Config, packetChan chan<- co
 				}
 			}
 		}
+
+		curMu.Lock()
+		curConn = nil
+		curMu.Unlock()
 
 		// Small sleep before attempting to reconnect a dropped stream
 		select {
