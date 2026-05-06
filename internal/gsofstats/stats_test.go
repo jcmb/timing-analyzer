@@ -164,6 +164,49 @@ func TestStats_StreamRateFromPositionTOWIgnoresSeqJump(t *testing.T) {
 	}
 }
 
+// packetPositionTimeTowPlusOptional33 is one expanded GSOF buffer: position time plus optional SV brief type 33.
+func packetPositionTimeTowPlusOptional33(towMs uint32, includeType33 bool) []byte {
+	p := append([]byte(nil), positionTimeBufGPSMS(towMs)...)
+	if includeType33 {
+		p = append(p, []byte{0x21, 0x05, 0x01, 0x04, 0x00, 0x0F, 0x30}...)
+	}
+	return p
+}
+
+// Subtypes bundled with the same type-1 TOW still get distinct inferred rates when one appears less often.
+func TestStats_PerSubtypeSolveRatesFromSamePacketTOW(t *testing.T) {
+	if testing.Short() {
+		t.Skip()
+	}
+	s := NewStats(false)
+	// Odd indices: position time + type 33. Even: position time only. TOW advances 0.1 s every packet → type 1 at 10 Hz; type 33 every 0.2 s GNSS-time → 5 Hz.
+	base := uint32(3_600_000) // GPS TOW ms (~1 h), room to add 2.4 s
+	for i := 0; i < 24; i++ {
+		tow := base + uint32(i)*100
+		with33 := (i % 2) == 1
+		s.Update(uint8(i+1), packetPositionTimeTowPlusOptional33(tow, with33), false, false)
+	}
+	d := s.BuildDashboard("udp", 2101, "", "")
+	var row1, row33 *RecordRow
+	for i := range d.Records {
+		switch d.Records[i].Type {
+		case 1:
+			row1 = &d.Records[i]
+		case 33:
+			row33 = &d.Records[i]
+		}
+	}
+	if row1 == nil || row33 == nil {
+		t.Fatalf("rows: type1=%v type33=%v", row1, row33)
+	}
+	if row1.Rate != "10 Hz" {
+		t.Fatalf("type 1 want 10 Hz from 0.1 s TOW steps; got %q", row1.Rate)
+	}
+	if row33.Rate != "5 Hz" {
+		t.Fatalf("type 33 want 5 Hz from 0.2 s between sightings (same bundles as seq); got %q", row33.Rate)
+	}
+}
+
 func TestSnapToNearestRate_prefersShorterPeriodOnTie(t *testing.T) {
 	hz, label := snapToNearestRate(0.15)
 	if hz != 10 || label != "10 Hz" {
