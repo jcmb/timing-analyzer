@@ -103,17 +103,25 @@ func TestStats_TCPIgnoreGSOFGap1StillWarnsMultiStep(t *testing.T) {
 	}
 }
 
+func positionTimeBufGPSMS(ms uint32) []byte {
+	b := []byte{0x01, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	binary.BigEndian.PutUint32(b[2:6], ms)
+	return b
+}
+
 func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
 	s := NewStats(false)
-	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	buf := positionTimeBufGPSMS(5000)
 	s.Update(1, buf, false, false)
 	time.Sleep(2 * time.Millisecond)
-	s.Update(2, buf, false, false)
+	buf2 := positionTimeBufGPSMS(5100)
+	s.Update(2, buf2, false, false)
 	time.Sleep(120 * time.Millisecond)
-	s.Update(3, buf, false, false)
+	buf3 := positionTimeBufGPSMS(5200)
+	s.Update(3, buf3, false, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -126,19 +134,20 @@ func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
 		t.Fatal("missing type 1 row")
 	}
 	if strings.HasPrefix(row.Rate, "50") {
-		t.Fatalf("rate should not snap to 50 Hz after sub-5 ms burst; got %q", row.Rate)
+		t.Fatalf("rate should follow TOW cadence, not wall-clock micro-bursts; got %q", row.Rate)
 	}
 }
 
-func TestStats_RateUsesSeqAdvanceAfterUDPLoss(t *testing.T) {
+func TestStats_StreamRateFromPositionTOWIgnoresSeqJump(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
 	s := NewStats(false)
-	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
+	buf := positionTimeBufGPSMS(5000)
 	s.Update(1, buf, false, false)
 	time.Sleep(520 * time.Millisecond)
-	s.Update(6, buf, false, false)
+	buf2 := positionTimeBufGPSMS(5100)
+	s.Update(250, buf2, false, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -151,7 +160,7 @@ func TestStats_RateUsesSeqAdvanceAfterUDPLoss(t *testing.T) {
 		t.Fatal("missing type 1 row")
 	}
 	if row.Rate != "10 Hz" {
-		t.Fatalf("with seq advance 5 and ~520 ms wall, want 10 Hz (missed packets in rate); got %q", row.Rate)
+		t.Fatalf("rate from TOW step 0.1 s should be 10 Hz despite seq jump; got %q", row.Rate)
 	}
 }
 
@@ -167,14 +176,13 @@ func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
 		t.Skip()
 	}
 	s := NewStats(false)
-	buf := []byte{0x01, 0x0A, 0x00, 0x00, 0x13, 0x88, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00}
-	s.Update(1, buf, false, false)
+	s.Update(1, positionTimeBufGPSMS(5000), false, false)
 	time.Sleep(105 * time.Millisecond)
-	s.Update(2, buf, false, false)
+	s.Update(2, positionTimeBufGPSMS(5100), false, false)
 	time.Sleep(105 * time.Millisecond)
-	s.Update(3, buf, false, false)
+	s.Update(3, positionTimeBufGPSMS(5200), false, false)
 	time.Sleep(215 * time.Millisecond)
-	s.Update(4, buf, false, false)
+	s.Update(4, positionTimeBufGPSMS(5400), false, false)
 	d := s.BuildDashboard("udp", 2101, "", "")
 	var row *RecordRow
 	for i := range d.Records {
@@ -187,7 +195,7 @@ func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
 		t.Fatal("missing type 1 row")
 	}
 	if strings.HasPrefix(row.Rate, "5") && strings.Contains(row.Rate, "Hz") {
-		t.Fatalf("EMA should keep ~10 Hz after one ~2× gap; got %q", row.Rate)
+		t.Fatalf("EMA should keep ~10 Hz after one ~2× TOW gap; got %q", row.Rate)
 	}
 }
 
