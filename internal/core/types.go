@@ -57,7 +57,7 @@ type TelemetryEvent struct {
 	ExpectedMs    int64  `json:"expected_ms"`
 	OSDelayUs     int64  `json:"os_delay_us"`
 	IsUDP         bool   `json:"is_udp"`
-	// HasOSDelay is true when kernel/hardware RX time was available so OS wakeup latency is meaningful (typically Linux UDP; often false on macOS).
+	// HasOSDelay is true when kernel RX time was available (UDP + SO_TIMESTAMP / recvmsg path on Unix; Windows UDP has no kernel time here).
 	HasOSDelay bool   `json:"has_os_delay,omitempty"`
 	Status     string `json:"status"`
 	Message    string `json:"message"`

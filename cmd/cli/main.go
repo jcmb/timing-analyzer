@@ -29,7 +29,7 @@ import (
 
 
 // AppVersion is shown on the hub connect page; increment when user-visible CLI behavior changes.
-const AppVersion = "v1.2.0"
+const AppVersion = "v1.2.2"
 const maxCLISessionBodyBytes = 8192
 
 type cliSession struct {
@@ -49,6 +49,7 @@ type cliSessionReq struct {
 	Rate      float64 `json:"rate"`
 	Jitter    string  `json:"jitter"`
 	Decode    string  `json:"decode"`
+	Verbose   bool    `json:"verbose"`
 }
 
 type cliSessionResp struct {
@@ -64,6 +65,7 @@ type cliConfigResp struct {
 	Rate           float64 `json:"rate"`
 	Jitter         string  `json:"jitter"`
 	Decode         string  `json:"decode"`
+	Verbose        int     `json:"verbose"`
 }
 
 func newCLIHub() *cliHub {
@@ -76,6 +78,18 @@ func newCLISessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// mergeHubVerbose combines per-session UI verbose (maps to level 2) with the CLI -verbose floor.
+func mergeHubVerbose(cliLevel int, sessionVerbose bool) int {
+	v := 0
+	if sessionVerbose {
+		v = 2
+	}
+	if cliLevel > v {
+		return cliLevel
+	}
+	return v
 }
 
 func parseJitter(v string) (float64, bool, error) {
@@ -211,6 +225,9 @@ button{padding:.55rem .95rem;border-radius:6px;border:1px solid #444;background:
     <div><label>Jitter</label><input id="jitter" placeholder="e.g. 10%% or 5ms"></div>
     <div><label>Decode</label><select id="decode"><option value="none">none</option><option value="dcol">dcol</option><option value="mb-cmr">mb-cmr</option></select></div>
   </div>
+  <div class="row" style="align-items:center">
+    <div style="flex:1"><label style="display:flex;align-items:center;gap:.5rem;cursor:pointer"><input type="checkbox" id="verboseCb" style="width:auto;margin:0"> Verbose telemetry (detailed event log; combined with CLI <code>-verbose</code>)</label></div>
+  </div>
   <button id="connect">Connect</button>
   <p id="err"></p>
 </div>
@@ -219,6 +236,7 @@ const cfg=%s;
 const LS_KEY="timing-analyzer-cli-hub-form";
 transport.value=cfg.transport||"tcp";host.value=cfg.host||"";port.value=String(cfg.port||2101);
 rate.value=String(cfg.rate||1.0);jitter.value=cfg.jitter||"10%%";decode.value=cfg.decode||"none";
+verboseCb.checked=(cfg.verbose>=2);
 function loadSavedForm(){
   try{
     const raw=localStorage.getItem(LS_KEY);
@@ -230,6 +248,7 @@ function loadSavedForm(){
     if(o.rate!==undefined&&o.rate!==null&&String(o.rate)!=="") rate.value=String(o.rate);
     if(typeof o.jitter==="string"&&o.jitter) jitter.value=o.jitter;
     if(o.decode==="none"||o.decode==="dcol"||o.decode==="mb-cmr") decode.value=o.decode;
+    if(typeof o.verbose==="boolean") verboseCb.checked=o.verbose;
   }catch(e){}
 }
 function saveForm(){
@@ -240,7 +259,8 @@ function saveForm(){
       port:port.value,
       rate:rate.value,
       jitter:jitter.value,
-      decode:decode.value
+      decode:decode.value,
+      verbose:verboseCb.checked
     }));
   }catch(e){}
 }
@@ -248,7 +268,7 @@ loadSavedForm();
 function syncHost(){host.disabled=(transport.value==="udp");}
 transport.addEventListener("change",syncHost);syncHost();
 connect.addEventListener("click",async()=>{err.textContent="";
-  const body={transport:transport.value,host:(host.value||"").trim(),port:parseInt(port.value,10),rate:parseFloat(rate.value),jitter:jitter.value,decode:decode.value};
+  const body={transport:transport.value,host:(host.value||"").trim(),port:parseInt(port.value,10),rate:parseFloat(rate.value),jitter:jitter.value,decode:decode.value,verbose:verboseCb.checked};
   try{const r=await fetch("/api/sessions",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); saveForm(); window.location.href=out.dashboard_path;
   }catch(e){err.textContent=String(e.message||e);}
@@ -286,8 +306,12 @@ func main() {
 	}
 	var embeddedStreamSet, hubSet, udpSet, portSet, hostSet, ipSet bool
 	cliFlagCount := 0
+	bannerFlagCount := 0
 	flag.Visit(func(f *flag.Flag) {
 		cliFlagCount++
+		if f.Name != "verbose" {
+			bannerFlagCount++
+		}
 		switch f.Name {
 		case "embedded-stream":
 			embeddedStreamSet = true
@@ -346,7 +370,7 @@ func main() {
 	cfg.IP = strings.ToLower(strings.TrimSpace(cfg.IP))
 	cfg.Host = strings.TrimSpace(cfg.Host)
 
-	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag, cliFlagCount > 0)
+	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag, bannerFlagCount > 0)
 
 	if !*embeddedStream {
 		h := newCLIHub()
@@ -366,6 +390,7 @@ func main() {
 					Rate:           cfg.RateHz,
 					Jitter:         *jitterFlag,
 					Decode:         cfg.Decode,
+					Verbose:        cfg.Verbose,
 				}, AppVersion))
 				return
 			}
@@ -417,6 +442,7 @@ func main() {
 				Rate:           cfg.RateHz,
 				Jitter:         *jitterFlag,
 				Decode:         cfg.Decode,
+				Verbose:        cfg.Verbose,
 			})
 		})
 		mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
@@ -472,6 +498,7 @@ func main() {
 			sessCfg.Decode = req.Decode
 			sessCfg.SessionID = id
 			sessCfg.TimeoutExit = false
+			sessCfg.Verbose = mergeHubVerbose(cfg.Verbose, req.Verbose)
 			packetChan := make(chan core.PacketEvent, 1000)
 			go func() {
 				_ = stream.StartListenerContext(ctx, sessCfg, packetChan, nil)

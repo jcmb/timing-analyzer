@@ -228,6 +228,7 @@
 
         // --- Session Connection Logic ---
         let evtSource = null;
+        let chartSaveSlug = '';
         let isPaused = false;
         let isConnected = false;
         let proxyCheckTimer = null;
@@ -308,6 +309,10 @@
 
                 document.getElementById('target-label').textContent = `Target: ${payload.host}:${payload.port}${payload.mountpoint ? '/'+payload.mountpoint : ''}`;
 
+                const mode = document.getElementById('connType').value;
+                const mp = (payload.mountpoint || '').replace(/[^\w.-]+/g, '_').slice(0, 32);
+                chartSaveSlug = `${mode}-${payload.host}-p${payload.port}${mp ? '-m' + mp : ''}`.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 96);
+
                 connectSSE(result.session_id);
 
             } catch (err) {
@@ -340,6 +345,7 @@
 
             document.getElementById('dashboard-view').style.display = 'none';
             document.getElementById('setup-view').style.display = 'block';
+            chartSaveSlug = '';
         }
 
         function showError(msg) {
@@ -381,8 +387,9 @@
         }
 
         function saveJitterChartPNG() {
+            const slug = (chartSaveSlug && chartSaveSlug.length) ? chartSaveSlug : 'session';
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            downloadDataURL(chartToPNGDataURL(jitterChart), `jitter-chart-${ts}.png`);
+            downloadDataURL(chartToPNGDataURL(jitterChart), `${slug}-jitter-${ts}.png`);
         }
 
         const colors = ['#4CAF50', '#2196F3', '#FF9800', '#E91E63', '#9C27B0', '#00BCD4'];

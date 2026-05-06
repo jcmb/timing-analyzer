@@ -40,7 +40,7 @@ The CLI uses Go’s standard flag syntax: **one dash** (`-port`, `-hub=false`). 
 **Hub mode** (many concurrent sessions from the browser):
 
 - The HTTP server listens on `-web-host` / `-web-port` (by default **all interfaces** when hub shorthand applies).
-- Open `http://127.0.0.1:<web-port>/` (or your host) for the **setup** page. It shows the **CLI version** string baked into that build. Choose TCP or UDP and parameters, then **Connect** to open `/s/<session>/` for that session’s dashboard. SSE is at `/s/<session>/events`. When that SSE connection ends (for example **New connection** in the dashboard), the server tears down that session so the same port can be used again.
+- Open `http://127.0.0.1:<web-port>/` (or your host) for the **setup** page. It shows the **CLI version** string baked into that build. Choose TCP or UDP and parameters, optionally **Verbose telemetry**, then **Connect** to open `/s/<session>/` for that session’s dashboard. Per-session verbosity uses the checkbox (maps to detailed log level **2** when checked) merged with the CLI **`-verbose`** value (the higher of the two applies, so `-verbose 2` on the server keeps detailed logs even if the box is unchecked). SSE is at `/s/<session>/events`. When that SSE connection ends (for example **New connection** in the dashboard), the server tears down that session so the same port can be used again.
 
 **When hub layout is applied** (multi-session UI, `-web-host` forced to `0.0.0.0` unless you only toggled `-hub`):
 
@@ -60,7 +60,7 @@ Failures to open the browser are logged as a warning; the process keeps running.
 
 ## Dashboard: command-line banner
 
-If you pass **at least one** command-line flag, the HTML dashboard shows a **Command line** section: full process `argv` and a short table of resolved options (transport, host, port, rate, jitter, decode, verbose, warmup). With **no** flags (only the executable name), that section is omitted so the default hub view stays minimal.
+If you pass **at least one** command-line flag other than **`-verbose`**, the HTML dashboard shows a **Command line** section: full process `argv` and a short table of resolved options (transport, host, port, rate, jitter, decode, verbose, warmup). With **no** flags (only the executable name), that section is omitted so the default hub view stays minimal.
 
 When you start an **embedded** stream using any of **`-udp`**, **`-port`**, **`-host`**, or **`-ip`** on the command line, the process also prints the same `argv` and a `Web dashboard: http://…` line to **stdout**, and logs an **Embedded stream from CLI flags** line.
 

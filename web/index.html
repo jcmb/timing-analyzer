@@ -264,14 +264,39 @@
             document.body.removeChild(a);
         }
 
+        function sanitizeFilenamePart(s, maxLen) {
+            if (!s) return '';
+            return String(s).replace(/[^\w.-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, maxLen || 64);
+        }
+
+        /** Slug from embedded CLI JSON, else hub session id from URL. */
+        function connectionFilenameSlug() {
+            const maxTotal = 96;
+            try {
+                const el = document.getElementById('ta-cli-launch-data');
+                if (el) {
+                    const j = JSON.parse(el.textContent);
+                    if (j && j.transport && (j.port !== undefined && j.port !== null)) {
+                        const h = sanitizeFilenamePart(j.host || 'any', 48);
+                        const slug = sanitizeFilenamePart(`${j.transport}-p${j.port}-h${h}`, maxTotal);
+                        if (slug) return slug;
+                    }
+                }
+            } catch (e) {}
+            const m = window.location.pathname.match(/^\/s\/([^/]+)/);
+            if (m) return sanitizeFilenamePart(`hub-${m[1]}`, maxTotal) || 'hub';
+            return 'jitter';
+        }
+
         document.getElementById('btn-save-charts').addEventListener('click', () => {
+            const slug = connectionFilenameSlug();
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-            downloadDataURL(chartToPNGDataURL(jitterChart), `jitter-chart-${ts}.png`);
+            downloadDataURL(chartToPNGDataURL(jitterChart), `${slug}-jitter-${ts}.png`);
             const osCard = document.getElementById('os-chart-card');
             const osShown = osCard && window.getComputedStyle(osCard).display !== 'none';
             const osHasPoints = osChart.data.datasets.some(d => d.data && d.data.length > 0);
             if (osShown && osHasPoints) {
-                downloadDataURL(chartToPNGDataURL(osChart), `os-wakeup-${ts}.png`);
+                downloadDataURL(chartToPNGDataURL(osChart), `${slug}-os-wakeup-${ts}.png`);
             }
         });
 
