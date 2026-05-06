@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -263,6 +264,67 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	session.Broker.ServeHTTP(w, r)
 }
 
+// listHostIPv4Hints returns distinct non-loopback IPv4 addresses on up, non-loopback interfaces.
+func listHostIPv4Hints() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			default:
+				continue
+			}
+			if ip == nil {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			s := ip.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func handleListenInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ips := listHostIPv4Hints()
+	if ips == nil {
+		ips = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"ipv4": ips})
+}
+
 func main() {
 	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
@@ -300,6 +362,7 @@ func main() {
 	})
 
 	http.HandleFunc(path+"api/start", handleStart)
+	http.HandleFunc(path+"api/listen-info", handleListenInfo)
 	http.HandleFunc(path+"events", handleEvents)
 
 	address := fmt.Sprintf("%s:%d", *bindIP, *port)
