@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -144,6 +145,39 @@ func launchBrowser(rawURL string) error {
 	return cmd.Start()
 }
 
+// cliLaunchJSONPlaceholder is replaced once with JSON for the dashboard banner (see web/index.html).
+const cliLaunchJSONPlaceholder = "__TA_CLI_LAUNCH_JSON__"
+
+func embedCLIIntoIndexHTML(cfg core.Config, argv []string, jitterDisplay string) []byte {
+	payload := struct {
+		Argv      string  `json:"argv"`
+		Transport string  `json:"transport"`
+		Host      string  `json:"host"`
+		Port      int     `json:"port"`
+		Rate      float64 `json:"rate"`
+		Jitter    string  `json:"jitter"`
+		Decode    string  `json:"decode"`
+		Verbose   int     `json:"verbose"`
+		Warmup    int     `json:"warmup"`
+	}{
+		Argv:      strings.Join(argv, " "),
+		Transport: cfg.IP,
+		Host:      cfg.Host,
+		Port:      cfg.Port,
+		Rate:      cfg.RateHz,
+		Jitter:    jitterDisplay,
+		Decode:    cfg.Decode,
+		Verbose:   cfg.Verbose,
+		Warmup:    cfg.WarmupPackets,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return web.IndexHTML
+	}
+	out := bytes.Replace(web.IndexHTML, []byte(cliLaunchJSONPlaceholder), raw, 1)
+	return out
+}
+
 func cliConnectHTML(cfg cliConfigResp) []byte {
 	b, _ := json.Marshal(cfg)
 	return []byte(fmt.Sprintf(`<!doctype html>
@@ -217,20 +251,32 @@ func main() {
 	if *udp {
 		*ipFlag = "udp"
 	}
-	embeddedStreamSet := false
-	hubSet := false
+	var embeddedStreamSet, hubSet, udpSet, portSet, hostSet, ipSet bool
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "embedded-stream" {
+		switch f.Name {
+		case "embedded-stream":
 			embeddedStreamSet = true
-		}
-		if f.Name == "hub" {
+		case "hub":
 			hubSet = true
+		case "udp":
+			udpSet = true
+		case "port":
+			portSet = true
+		case "host":
+			hostSet = true
+		case "ip":
+			ipSet = true
 		}
 	})
-	if hub.v && (hubSet || !embeddedStreamSet) {
+	streamFlagsFromCLI := udpSet || portSet || hostSet || ipSet
+	// Prefer embedded (single stream from flags) when the user set transport/endpoint flags,
+	// unless they explicitly opted into hub mode with -hub.
+	forceHub := hub.v && (hubSet || (!embeddedStreamSet && !streamFlagsFromCLI))
+	if forceHub {
 		*embeddedStream = false
 		*webHost = "0.0.0.0"
 	}
+	autoOpenBrowser := hub.v || streamFlagsFromCLI
 
 	if *host != "" {
 		*ipFlag = "tcp"
@@ -263,6 +309,8 @@ func main() {
 	}
 	cfg.IP = strings.ToLower(strings.TrimSpace(cfg.IP))
 	cfg.Host = strings.TrimSpace(cfg.Host)
+
+	indexHTMLBody := embedCLIIntoIndexHTML(cfg, os.Args, *jitterFlag)
 
 	if !*embeddedStream {
 		h := newCLIHub()
@@ -307,7 +355,7 @@ func main() {
 				return
 			}
 			w.Header().Set("Content-Type", "text/html")
-			_, _ = w.Write(web.IndexHTML)
+			_, _ = w.Write(indexHTMLBody)
 		})
 		mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
@@ -413,7 +461,7 @@ func main() {
 			slog.Error("Listen failed", "addr", webAddr, "error", err)
 			os.Exit(1)
 		}
-		if hub.v {
+		if autoOpenBrowser {
 			openURL := cliWebAppURL(*webHost, cfg.WebPort)
 			go func() {
 				if err := launchBrowser(openURL); err != nil {
@@ -430,12 +478,19 @@ func main() {
 		return
 	}
 
+	if streamFlagsFromCLI {
+		slog.Info("Embedded stream from CLI flags", "transport", cfg.IP, "host", cfg.Host, "port", cfg.Port,
+			"rate_hz", cfg.RateHz, "jitter", *jitterFlag, "decode", cfg.Decode)
+		fmt.Fprintln(os.Stdout, strings.Join(os.Args, " "))
+		fmt.Fprintf(os.Stdout, "Web dashboard: %s\n", cliWebAppURL(*webHost, cfg.WebPort))
+	}
+
 	// 1. Setup the UI Web Server
 	broker := telemetry.NewSSEBroker()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write(web.IndexHTML) // Using the exported variable from the web package!
+		w.Write(indexHTMLBody)
 	})
 	mux.Handle("/events", broker)
 	webAddr := net.JoinHostPort(*webHost, strconv.Itoa(cfg.WebPort))
@@ -445,7 +500,7 @@ func main() {
 		slog.Error("Listen failed", "addr", webAddr, "error", err)
 		os.Exit(1)
 	}
-	if hub.v {
+	if autoOpenBrowser {
 		openURL := cliWebAppURL(*webHost, cfg.WebPort)
 		go func() {
 			if err := launchBrowser(openURL); err != nil {

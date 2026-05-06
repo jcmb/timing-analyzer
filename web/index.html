@@ -40,12 +40,23 @@
         .status-warn { color: #FFC107; }
         .status-error { color: #F44336; }
         .timestamp { color: #888; margin-right: 10px; }
+        #cli-launch-banner h2 { font-size: 15px; }
+        #cli-launch-argv { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; color: #ccc; background: #111; padding: 10px; border-radius: 4px; border: 1px solid #333; }
+        #cli-launch-table { width: 100%; margin-top: 10px; font-size: 13px; }
+        #cli-launch-table td:first-child { color: #888; width: 9rem; }
     </style>
 </head>
 <body>
+    <script type="application/json" id="ta-cli-launch-data">__TA_CLI_LAUNCH_JSON__</script>
     <div class="header">
         <h1 style="margin: 0; color: #fff; font-size: 24px;">Network Jitter Telemetry</h1>
         <div id="connection-status" title="Click to Pause/Resume">Connecting...</div>
+    </div>
+
+    <div id="cli-launch-banner" class="card full-width" style="display:none;margin-bottom:18px;">
+        <h2>Command line</h2>
+        <pre id="cli-launch-argv"></pre>
+        <table id="cli-launch-table"><tbody></tbody></table>
     </div>
 
     <div class="grid">
@@ -85,6 +96,41 @@
     </div>
 
     <script>
+        (function cliLaunchBanner() {
+            const dataEl = document.getElementById('ta-cli-launch-data');
+            const banner = document.getElementById('cli-launch-banner');
+            const argvEl = document.getElementById('cli-launch-argv');
+            const tbody = document.querySelector('#cli-launch-table tbody');
+            if (!dataEl || !banner || !argvEl || !tbody) return;
+            let d;
+            try { d = JSON.parse(dataEl.textContent); } catch (e) { return; }
+            if (!d || typeof d.argv !== 'string' || !d.argv) return;
+            argvEl.textContent = d.argv;
+            const rows = [
+                ['Transport', d.transport],
+                ['Host', d.host || '—'],
+                ['Port', d.port != null ? String(d.port) : '—'],
+                ['Rate (Hz)', d.rate != null ? String(d.rate) : '—'],
+                ['Jitter', d.jitter || '—'],
+                ['Decode', d.decode || '—'],
+                ['Verbose', d.verbose != null ? String(d.verbose) : '—'],
+                ['Warmup packets', d.warmup != null ? String(d.warmup) : '—']
+            ];
+            rows.forEach(([k, v]) => {
+                const tr = document.createElement('tr');
+                const tdK = document.createElement('td');
+                tdK.textContent = k;
+                const tdV = document.createElement('td');
+                tdV.style.color = '#e0e0e0';
+                tdV.style.fontFamily = 'monospace';
+                tdV.textContent = String(v);
+                tr.appendChild(tdK);
+                tr.appendChild(tdV);
+                tbody.appendChild(tr);
+            });
+            banner.style.display = 'block';
+        })();
+
         const commonChartOptions = {
             responsive: true,
             animation: false,
