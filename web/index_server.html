@@ -33,6 +33,9 @@
 
         #connection-status { color: #FFC107; font-weight: bold; cursor: pointer; user-select: none; padding: 8px 12px; border-radius: 4px; background: #222;}
 
+        #listen-wait-banner { display: none; margin-top: 10px; padding: 10px 14px; background: #1a2520; border: 1px solid #2e4a3a; border-radius: 4px; font-size: 13px; color: #c5e1a5; line-height: 1.4; }
+        #listen-wait-countdown { font-weight: bold; font-family: ui-monospace, monospace; color: #fff; margin-left: 6px; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
         th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #333; }
         th { color: #888; text-transform: uppercase; font-size: 12px; }
@@ -144,6 +147,10 @@
                 <button class="btn-secondary" type="button" onclick="saveJitterChartPNG()">Save chart</button>
                 <button class="btn-secondary" onclick="stopSession()">&#9632; Stop & New Setup</button>
                 <div id="target-label" style="color:#aaa; font-size:14px; margin-top:8px;"></div>
+                <div id="listen-wait-banner">
+                    <span id="listen-wait-msg">Waiting for incoming stream data.</span>
+                    Time remaining: <span id="listen-wait-countdown">1:30</span>
+                </div>
             </div>
             <div id="connection-status" title="Click to Pause/Resume">Connecting...</div>
             <div style="position: absolute; top: 0; right: 0; color: #555; font-size: 12px; font-family: monospace;">{{VERSION}}</div>
@@ -460,15 +467,67 @@
         let evtSource = null;
         // Closing SSE on page navigation tears down the HTTP request so the server drops the TCP session backing this tab.
         window.addEventListener('pagehide', () => {
+            clearAllSessionTimers();
             if (evtSource) {
                 try { evtSource.close(); } catch (e) { /* noop */ }
                 evtSource = null;
             }
+            const lb = document.getElementById('listen-wait-banner');
+            if (lb) lb.style.display = 'none';
         }, { passive: true });
         let chartSaveSlug = '';
         let isPaused = false;
         let isConnected = false;
         let proxyCheckTimer = null;
+        let listenCountdownInterval = null;
+        let listenFirstDataTimer = null;
+        let sseNeverOpenTimer = null;
+
+        const LISTEN_FIRST_DATA_SEC = 90;
+        const SSE_OPEN_WAIT_MS = 10000;
+
+        function formatCountdownMMSS(totalSec) {
+            const sec = Math.max(0, totalSec | 0);
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return m + ':' + String(s).padStart(2, '0');
+        }
+
+        function clearAllSessionTimers() {
+            if (proxyCheckTimer) {
+                clearTimeout(proxyCheckTimer);
+                proxyCheckTimer = null;
+            }
+            if (listenCountdownInterval) {
+                clearInterval(listenCountdownInterval);
+                listenCountdownInterval = null;
+            }
+            if (listenFirstDataTimer) {
+                clearTimeout(listenFirstDataTimer);
+                listenFirstDataTimer = null;
+            }
+            if (sseNeverOpenTimer) {
+                clearTimeout(sseNeverOpenTimer);
+                sseNeverOpenTimer = null;
+            }
+        }
+
+        function hideListenWaitBanner() {
+            const b = document.getElementById('listen-wait-banner');
+            if (b) b.style.display = 'none';
+            if (listenCountdownInterval) {
+                clearInterval(listenCountdownInterval);
+                listenCountdownInterval = null;
+            }
+            if (listenFirstDataTimer) {
+                clearTimeout(listenFirstDataTimer);
+                listenFirstDataTimer = null;
+            }
+            if (sseNeverOpenTimer) {
+                clearTimeout(sseNeverOpenTimer);
+                sseNeverOpenTimer = null;
+            }
+        }
 
         async function startSession() {
             const mode = document.getElementById('connType').value;
@@ -583,7 +642,7 @@
                     chartSaveSlug = `${dashMode}-${payload.host}-p${payload.port}${mp ? '-m' + mp : ''}`.replace(/[^\w.-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '').slice(0, 96);
                 }
 
-                connectSSE(result.session_id);
+                connectSSE(result.session_id, dashMode === 'tcp_listen' || dashMode === 'udp_listen');
 
             } catch (err) {
                 showError(err.message);
@@ -591,10 +650,8 @@
         }
 
         function stopSession() {
-            if (proxyCheckTimer) {
-                clearTimeout(proxyCheckTimer);
-                proxyCheckTimer = null;
-            }
+            clearAllSessionTimers();
+            hideListenWaitBanner();
 
             if (evtSource) {
                 evtSource.close();
@@ -690,22 +747,77 @@
             }
         });
 
-        function connectSSE(sessionId) {
+        function connectSSE(sessionId, isListenMode) {
             let basePath = window.location.pathname;
             if (!basePath.endsWith('/')) basePath += '/';
 
-            // NETSKOPE DETECTION: Start the countdown IMMEDIATELY.
-            proxyCheckTimer = setTimeout(() => {
-                const altUrl = "http://" + window.location.hostname + ":2102/jitter";
-                showError(`⚠️ Stream blocked! A corporate proxy (like Netskope) is intercepting the live stream. Please disable it or access the tool directly via: <br><a href="${altUrl}" style="color:#4CAF50; text-decoration:underline;">${altUrl}</a>`);
-                stopSession();
-            }, 6000);
+            clearAllSessionTimers();
+            const listenBannerEl = document.getElementById('listen-wait-banner');
+            if (listenBannerEl) listenBannerEl.style.display = 'none';
+
+            let gotFirstTelemetry = false;
+
+            if (!isListenMode) {
+                // Outbound streams: telemetry usually arrives quickly; short “no SSE events” watchdog.
+                proxyCheckTimer = setTimeout(() => {
+                    const altUrl = "http://" + window.location.hostname + ":2102/jitter";
+                    showError(`⚠️ Stream blocked! A corporate proxy (like Netskope) is intercepting the live stream. Please disable it or access the tool directly via: <br><a href="${altUrl}" style="color:#4CAF50; text-decoration:underline;">${altUrl}</a>`);
+                    stopSession();
+                }, 6000);
+            }
 
             evtSource = new EventSource(`${basePath}events?session_id=${sessionId}`);
 
+            if (isListenMode) {
+                const banner = document.getElementById('listen-wait-banner');
+                const cdEl = document.getElementById('listen-wait-countdown');
+                const msgEl = document.getElementById('listen-wait-msg');
+                const modeLabel = document.getElementById('connType').value === 'udp_listen' ? 'UDP' : 'TCP';
+                banner.style.display = 'block';
+                msgEl.textContent =
+                    `Listening for incoming ${modeLabel} data (no packets yet). Corporate proxies often block live streams — if the timer below reaches 0:00 with no data, check your network.`;
+
+                let secLeft = LISTEN_FIRST_DATA_SEC;
+                cdEl.textContent = formatCountdownMMSS(secLeft);
+                listenCountdownInterval = setInterval(() => {
+                    secLeft -= 1;
+                    if (secLeft < 0) secLeft = 0;
+                    cdEl.textContent = formatCountdownMMSS(secLeft);
+                }, 1000);
+
+                listenFirstDataTimer = setTimeout(() => {
+                    if (!gotFirstTelemetry) {
+                        showError(
+                            'No incoming data was received within 90 seconds. Confirm the sender is using the correct server IP, port, and protocol (TCP vs UDP), and that this page stayed open.'
+                        );
+                        stopSession();
+                    }
+                }, LISTEN_FIRST_DATA_SEC * 1000);
+
+                sseNeverOpenTimer = setTimeout(() => {
+                    if (gotFirstTelemetry || !evtSource) return;
+                    if (evtSource.readyState !== EventSource.OPEN) {
+                        const altUrl = "http://" + window.location.hostname + ":2102/jitter";
+                        showError(
+                            `Live stream link did not open within ${SSE_OPEN_WAIT_MS / 1000} seconds (still ${evtSource.readyState === 0 ? 'connecting' : 'closed'}). A proxy or firewall may be blocking Server-Sent Events. Try direct access: <br><a href="${altUrl}" style="color:#4CAF50; text-decoration:underline;">${altUrl}</a>`
+                        );
+                        stopSession();
+                    }
+                }, SSE_OPEN_WAIT_MS);
+            }
+
             evtSource.onopen = () => {
+                if (sseNeverOpenTimer) {
+                    clearTimeout(sseNeverOpenTimer);
+                    sseNeverOpenTimer = null;
+                }
                 isConnected = true;
-                if (!isPaused) {
+                if (isListenMode) {
+                    if (!isPaused) {
+                        statusDiv.textContent = 'Stream open — waiting for data';
+                        statusDiv.style.color = '#FFC107';
+                    }
+                } else if (!isPaused) {
                     statusDiv.textContent = "Live \u25CF";
                     statusDiv.style.color = "#4CAF50";
                 }
@@ -725,10 +837,18 @@
             evtSource.onmessage = (event) => {
                 if (isPaused) return;
 
-                // If data arrives, kill the Netskope warning timer
                 if (proxyCheckTimer) {
                     clearTimeout(proxyCheckTimer);
                     proxyCheckTimer = null;
+                }
+
+                if (isListenMode && !gotFirstTelemetry) {
+                    gotFirstTelemetry = true;
+                    hideListenWaitBanner();
+                    if (!isPaused) {
+                        statusDiv.textContent = "Live \u25CF";
+                        statusDiv.style.color = "#4CAF50";
+                    }
                 }
 
                 const data = JSON.parse(event.data);
