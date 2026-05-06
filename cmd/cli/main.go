@@ -28,7 +28,8 @@ import (
 )
 
 
-const AppVersion = "v1.1.0"
+// AppVersion is shown on the hub connect page; increment when user-visible CLI behavior changes.
+const AppVersion = "v1.2.0"
 const maxCLISessionBodyBytes = 8192
 
 type cliSession struct {
@@ -181,7 +182,7 @@ func embedCLIIntoIndexHTML(cfg core.Config, argv []string, jitterDisplay string,
 	return out
 }
 
-func cliConnectHTML(cfg cliConfigResp) []byte {
+func cliConnectHTML(cfg cliConfigResp, version string) []byte {
 	b, _ := json.Marshal(cfg)
 	return []byte(fmt.Sprintf(`<!doctype html>
 <html><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -194,8 +195,10 @@ label{display:block;color:#aaa;font-size:.9rem;margin-bottom:.2rem}
 input,select{width:100%%;box-sizing:border-box;background:#222;color:#e0e0e0;border:1px solid #444;border-radius:6px;padding:.5rem}
 button{padding:.55rem .95rem;border-radius:6px;border:1px solid #444;background:#4CAF50;color:#fff;cursor:pointer}
 #err{color:#F44336;min-height:1.2rem}
+.cli-version{color:#888;font-size:0.9rem;margin:0 0 0.75rem 0}
 </style></head><body>
 <h1>Timing Analyzer Hub</h1>
+<p class="cli-version">Timing Analyzer CLI <strong>%s</strong></p>
 <p>Configure stream parameters and open a session dashboard.</p>
 <div class="card">
   <div class="row">
@@ -250,7 +253,7 @@ connect.addEventListener("click",async()=>{err.textContent="";
     const t=await r.text();if(!r.ok) throw new Error(t||r.statusText); const out=JSON.parse(t); saveForm(); window.location.href=out.dashboard_path;
   }catch(e){err.textContent=String(e.message||e);}
 });
-</script></body></html>`, string(b)))
+</script></body></html>`, version, string(b)))
 }
 
 func main() {
@@ -363,20 +366,30 @@ func main() {
 					Rate:           cfg.RateHz,
 					Jitter:         *jitterFlag,
 					Decode:         cfg.Decode,
-				}))
+				}, AppVersion))
 				return
 			}
 			id := strings.TrimPrefix(r.URL.Path, "/s/")
 			id = strings.TrimSuffix(id, "/")
 			if strings.HasSuffix(id, "/events") {
-				id = strings.TrimSuffix(id, "/events")
+				sid := strings.TrimSuffix(id, "/events")
+				sid = strings.TrimSuffix(sid, "/")
 				h.mu.Lock()
-				s := h.sessions[id]
+				s := h.sessions[sid]
 				h.mu.Unlock()
 				if s == nil {
 					http.NotFound(w, r)
 					return
 				}
+				// Cancel listener + timing when the browser drops SSE (e.g. New connection), so the
+				// port is released before the next POST /api/sessions with the same settings.
+				defer func() {
+					slog.Info("Hub session ended (SSE disconnected)", "session", sid)
+					s.cancel()
+					h.mu.Lock()
+					delete(h.sessions, sid)
+					h.mu.Unlock()
+				}()
 				s.broker.ServeHTTP(w, r)
 				return
 			}

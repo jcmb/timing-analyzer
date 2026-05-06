@@ -40,7 +40,7 @@ The CLI uses Go’s standard flag syntax: **one dash** (`-port`, `-hub=false`). 
 **Hub mode** (many concurrent sessions from the browser):
 
 - The HTTP server listens on `-web-host` / `-web-port` (by default **all interfaces** when hub shorthand applies).
-- Open `http://127.0.0.1:<web-port>/` (or your host) for the **setup** page, choose TCP or UDP and parameters, then **Connect** to open `/s/<session>/` for that session’s dashboard. SSE is at `/s/<session>/events`.
+- Open `http://127.0.0.1:<web-port>/` (or your host) for the **setup** page. It shows the **CLI version** string baked into that build. Choose TCP or UDP and parameters, then **Connect** to open `/s/<session>/` for that session’s dashboard. SSE is at `/s/<session>/events`. When that SSE connection ends (for example **New connection** in the dashboard), the server tears down that session so the same port can be used again.
 
 **When hub layout is applied** (multi-session UI, `-web-host` forced to `0.0.0.0` unless you only toggled `-hub`):
 
