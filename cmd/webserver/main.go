@@ -10,9 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
-	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -266,42 +263,10 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	session.Broker.ServeHTTP(w, r)
 }
 
-func browserURLHost(bind string) string {
-	switch bind {
-	case "", "0.0.0.0", "::", "[::]":
-		return "127.0.0.1"
-	default:
-		return bind
-	}
-}
-
-func appURL(bind string, port int, basePath string) string {
-	u := &url.URL{
-		Scheme: "http",
-		Host:   net.JoinHostPort(browserURLHost(bind), strconv.Itoa(port)),
-		Path:   basePath,
-	}
-	return u.String()
-}
-
-func launchBrowser(rawURL string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		cmd = exec.Command("open", rawURL)
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
-	default:
-		cmd = exec.Command("xdg-open", rawURL)
-	}
-	return cmd.Start()
-}
-
 func main() {
 	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
 	basePath := flag.String("base-path", "/", "Base URL path (e.g., '/jitter')")
-	openBrowser := flag.Bool("open-browser", true, "Open the app URL in the default browser once the server is listening (use false for headless or systemd)")
 	flag.Parse()
 
 	path := *basePath
@@ -344,17 +309,6 @@ func main() {
 	if err != nil {
 		slog.Error("Listen failed", "error", err)
 		return
-	}
-
-	if *openBrowser {
-		openURL := appURL(*bindIP, *port, path)
-		go func() {
-			if err := launchBrowser(openURL); err != nil {
-				slog.Warn("Could not open browser", "url", openURL, "error", err)
-			} else {
-				slog.Info("Opened browser", "url", openURL)
-			}
-		}()
 	}
 
 	srv := &http.Server{Handler: nil}
