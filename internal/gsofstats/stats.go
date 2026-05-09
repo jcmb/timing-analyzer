@@ -13,29 +13,26 @@ import (
 
 const historySamplesMax = 2000
 
-// minWallDeltaForRateSample is the minimum wall-clock gap between successive
-// observations of a subtype before we refresh its inferred rate (Hz). Bursts
-// of multiple DCOL packets (e.g. TCP coalescing or channel backlog) can arrive
-// a few milliseconds apart while the true GNSS cadence is much slower; without
-// this floor, snapToNearestRate maps ~20 ms gaps to the 0.02 s bucket (50 Hz)
-// and stale detection (which uses hz) then marks a healthy 10 Hz stream stale.
-//
-// For UDP loss, wall time spans many missed DCOL frames; we divide that wall time
-// by the sequence advance since the subtype was last seen so each missed packet
-// still counts toward cadence. We still require effectiveDelta (below) ≥ this
-// floor so many distinct seq numbers delivered in one wall-clock burst (TCP)
-// do not infer an unrealistically fast rate.
-const minWallDeltaForRateSample = 0.005 // 5 ms — coalesce OS/network batching, keep ≤200 Hz measurable
-
-// ratePeriodEMAAlpha weights each new effective-period sample in the EMA blend.
-// Output cadence is assumed stable for the whole session; real changes are rare and
-// may take several seconds to show in Hz/stale. A small α damps UDP batching jitter,
-// single long gaps, and TCP bursts without chasing every interval.
+// ratePeriodEMAAlpha weights each new solution-period sample in the EMA blend.
+// Cadence is taken from GPS TOW (type 0x01) or UTC epoch (type 0x16) only —
+// never from transmit sequence numbers.
 const ratePeriodEMAAlpha = 0.04
 
-// maxTowDeltaForEpoch is the largest type-0x01 TOW step (seconds) we treat as output
-// cadence; larger gaps are treated as outages or discontinuous time, not epoch rate.
+// maxTowDeltaForEpoch is the largest GPS TOW step (seconds) used by towDeltaSeconds
+// low-level helpers; kept small for heartbeat / epoch sanity tests.
 const maxTowDeltaForEpoch = 10.0
+
+// maxSubtypeSolveGap is the largest solution-time step between two sightings of the same
+// subtype we accept for rate inference (matches slowest snapToNearestRate bucket).
+const maxSubtypeSolveGap = 600.0
+
+// staleSilencePeriodMultiplier is how many expected solution periods of wall-clock
+// silence before a subtype row is marked stale.
+const staleSilencePeriodMultiplier = 5.0
+
+// streamSilenceLostAfter is how long without any DCOL/GSOF frame after type 0x01 was seen
+// before the dashboard treats the stream as lost (separate from per-subtype stale).
+const streamSilenceLostAfter = 30 * time.Second
 
 // payloadBytesToSpacedHex renders bytes as uppercase hex pairs separated by spaces
 // (full GSOF sub-record on the wire: type, length, and payload, or entire type-99 wrapper for expanded types).
@@ -54,17 +51,11 @@ func payloadBytesToSpacedHex(b []byte) string {
 	return sb.String()
 }
 
-// Stats tracks GSOF record subtypes, inferred rates, and transport warnings.
+// Stats tracks GSOF record subtypes, per-subtype solution cadence, and transport warnings.
 type Stats struct {
-	mu        sync.Mutex
-	counts    map[int]int
-	hz        map[int]float64
-	displayHz map[int]string
-	// ratePeriodEMA is an exponentially weighted mean period (s) per subtype for Hz inference.
-	ratePeriodEMA map[int]float64
-	lastSeen      map[int]time.Time
-	// lastSeenSeq is the GSOF transmission number (Update seq arg) when lastSeen[recType] was updated (per subtype).
-	lastSeenSeq    map[int]uint8
+	mu             sync.Mutex
+	counts         map[int]int
+	lastSeen       map[int]time.Time
 	lastSeq        uint8
 	lastSeqTime    time.Time
 	hasSeenType01  bool
@@ -73,13 +64,15 @@ type Stats struct {
 	lastPayload    map[int][]byte // last GSOF record inner payload per type (for dashboard decode)
 	lastRecordWire map[int][]byte // last full on-wire sub-record bytes for PayloadHex ([type][len][inner]; 100+ from 99 uses full [99][len][pl])
 	// lastGPSTOWSec is the GPS time-of-week (s) from the latest type-0x01 in stream order.
-	lastGPSTOWSec float64
-	// prevEpochTOWSec / epochTowPeriodEMA: type-0x01 TOW deltas track output epoch cadence
-	// (independent of UDP wall-clock batching). Used as a minimum Hz floor for all subtypes.
-	prevEpochTOWSec      float64
-	hasPrevEpochTOWSec   bool
-	epochTowPeriodEMA    float64
-	hasEpochTowPeriodEMA bool
+	lastGPSTOWSec       float64
+	cadenceLockedType01 bool // once true, packets use GPS TOW from type 0x01 only (not type 0x16) for cadence sampling.
+	ratePeriodEMA       map[int]float64
+	hz                  map[int]float64
+	displayHz           map[int]string
+	// subtypeSolveTimePrev: last GPS TOW sec (preferred) or UTC epoch sec solution tag when this subtype was seen.
+	subtypeSolveTimePrev map[int]float64
+	hasSubtypeSolvePrev  map[int]bool
+	subtypeSolveUsesTow  map[int]bool // aligns delta math with how prev was recorded
 	// tangentHistory holds recent type-0x07 samples paired with lastGPSTOWSec at decode time.
 	tangentHistory []gsof.TangentPlanePoint
 	// llhHistory holds recent type-0x02 lat/lon samples paired with lastGPSTOWSec at decode time.
@@ -108,15 +101,17 @@ type Stats struct {
 
 func NewStats(suppressSingle bool) *Stats {
 	return &Stats{
-		counts:         make(map[int]int),
-		hz:             make(map[int]float64),
-		displayHz:      make(map[int]string),
-		ratePeriodEMA:  make(map[int]float64),
-		lastSeen:       make(map[int]time.Time),
-		lastSeenSeq:    make(map[int]uint8),
-		lastPayload:    make(map[int][]byte),
-		lastRecordWire: make(map[int][]byte),
-		suppressSingle: suppressSingle,
+		counts:               make(map[int]int),
+		lastSeen:             make(map[int]time.Time),
+		ratePeriodEMA:        make(map[int]float64),
+		hz:                   make(map[int]float64),
+		displayHz:            make(map[int]string),
+		subtypeSolveTimePrev: make(map[int]float64),
+		hasSubtypeSolvePrev:  make(map[int]bool),
+		subtypeSolveUsesTow:  make(map[int]bool),
+		lastPayload:          make(map[int][]byte),
+		lastRecordWire:       make(map[int][]byte),
+		suppressSingle:       suppressSingle,
 	}
 }
 
@@ -162,13 +157,66 @@ func towDeltaSeconds(prev, cur float64) (float64, bool) {
 	return d, true
 }
 
-// epochMinHzFromTOWLocked returns a minimum stream rate (Hz) from type-0x01 TOW cadence.
-// Caller must hold s.mu.
-func (s *Stats) epochMinHzFromTOWLocked() float64 {
-	if !s.hasEpochTowPeriodEMA || s.epochTowPeriodEMA <= 0 {
-		return 0
+// subtypeSolveTowDelta mirrors towDeltaSeconds with a larger ceiling so sparse subtypes
+// (same DCOL bundle / seq, different broadcast cadence) infer slow rates correctly.
+func subtypeSolveTowDelta(prev, cur float64) (float64, bool) {
+	const week = 604800.0
+	d := cur - prev
+	if d < -week/2 {
+		d += week
+	} else if d > week/2 {
+		d -= week
 	}
-	return gsof.JSONFloat(1.0 / s.epochTowPeriodEMA)
+	if d <= 0 || d > maxSubtypeSolveGap {
+		return 0, false
+	}
+	return d, true
+}
+
+func (s *Stats) resetPerSubtypeSolveRatesLocked() {
+	s.ratePeriodEMA = make(map[int]float64)
+	s.hz = make(map[int]float64)
+	s.displayHz = make(map[int]string)
+	s.subtypeSolveTimePrev = make(map[int]float64)
+	s.hasSubtypeSolvePrev = make(map[int]bool)
+	s.subtypeSolveUsesTow = make(map[int]bool)
+}
+
+// noteSubtypeSolutionSightLocked advances per-subtype rate from deltas in GNSS solution time:
+// GPS TOW (type 1 in the same GSOF buffer) preferred; else UTC epoch from type 16 when not locked.
+// Transmit sequence numbers are ignored. Caller holds s.mu.
+func (s *Stats) noteSubtypeSolutionSightLocked(subType int, solveSec float64, useTowWrappedDelta bool) {
+	if s.hasSubtypeSolvePrev[subType] && s.subtypeSolveUsesTow[subType] != useTowWrappedDelta {
+		s.subtypeSolveTimePrev[subType] = solveSec
+		s.subtypeSolveUsesTow[subType] = useTowWrappedDelta
+		return
+	}
+	if s.hasSubtypeSolvePrev[subType] {
+		prev := s.subtypeSolveTimePrev[subType]
+		var d float64
+		var okDelta bool
+		if useTowWrappedDelta {
+			d, okDelta = subtypeSolveTowDelta(prev, solveSec)
+		} else {
+			d = solveSec - prev
+			okDelta = d > 0 && d <= maxSubtypeSolveGap
+		}
+		if okDelta {
+			prevEMA, hadEMA := s.ratePeriodEMA[subType]
+			blend := d
+			if hadEMA && prevEMA > 0 {
+				blend = ratePeriodEMAAlpha*d + (1.0-ratePeriodEMAAlpha)*prevEMA
+			}
+			blend = gsof.JSONFloat(blend)
+			s.ratePeriodEMA[subType] = blend
+			hzVal, hzStr := snapToNearestRate(blend)
+			s.hz[subType] = gsof.JSONFloat(hzVal)
+			s.displayHz[subType] = hzStr
+		}
+	}
+	s.subtypeSolveTimePrev[subType] = solveSec
+	s.hasSubtypeSolvePrev[subType] = true
+	s.subtypeSolveUsesTow[subType] = useTowWrappedDelta
 }
 
 // Update processes one reassembled GSOF payload. seq is the GSOF transmission number
@@ -202,6 +250,43 @@ func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTran
 
 	expanded := gsof.ExpandGSOFStream(buffer)
 
+	var packetTow float64
+	var hasPacketTow bool
+	var packetEpoch float64
+	var hasPacketEpoch bool
+	for _, e := range expanded {
+		switch e.MsgType {
+		case 1:
+			if sec, ok := gsof.ParsePositionTimeTOWSec(e.Inner); ok {
+				packetTow = sec
+				hasPacketTow = true
+			}
+		case 16:
+			if ep, ok := gsof.ParseCurrentUTCEpochSec(e.Inner); ok {
+				packetEpoch = ep
+				hasPacketEpoch = true
+			}
+		}
+	}
+
+	var solveSec float64
+	var hasSolve bool
+	var solveUsesTowWrapped bool
+	if hasPacketTow {
+		wasLocked := s.cadenceLockedType01
+		s.cadenceLockedType01 = true
+		if !wasLocked {
+			s.resetPerSubtypeSolveRatesLocked()
+		}
+		solveSec = packetTow
+		hasSolve = true
+		solveUsesTowWrapped = true
+	} else if hasPacketEpoch && !s.cadenceLockedType01 {
+		solveSec = packetEpoch
+		hasSolve = true
+		solveUsesTowWrapped = false
+	}
+
 	isType01Present := false
 	var packetSubtypes []string
 	seenInThisPacket := make(map[int]bool)
@@ -218,29 +303,9 @@ func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTran
 		s.counts[recType]++
 
 		if !seenInThisPacket[recType] {
-			prev, hadPrev := s.lastSeen[recType]
-			prevSeq := s.lastSeenSeq[recType]
 			s.lastSeen[recType] = now
-			s.lastSeenSeq[recType] = seq
-			if hadPrev {
-				wallDelta := now.Sub(prev).Seconds()
-				seqAdv := (int(seq) + 256 - int(prevSeq)) % 256
-				if seqAdv < 1 {
-					seqAdv = 1
-				}
-				effectiveDelta := wallDelta / float64(seqAdv)
-				if wallDelta >= minWallDeltaForRateSample && effectiveDelta >= minWallDeltaForRateSample {
-					prevEMA, hadEMA := s.ratePeriodEMA[recType]
-					blend := effectiveDelta
-					if hadEMA && prevEMA > 0 {
-						blend = ratePeriodEMAAlpha*effectiveDelta + (1.0-ratePeriodEMAAlpha)*prevEMA
-					}
-					blend = gsof.JSONFloat(blend)
-					s.ratePeriodEMA[recType] = blend
-					hzVal, hzStr := snapToNearestRate(blend)
-					s.hz[recType] = gsof.JSONFloat(hzVal)
-					s.displayHz[recType] = hzStr
-				}
+			if hasSolve {
+				s.noteSubtypeSolutionSightLocked(recType, solveSec, solveUsesTowWrapped)
 			}
 			seenInThisPacket[recType] = true
 		}
@@ -250,18 +315,6 @@ func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTran
 
 		if recType == 1 {
 			if sec, ok := gsof.ParsePositionTimeTOWSec(pld); ok {
-				if s.hasPrevEpochTOWSec {
-					if d, okD := towDeltaSeconds(s.prevEpochTOWSec, sec); okD {
-						if s.hasEpochTowPeriodEMA {
-							s.epochTowPeriodEMA = gsof.JSONFloat(ratePeriodEMAAlpha*d + (1.0-ratePeriodEMAAlpha)*s.epochTowPeriodEMA)
-						} else {
-							s.epochTowPeriodEMA = gsof.JSONFloat(d)
-							s.hasEpochTowPeriodEMA = true
-						}
-					}
-				}
-				s.prevEpochTOWSec = sec
-				s.hasPrevEpochTOWSec = true
 				s.lastGPSTOWSec = sec
 			}
 			if pt, ok := gsof.ParsePositionTimeGraphPoint(pld); ok {
@@ -512,7 +565,7 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 	defer s.mu.Unlock()
 
 	now := time.Now()
-	streamOK := !(s.hasSeenType01 && !s.lastSeqTime.IsZero() && now.Sub(s.lastSeqTime) > 10*time.Second)
+	streamOK := !(s.hasSeenType01 && !s.lastSeqTime.IsZero() && now.Sub(s.lastSeqTime) > streamSilenceLostAfter)
 
 	keys := make([]int, 0, len(s.counts))
 	for k := range s.counts {
@@ -521,22 +574,17 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 	sort.Ints(keys)
 
 	rows := make([]RecordRow, 0, len(keys))
-	epochHz := s.epochMinHzFromTOWLocked()
 	for _, subType := range keys {
 		rateStr := s.displayHz[subType]
 		if rateStr == "" {
 			rateStr = "calc..."
 		}
-		effHz := s.hz[subType]
-		if epochHz > effHz {
-			effHz = epochHz
-			rateStr = fmt.Sprintf("%.0f Hz", effHz)
-		} else if effHz <= 0 && epochHz > 0 {
-			effHz = epochHz
-			rateStr = fmt.Sprintf("%.0f Hz", effHz)
+		inferredHz := float64(0)
+		if v, ok := s.hz[subType]; ok && v > 0 {
+			inferredHz = v
 		}
 		stale := false
-		if effHz > 0 && now.Sub(s.lastSeen[subType]).Seconds() > (1.0/effHz)*3.0 {
+		if inferredHz > 0 && now.Sub(s.lastSeen[subType]).Seconds() > staleSilencePeriodMultiplier/inferredHz {
 			rateStr = "stale"
 			stale = true
 		}
@@ -651,14 +699,11 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 func (s *Stats) ExportNagios() (hz map[int]float64, counts map[int]int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	epochHz := s.epochMinHzFromTOWLocked()
-	hz = make(map[int]float64, len(s.hz))
-	for k, v := range s.hz {
-		out := v
-		if epochHz > out {
-			out = epochHz
+	hz = make(map[int]float64, len(s.counts))
+	for k := range s.counts {
+		if v, ok := s.hz[k]; ok && v > 0 {
+			hz[k] = v
 		}
-		hz[k] = gsof.JSONFloat(out)
 	}
 	counts = make(map[int]int, len(s.counts))
 	for k, v := range s.counts {
@@ -674,7 +719,7 @@ func (s *Stats) StreamLost() bool {
 	if !s.hasSeenType01 || s.lastSeqTime.IsZero() {
 		return false
 	}
-	return time.Since(s.lastSeqTime) > 10*time.Second
+	return time.Since(s.lastSeqTime) > streamSilenceLostAfter
 }
 
 // WarningsTail returns up to the last n warnings (copy).
