@@ -156,6 +156,8 @@ type configResponse struct {
 	// IgnoreTCPGSOFTransmissionGap1Default is true when the server was started with
 	// -ignore-tcp-gsof-transmission-gap1; new UI sessions OR this into their stream config.
 	IgnoreTCPGSOFTransmissionGap1Default bool `json:"ignore_tcp_gsof_transmission_gap1_default,omitempty"`
+	// URLPrefix is the HTTP path prefix this server was started with (e.g. /GSOF), or empty for root.
+	URLPrefix string `json:"url_prefix,omitempty"`
 }
 
 func (h *hub) get(id string) (*gsofSession, bool) {
@@ -177,7 +179,7 @@ func (h *hub) remove(id string) {
 	}
 }
 
-func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int, allowPrivate bool, advertiseHost string) (*createSessionResponse, error) {
+func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int, allowPrivate bool, advertiseHost string, httpBasePath string) (*createSessionResponse, error) {
 	if err := validateStreamRequest(cfg, allowPrivate); err != nil {
 		return nil, err
 	}
@@ -268,8 +270,8 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 
 	out := &createSessionResponse{
 		ID:            id,
-		EventsPath:    "/s/" + id + "/events",
-		DashboardPath: "/s/" + id + "/",
+		EventsPath:    httpBasePath + "/events?session=" + id,
+		DashboardPath: httpBasePath + "/s/" + id + "/",
 	}
 	if advertiseHost != "" {
 		out.AdvertiseHost = advertiseHost
@@ -280,13 +282,14 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 	return out, nil
 }
 
-func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg core.Config) {
+func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg core.Config, httpBasePath string) {
 	setNoCacheHeaders(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	out := configResponse{
 		Version:           Version,
 		EmbeddedStream:    embeddedStream,
 		UISessionsEnabled: !embeddedStream,
+		URLPrefix:         httpBasePath,
 	}
 	if !embeddedStream {
 		proto := strings.ToLower(strings.TrimSpace(cfg.IP))
@@ -304,7 +307,7 @@ func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg co
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string, serverIgnoreTCPGSOFGap1 bool) {
+func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string, serverIgnoreTCPGSOFGap1 bool, httpBasePath string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -346,7 +349,7 @@ func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, emb
 
 	// Session streams must outlive this HTTP request: r.Context() is cancelled as soon as the
 	// POST response is sent, which would immediately tear down TCP dials and UDP listeners.
-	resp, err := h.startSession(context.Background(), cfg, verbose, allowPrivate, advertiseHost)
+	resp, err := h.startSession(context.Background(), cfg, verbose, allowPrivate, advertiseHost, httpBasePath)
 	if err != nil {
 		if errors.Is(err, errTooManySessions) {
 			http.Error(w, err.Error(), http.StatusTooManyRequests)
@@ -386,7 +389,8 @@ func (h *hub) handleAPIDeleteSession(w http.ResponseWriter, r *http.Request, emb
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// serveSessionBranch handles GET /s/{id}/events (SSE) and GET /s/{id}/ or /s/{id} (HTML).
+// serveSessionBranch handles GET /s/{id}/ or /s/{id} (session dashboard HTML).
+// SSE uses GET /events?session={id} so proxies can route a single /events path.
 func (h *hub) serveSessionBranch(w http.ResponseWriter, r *http.Request, embeddedStream bool, dashboardHTML []byte) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -404,12 +408,12 @@ func (h *hub) serveSessionBranch(w http.ResponseWriter, r *http.Request, embedde
 		return
 	}
 	id := parts[0]
-	s, ok := h.get(id)
+	_, ok := h.get(id)
 	if !ok {
 		// Expired or unknown session: send users to the hub home (connection form) instead of a 404
-		// when they refresh the dashboard page. SSE must stay 404 — EventSource cannot follow an
-		// HTML redirect to / reliably.
+		// when they refresh the dashboard page.
 		if len(parts) == 2 && parts[1] == "events" {
+			// Legacy SSE path; use GET /events?session=<id> instead.
 			http.NotFound(w, r)
 			return
 		}
@@ -417,7 +421,8 @@ func (h *hub) serveSessionBranch(w http.ResponseWriter, r *http.Request, embedde
 		return
 	}
 	if len(parts) == 2 && parts[1] == "events" {
-		s.broker.ServeHTTP(w, r)
+		// Legacy SSE path; use GET /events?session=<id> instead.
+		http.NotFound(w, r)
 		return
 	}
 	if len(parts) == 1 {

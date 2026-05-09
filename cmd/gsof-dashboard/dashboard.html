@@ -11,6 +11,7 @@
       } catch (e) {}
     })();
   </script>
+  <script>window.__GSOF_URL_PREFIX__ = __GSOF_BASE_PATH_JSON__;</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -877,6 +878,9 @@
       <input id="connPort" type="number" min="0" max="65535" value="5018" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
       <button type="button" id="connBtn">Connect</button>
       <p id="connHint" class="meta"></p>
+      <p id="proxyBaseNote" class="meta" hidden style="max-width: 46rem; line-height: 1.35; opacity: 0.9">
+        <strong id="proxyBaseStr"></strong>: one binary covers both deployments. At the site root, leave the prefix unset—routes are <code>/api/…</code>, <code>/events</code>, and <code>/s/…</code>. Under a reverse-proxy path such as <code>/GSOF/</code>, start the server with <code>-http-base-path=/GSOF</code> (or <code>GSOF_DASHBOARD_BASE_PATH=/GSOF</code>): the UI and SSE use that prefix, and this process strips it internally. Forward requests that still include the prefix (e.g. nginx passes the full URI), or adjust your proxy so paths stay consistent.
+      </p>
       <p id="connErr" class="meta" hidden></p>
     </div>
   </header>
@@ -898,6 +902,31 @@
     let lastStreamData = null;
     /** Latest GET /api/config payload (hub mode); used when POSTing /api/sessions. */
     let serverStreamConfig = null;
+    /** Root-relative URL prefix when behind a reverse proxy (e.g. /GSOF); see head script. */
+    function gsofURL(path) {
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (!path.startsWith("/")) path = "/" + path;
+      return pre + path;
+    }
+    /** Current route pathname with optional proxy prefix removed (for /s/&lt;session&gt;/ matching). */
+    function gsofPathForRouteMatch() {
+      let path = window.location.pathname;
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (pre && path.startsWith(pre)) {
+        path = path.slice(pre.length) || "/";
+      }
+      return path;
+    }
+    (function revealProxyPrefixNote() {
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (!pre) return;
+      const note = document.getElementById("proxyBaseNote");
+      const strong = document.getElementById("proxyBaseStr");
+      if (note && strong) {
+        strong.textContent = "Using URL prefix " + pre;
+        note.hidden = false;
+      }
+    })();
     /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
@@ -7641,8 +7670,8 @@
       }
       btn.hidden = false;
       btn.addEventListener("click", () => {
-        fetch("/api/sessions/" + encodeURIComponent(sessionId), { method: "DELETE" }).finally(() => {
-          window.location.href = "/";
+        fetch(gsofURL("/api/sessions/" + encodeURIComponent(sessionId)), { method: "DELETE" }).finally(() => {
+          window.location.href = gsofURL("/");
         });
       });
     }
@@ -7665,7 +7694,7 @@
       const panel = document.getElementById("connPanel");
       const tr = document.getElementById("connTransport");
       if (!panel || !tr) {
-        connectSSE("/events");
+        connectSSE(gsofURL("/events"));
         return;
       }
       panel.hidden = false;
@@ -7700,7 +7729,7 @@
           body.ignore_tcp_gsof_transmission_gap1 = true;
         }
         statusEl.textContent = "Starting stream…";
-        fetch("/api/sessions", {
+        fetch(gsofURL("/api/sessions"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -7751,16 +7780,16 @@
     }
 
     function initConnection() {
-      const sm = location.pathname.match(/^\/s\/([a-f0-9]{32})\/?$/i);
+      const sm = gsofPathForRouteMatch().match(/^\/s\/([a-f0-9]{32})\/?$/i);
       if (sm) {
         const sid = sm[1];
         streamPill.className = "pill wait";
         streamPill.textContent = "session";
         wireSessionDisconnect(sid);
-        connectSSE("/s/" + sid + "/events");
+        connectSSE(gsofURL("/events") + "?session=" + encodeURIComponent(sid));
         return;
       }
-      fetch("/api/config")
+      fetch(gsofURL("/api/config"))
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("config " + r.status))))
         .then((cfg) => {
           if (cfg.ui_sessions_enabled) {
@@ -7769,10 +7798,10 @@
             showStreamSetupPanel();
             return;
           }
-          connectSSE("/events");
+          connectSSE(gsofURL("/events"));
         })
         .catch(() => {
-          connectSSE("/events");
+          connectSSE(gsofURL("/events"));
         });
     }
     initConnection();

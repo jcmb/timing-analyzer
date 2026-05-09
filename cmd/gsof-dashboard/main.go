@@ -28,9 +28,26 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-var dashboardHTMLLive = func() []byte {
-	return bytes.ReplaceAll(dashboardHTML, []byte("__GSOF_DASHBOARD_VERSION__"), []byte(Version))
-}()
+func normalizeHTTPBasePath(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "/" {
+		return ""
+	}
+	if !strings.HasPrefix(s, "/") {
+		s = "/" + s
+	}
+	return strings.TrimSuffix(s, "/")
+}
+
+func prepareDashboardHTML(version, basePath string) []byte {
+	prefixJSON, err := json.Marshal(basePath)
+	if err != nil {
+		prefixJSON = []byte(`""`)
+	}
+	out := bytes.ReplaceAll(dashboardHTML, []byte("__GSOF_DASHBOARD_VERSION__"), []byte(version))
+	out = bytes.ReplaceAll(out, []byte("__GSOF_BASE_PATH_JSON__"), prefixJSON)
+	return out
+}
 
 func setNoCacheHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -48,8 +65,12 @@ func dashboardBrowserURLHost(bind string) string {
 	}
 }
 
-func dashboardAppURL(bind string, port int) string {
-	return "http://" + net.JoinHostPort(dashboardBrowserURLHost(bind), strconv.Itoa(port)) + "/"
+func dashboardAppURL(bind string, port int, httpBasePath string) string {
+	u := "http://" + net.JoinHostPort(dashboardBrowserURLHost(bind), strconv.Itoa(port))
+	if httpBasePath != "" {
+		u += httpBasePath
+	}
+	return u + "/"
 }
 
 func launchDashboardBrowser(rawURL string) error {
@@ -81,7 +102,14 @@ func main() {
 	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "In hub mode (-hub), allow UI/API TCP targets that resolve to loopback or RFC1918 (off by default). Non-hub runs always allow private targets.")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
 	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats/parser warnings for a single skipped GSOF transmission id; applies to embedded streams and (with -embedded-stream=false) is merged into each browser-started session")
+	httpBasePathFlag := flag.String("http-base-path", "", "Public URL path prefix when mounted under a site path (e.g. /GSOF). Same value is stripped from incoming HTTP paths and baked into the HTML for links/SSE. Empty = serve at site root. Env: GSOF_DASHBOARD_BASE_PATH.")
 	flag.Parse()
+
+	httpBasePath := normalizeHTTPBasePath(*httpBasePathFlag)
+	if httpBasePath == "" {
+		httpBasePath = normalizeHTTPBasePath(os.Getenv("GSOF_DASHBOARD_BASE_PATH"))
+	}
+	dashboardHTMLPrepared := prepareDashboardHTML(Version, httpBasePath)
 
 	openBrowserFlagSet := false
 	flag.Visit(func(f *flag.Flag) {
@@ -179,23 +207,41 @@ func main() {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		h.handleAPIConfig(w, *embeddedStream, cfg)
+		h.handleAPIConfig(w, *embeddedStream, cfg, httpBasePath)
 	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
-		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, effectiveAllowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1)
+		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, effectiveAllowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1, httpBasePath)
 	})
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		h.handleAPIDeleteSession(w, r, *embeddedStream)
 	})
 	mux.HandleFunc("/s/", func(w http.ResponseWriter, r *http.Request) {
-		h.serveSessionBranch(w, r, *embeddedStream, dashboardHTMLLive)
+		h.serveSessionBranch(w, r, *embeddedStream, dashboardHTMLPrepared)
 	})
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
-		if !*embeddedStream {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		q := strings.TrimSpace(r.URL.Query().Get("session"))
+		if *embeddedStream {
+			if q != "" {
+				http.NotFound(w, r)
+				return
+			}
+			embBroker.ServeHTTP(w, r)
+			return
+		}
+		if q == "" {
 			http.NotFound(w, r)
 			return
 		}
-		embBroker.ServeHTTP(w, r)
+		s, ok := h.get(q)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		s.broker.ServeHTTP(w, r)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -205,11 +251,16 @@ func main() {
 		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("X-GSOF-Dashboard-Version", Version)
-		_, _ = w.Write(dashboardHTMLLive)
+		_, _ = w.Write(dashboardHTMLPrepared)
 	})
 
+	var handler http.Handler = mux
+	if httpBasePath != "" {
+		handler = http.StripPrefix(httpBasePath, mux)
+	}
+
 	webAddr := net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
-	srv := &http.Server{Addr: webAddr, Handler: mux}
+	srv := &http.Server{Addr: webAddr, Handler: handler}
 
 	streamDesc := "none (UI sessions only)"
 	if *embeddedStream {
@@ -220,8 +271,11 @@ func main() {
 	}
 	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s\n",
 		Version, webAddr, streamDesc)
+	if httpBasePath != "" {
+		fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (incoming paths strip this; configure proxy to forward full path including prefix, or equivalent)\n", httpBasePath)
+	}
 	if !*embeddedStream {
-		fmt.Fprintf(os.Stdout, "  mode:    multi-user (open http://%s/ and set TCP or UDP in the header)\n", webAddr)
+		fmt.Fprintf(os.Stdout, "  mode:    multi-user (open http://%s%s/ and set TCP or UDP in the header)\n", webAddr, httpBasePath)
 	}
 
 	ln, err := net.Listen("tcp", webAddr)
@@ -231,7 +285,7 @@ func main() {
 	}
 
 	if openBrowser {
-		openURL := dashboardAppURL(*webHost, *webPort)
+		openURL := dashboardAppURL(*webHost, *webPort, httpBasePath)
 		go func() {
 			if err := launchDashboardBrowser(openURL); err != nil {
 				slog.Warn("Could not open browser", "url", openURL, "error", err)
@@ -242,7 +296,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("GSOF dashboard listening", "version", Version, "addr", webAddr, "stream", streamDesc, "embedded_stream", *embeddedStream)
+		slog.Info("GSOF dashboard listening", "version", Version, "addr", webAddr, "stream", streamDesc, "embedded_stream", *embeddedStream, "http_base_path", httpBasePath)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server", "error", err)
 			os.Exit(1)
