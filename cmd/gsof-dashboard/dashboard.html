@@ -11,6 +11,7 @@
       } catch (e) {}
     })();
   </script>
+  <script>window.__GSOF_URL_PREFIX__ = __GSOF_BASE_PATH_JSON__;</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -874,9 +875,12 @@
       <label for="connHost">Host</label>
       <input id="connHost" type="text" inputmode="text" autocomplete="off" placeholder="e.g. 192.0.2.10" title="TCP hostname or IP of the GSOF source" />
       <label for="connPort">Port</label>
-      <input id="connPort" type="number" min="0" max="65535" value="2101" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
+      <input id="connPort" type="number" min="0" max="65535" value="5018" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
       <button type="button" id="connBtn">Connect</button>
       <p id="connHint" class="meta"></p>
+      <p id="proxyBaseNote" class="meta" hidden style="max-width: 46rem; line-height: 1.35; opacity: 0.9">
+        <strong id="proxyBaseStr"></strong>: one binary covers both deployments. At the site root, leave the prefix unset—routes are <code>/api/…</code>, <code>/events</code>, and <code>/s/…</code>. Under a reverse-proxy path such as <code>/GSOF/</code>, start the server with <code>-http-base-path=/GSOF</code> (or <code>GSOF_DASHBOARD_BASE_PATH=/GSOF</code>): the UI and SSE use that prefix, and this process strips it internally. Forward requests that still include the prefix (e.g. nginx passes the full URI), or adjust your proxy so paths stay consistent.
+      </p>
       <p id="connErr" class="meta" hidden></p>
     </div>
   </header>
@@ -898,11 +902,76 @@
     let lastStreamData = null;
     /** Latest GET /api/config payload (hub mode); used when POSTing /api/sessions. */
     let serverStreamConfig = null;
+    /** Root-relative URL prefix when behind a reverse proxy (e.g. /GSOF); see head script. */
+    function gsofURL(path) {
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (!path.startsWith("/")) path = "/" + path;
+      return pre + path;
+    }
+    /** Current route pathname with optional proxy prefix removed (for /s/&lt;session&gt;/ matching). */
+    function gsofPathForRouteMatch() {
+      let path = window.location.pathname;
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (pre && path.startsWith(pre)) {
+        path = path.slice(pre.length) || "/";
+      }
+      return path;
+    }
+    (function revealProxyPrefixNote() {
+      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
+      if (!pre) return;
+      const note = document.getElementById("proxyBaseNote");
+      const strong = document.getElementById("proxyBaseStr");
+      if (note && strong) {
+        strong.textContent = "Using URL prefix " + pre;
+        note.hidden = false;
+      }
+    })();
     /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";
     const THEME_STORAGE_KEY = "gsof-dashboard-theme";
+    /** Last connection form (transport / host / port) for multi-user UI; restored on next visit. */
+    const CONN_FORM_STORAGE_KEY = "gsof-dashboard-last-connection-v1";
     const themeSelect = document.getElementById("themeSelect");
+
+    function saveConnFormToStorage(transport, host, port) {
+      try {
+        localStorage.setItem(
+          CONN_FORM_STORAGE_KEY,
+          JSON.stringify({
+            transport: transport,
+            host: host || "",
+            port: port,
+          }),
+        );
+      } catch (e) {}
+    }
+
+    function loadConnFormFromStorage() {
+      try {
+        const raw = localStorage.getItem(CONN_FORM_STORAGE_KEY);
+        if (!raw) {
+          return;
+        }
+        const o = JSON.parse(raw);
+        const tr = document.getElementById("connTransport");
+        if (tr && (o.transport === "tcp" || o.transport === "udp")) {
+          tr.value = o.transport;
+        }
+        const hostEl = document.getElementById("connHost");
+        if (hostEl && typeof o.host === "string") {
+          hostEl.value = o.host;
+        }
+        const portEl = document.getElementById("connPort");
+        if (portEl && o.port != null) {
+          const p = parseInt(String(o.port), 10);
+          if (!Number.isNaN(p) && p >= 0 && p <= 65535) {
+            portEl.value = String(p);
+          }
+        }
+      } catch (e) {}
+    }
 
     function applyThemeChoice(mode) {
       if (mode === "light" || mode === "dark") {
@@ -7601,8 +7670,8 @@
       }
       btn.hidden = false;
       btn.addEventListener("click", () => {
-        fetch("/api/sessions/" + encodeURIComponent(sessionId), { method: "DELETE" }).finally(() => {
-          window.location.href = "/";
+        fetch(gsofURL("/api/sessions/" + encodeURIComponent(sessionId)), { method: "DELETE" }).finally(() => {
+          window.location.href = gsofURL("/");
         });
       });
     }
@@ -7625,7 +7694,7 @@
       const panel = document.getElementById("connPanel");
       const tr = document.getElementById("connTransport");
       if (!panel || !tr) {
-        connectSSE("/events");
+        connectSSE(gsofURL("/events"));
         return;
       }
       panel.hidden = false;
@@ -7660,7 +7729,7 @@
           body.ignore_tcp_gsof_transmission_gap1 = true;
         }
         statusEl.textContent = "Starting stream…";
-        fetch("/api/sessions", {
+        fetch(gsofURL("/api/sessions"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -7673,6 +7742,7 @@
             return JSON.parse(text);
           })
           .then((data) => {
+            saveConnFormToStorage(transport, host, port);
             if (data.listen && data.advertise_host) {
               statusEl.textContent =
                 "UDP " + data.advertise_host + ":" + data.listen.port + " — opening dashboard…";
@@ -7710,27 +7780,28 @@
     }
 
     function initConnection() {
-      const sm = location.pathname.match(/^\/s\/([a-f0-9]{32})\/?$/i);
+      const sm = gsofPathForRouteMatch().match(/^\/s\/([a-f0-9]{32})\/?$/i);
       if (sm) {
         const sid = sm[1];
         streamPill.className = "pill wait";
         streamPill.textContent = "session";
         wireSessionDisconnect(sid);
-        connectSSE("/s/" + sid + "/events");
+        connectSSE(gsofURL("/events") + "?session=" + encodeURIComponent(sid));
         return;
       }
-      fetch("/api/config")
+      fetch(gsofURL("/api/config"))
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("config " + r.status))))
         .then((cfg) => {
           if (cfg.ui_sessions_enabled) {
             applyCliStreamHints(cfg);
+            loadConnFormFromStorage();
             showStreamSetupPanel();
             return;
           }
-          connectSSE("/events");
+          connectSSE(gsofURL("/events"));
         })
         .catch(() => {
-          connectSSE("/events");
+          connectSSE(gsofURL("/events"));
         });
     }
     initConnection();
