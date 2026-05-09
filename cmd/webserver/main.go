@@ -5,14 +5,17 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"timing-analyzer/internal/core"
 	"timing-analyzer/internal/stream"
@@ -90,6 +93,36 @@ func probeUDPListenPort(port int) error {
 	return c.Close()
 }
 
+// bindPortInUse reports whether err is the usual OS "address already in use" bind failure.
+func bindPortInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		if errno == syscall.EADDRINUSE {
+			return true
+		}
+		// Windows: WSAEADDRINUSE == 10048
+		if int(errno) == 10048 {
+			return true
+		}
+	}
+	s := strings.ToLower(err.Error())
+	return strings.Contains(s, "already in use") ||
+		strings.Contains(s, "only one usage of each socket address") ||
+		strings.Contains(s, "typically allows only one")
+}
+
+func bindPortDeniedMessage(transport string, port int, err error) string {
+	if bindPortInUse(err) {
+		return fmt.Sprintf(
+			"Port %d is already in use on this server — choose a different port between %d and %d.",
+			port, webListenPortMin, webListenPortMax)
+	}
+	return fmt.Sprintf("cannot listen for %s on port %d: %v", transport, port, err)
+}
+
 func handleStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -138,12 +171,12 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 		}
 		if mode == "tcp_listen" {
 			if err := probeTCPListenPort(req.Port); err != nil {
-				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("cannot listen on TCP port %d: %v", req.Port, err))
+				writeJSONError(w, http.StatusBadRequest, bindPortDeniedMessage("TCP", req.Port, err))
 				return
 			}
 		} else {
 			if err := probeUDPListenPort(req.Port); err != nil {
-				writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("cannot listen on UDP port %d: %v", req.Port, err))
+				writeJSONError(w, http.StatusBadRequest, bindPortDeniedMessage("UDP", req.Port, err))
 				return
 			}
 		}
@@ -263,6 +296,67 @@ func handleEvents(w http.ResponseWriter, r *http.Request) {
 	session.Broker.ServeHTTP(w, r)
 }
 
+// listHostIPv4Hints returns distinct non-loopback IPv4 addresses on up, non-loopback interfaces.
+func listHostIPv4Hints() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			default:
+				continue
+			}
+			if ip == nil {
+				continue
+			}
+			ip = ip.To4()
+			if ip == nil || ip.IsLoopback() {
+				continue
+			}
+			s := ip.String()
+			if _, ok := seen[s]; ok {
+				continue
+			}
+			seen[s] = struct{}{}
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func handleListenInfo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ips := listHostIPv4Hints()
+	if ips == nil {
+		ips = []string{}
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(map[string][]string{"ipv4": ips})
+}
+
 func main() {
 	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
@@ -300,6 +394,7 @@ func main() {
 	})
 
 	http.HandleFunc(path+"api/start", handleStart)
+	http.HandleFunc(path+"api/listen-info", handleListenInfo)
 	http.HandleFunc(path+"events", handleEvents)
 
 	address := fmt.Sprintf("%s:%d", *bindIP, *port)
