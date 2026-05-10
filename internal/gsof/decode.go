@@ -462,6 +462,37 @@ func formatDMS(deg float64, isLat bool) string {
 	return fmt.Sprintf("%s %d° %d′ %.5f″", hemi, d, m, s)
 }
 
+// formatDMSSuffixHemisphere renders the same DMS as formatDMS with the hemisphere after the seconds
+// (e.g. 39° 56′ 23.3203″ N) for base-station one-line position text.
+func formatDMSSuffixHemisphere(deg float64, isLat bool) string {
+	var hemi string
+	var abs float64
+	if isLat {
+		if deg >= 0 {
+			hemi, abs = "N", deg
+		} else {
+			hemi, abs = "S", -deg
+		}
+	} else {
+		if deg >= 0 {
+			hemi, abs = "E", deg
+		} else {
+			hemi, abs = "W", -deg
+		}
+	}
+	d, m, s := splitDMS(abs)
+	return fmt.Sprintf("%d° %d′ %.4f″ %s", d, m, s, hemi)
+}
+
+// FormatLatLonHeightEllipsoidalLine formats latitude, longitude, and ellipsoidal height as a single
+// human-readable line for base station / antenna position summary.
+func FormatLatLonHeightEllipsoidalLine(latDeg, lonDeg, heightM float64) string {
+	return fmt.Sprintf("%s, %s · %.3f m ellipsoidal",
+		formatDMSSuffixHemisphere(latDeg, true),
+		formatDMSSuffixHemisphere(lonDeg, false),
+		heightM)
+}
+
 func formatDOP1(v float32) string {
 	return fmt.Sprintf("%.1f", v)
 }

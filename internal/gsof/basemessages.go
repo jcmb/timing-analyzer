@@ -103,3 +103,21 @@ func labelBasePositionQuality(code byte) string {
 		return fmt.Sprintf("code=%d", code)
 	}
 }
+
+// ShortBasePositionQuality returns a compact quality phrase for base station summary UI (no numeric prefix).
+func ShortBasePositionQuality(code byte) string {
+	switch code {
+	case 0:
+		return "Fix not available or invalid"
+	case 1:
+		return "Autonomous GPS fix"
+	case 2:
+		return "Differential SBAS or OmniSTAR VBS"
+	case 4:
+		return "RTK fixed, xFill"
+	case 5:
+		return "OmniSTAR XP, OmniSTAR HP, CenterPoint RTX, Float RTK, or Location RTK"
+	default:
+		return fmt.Sprintf("Unknown or reserved (code %d)", code)
+	}
+}
