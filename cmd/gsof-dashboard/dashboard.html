@@ -1098,7 +1098,7 @@
         <option value="udp">UDP listen (this server)</option>
       </select>
       <label for="connHost">Host</label>
-      <input id="connHost" type="text" inputmode="text" autocomplete="off" placeholder="e.g. 192.0.2.10" title="TCP hostname or IP of the GSOF source" />
+      <input id="connHost" type="text" inputmode="text" autocomplete="off" placeholder="e.g. 192.0.2.10 (leave empty for TCP listen)" title="TCP: hostname or IP to dial, or leave empty so this server listens on the port for an inbound connection" />
       <label for="connPort">Port</label>
       <input id="connPort" type="number" min="0" max="65535" value="5018" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
       <button type="button" id="connBtn">Connect</button>
@@ -8313,7 +8313,8 @@
       } else {
         host.disabled = false;
         host.style.opacity = "";
-        hint.textContent = "";
+        hint.textContent =
+          "TCP: set host and port to dial the receiver, or leave host empty to listen on this machine (receiver connects to the host running gsof-dashboard). Port must be 1–65535.";
       }
     }
 
@@ -8364,11 +8365,7 @@
         const portRaw = document.getElementById("connPort").value;
         const port = parseInt(portRaw, 10);
         if (transport === "tcp") {
-          if (!host) {
-            showConnError("Host is required for TCP.");
-            return;
-          }
-          if (!(port >= 1 && port <= 65535)) {
+          if (Number.isNaN(port) || !(port >= 1 && port <= 65535)) {
             showConnError("TCP port must be 1–65535.");
             return;
           }
