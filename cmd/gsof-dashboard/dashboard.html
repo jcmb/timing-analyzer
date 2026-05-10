@@ -408,6 +408,27 @@
       border-top: 1px solid var(--border);
       padding-top: 0.55rem;
     }
+    .card-wire-debug {
+      margin: 0 0 0.55rem;
+      padding: 0.45rem 0.55rem;
+      background: rgba(127, 127, 127, 0.08);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
+    .wire-debug-caption {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    pre.wire-debug-hex {
+      margin: 0;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 14rem;
+      overflow: auto;
+    }
     .card-body dl {
       margin: 0;
       display: grid;
@@ -6799,6 +6820,9 @@
 
       const body = document.createElement("div");
       body.className = "card-body";
+      const wireDebug = document.createElement("div");
+      wireDebug.className = "card-wire-debug";
+      wireDebug.hidden = true;
       const dl = document.createElement("dl");
       const docWrap = document.createElement("p");
       docWrap.className = "doc-link-wrap";
@@ -6808,6 +6832,7 @@
       docA.rel = "noopener noreferrer";
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
+      body.appendChild(wireDebug);
       body.appendChild(dl);
       const nma91RowsRoot = document.createElement("div");
       nma91RowsRoot.className = "nma91-rows-root";
@@ -7019,6 +7044,14 @@
 
     function updateCard(art, r) {
       art.querySelector("h2.card-title").textContent = r.name;
+      const body0 = art.querySelector(".card-body");
+      if (body0) {
+        const wd = body0.querySelector(".card-wire-debug");
+        if (wd) {
+          wd.hidden = true;
+          wd.replaceChildren();
+        }
+      }
       art.querySelector(".card-line").textContent =
         "Type " + r.type_hex + " (" + String(r.type) + ")  |  " + String(r.count);
       const stale = art.querySelector(".card-stale");
@@ -7044,6 +7077,7 @@
 
       const body = art.querySelector(".card-body");
       const dl = body.querySelector("dl");
+      const wireDbgLLH = body.querySelector(".card-wire-debug");
       const svRoot = body.querySelector(".sv-brief-root");
       const svDetRoot = body.querySelector(".sv-detailed-root");
       const iono92Root = body.querySelector(".ionoguard92-sv-root");
@@ -7556,6 +7590,19 @@
         ensureLLHGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+        if (r.type === 2 && wireDbgLLH) {
+          wireDbgLLH.hidden = false;
+          const cap = document.createElement("div");
+          cap.className = "wire-debug-caption";
+          cap.textContent =
+            "Debug — GSOF subtype 2 on the wire (type byte · length byte · 24-byte payload), spaced hex:";
+          const pre = document.createElement("pre");
+          pre.className = "mono wire-debug-hex";
+          const ph = typeof r.payload_hex === "string" ? r.payload_hex : "";
+          pre.textContent = ph.length ? ph : "(empty — no 0x02 sub-record in the latest packet)";
+          wireDbgLLH.appendChild(cap);
+          wireDbgLLH.appendChild(pre);
+        }
       } else if (isLL97) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;

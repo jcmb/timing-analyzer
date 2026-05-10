@@ -111,20 +111,39 @@ func main() {
 	}
 	dashboardHTMLPrepared := prepareDashboardHTML(buildDisplayVersion(), httpBasePath)
 
+	hubFlagExplicit := false
 	openBrowserFlagSet := false
+	allowPrivateFlagExplicit := false
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "open-browser" {
+		switch f.Name {
+		case "hub":
+			hubFlagExplicit = true
+		case "open-browser":
 			openBrowserFlagSet = true
+		case "allow-private-gsof-targets":
+			allowPrivateFlagExplicit = true
 		}
 	})
+	// Windows/macOS: if -hub was not passed, assume a local desktop run (default hub=true):
+	// open the browser and allow RFC1918/loopback TCP targets without an extra flag.
+	desktopHubDefaults := (runtime.GOOS == "darwin" || runtime.GOOS == "windows") && !hubFlagExplicit
+
 	openBrowser := *openBrowserFlag
 	if !openBrowserFlagSet {
 		openBrowser = !*hub
+		if desktopHubDefaults {
+			openBrowser = true
+		}
 	}
 
 	// Hub/shared hosting: block private TCP targets unless -allow-private-gsof-targets.
 	// Local (-hub=false): allow LAN / loopback targets without extra flags.
-	effectiveAllowPrivateGSOF := !*hub || *allowPrivateGSOF
+	var effectiveAllowPrivateGSOF bool
+	if desktopHubDefaults && !allowPrivateFlagExplicit {
+		effectiveAllowPrivateGSOF = true
+	} else {
+		effectiveAllowPrivateGSOF = !*hub || *allowPrivateGSOF
+	}
 
 	gsof.ShowExpectedReservedBits = *showExpectedReserved
 
@@ -283,6 +302,9 @@ func main() {
 	}
 	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s\n",
 		buildDisplayVersion(), webAddr, streamDesc)
+	if desktopHubDefaults {
+		fmt.Fprintf(os.Stdout, "  note:    %s desktop — -hub omitted: opened browser (unless -open-browser=false) and private LAN TCP targets allowed (same as -allow-private-gsof-targets)\n", runtime.GOOS)
+	}
 	if httpBasePath != "" {
 		fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (incoming paths strip this; configure proxy to forward full path including prefix, or equivalent)\n", httpBasePath)
 	}
