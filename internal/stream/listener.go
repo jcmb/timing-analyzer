@@ -14,6 +14,14 @@ import (
 	"timing-analyzer/internal/parser"
 )
 
+// TCPInboundGSOFHook is optional instrumentation for TCP listen mode (inbound clients).
+// When non-nil, each accepted connection is registered until the first GSOF DCOL frame or disconnect.
+type TCPInboundGSOFHook interface {
+	Register(remoteAddr string, closeConn func() error)
+	NotifyGSOF(remoteAddr string)
+	InboundClosed(remoteAddr string)
+}
+
 // runTCPOutboundClient dials cfg.Host:cfg.Port until ctx is cancelled: backoff on dial errors,
 // reconnect after each session ends (EOF, reset, close). Uses TCP keepalives so dead peers are
 // detected without relying only on application reads.
@@ -76,7 +84,7 @@ func runTCPOutboundClient(ctx context.Context, cfg core.Config, packetChan chan<
 		cur = conn
 		mu.Unlock()
 
-		handleTCPConn(ctx, conn, cfg, packetChan)
+		handleTCPConn(ctx, conn, cfg, packetChan, nil)
 
 		mu.Lock()
 		cur = nil
@@ -94,7 +102,8 @@ func runTCPOutboundClient(ctx context.Context, cfg core.Config, packetChan chan<
 // StartListenerContext runs the same transports as StartListener until ctx is cancelled.
 // It returns nil when ctx is done. A non-nil error means setup failed (e.g. bind).
 // If onUDPLocalPort is non-nil, it is called once with the bound UDP port immediately after ListenUDP succeeds.
-func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<- core.PacketEvent, onUDPLocalPort func(port int)) error {
+// tcpGSOFHook is optional; when set with TCP listen (no outbound host), tracks inbound peers without GSOF.
+func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<- core.PacketEvent, onUDPLocalPort func(port int), tcpGSOFHook TCPInboundGSOFHook) error {
 	proto := strings.ToLower(strings.TrimSpace(cfg.IP))
 	switch proto {
 	case "tcp":
@@ -121,7 +130,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 				}
 				continue
 			}
-			go handleTCPConn(ctx, conn, cfg, packetChan)
+			go handleTCPConn(ctx, conn, cfg, packetChan, tcpGSOFHook)
 		}
 
 	case "udp":
@@ -262,7 +271,7 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 // Cancel is not supported; use StartListenerContext for cancellable sessions.
 func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 	go func() {
-		err := StartListenerContext(context.Background(), cfg, packetChan, nil)
+		err := StartListenerContext(context.Background(), cfg, packetChan, nil, nil)
 		if err != nil {
 			slog.Error("stream listener failed", "error", err)
 			os.Exit(1)
@@ -270,8 +279,17 @@ func StartListener(cfg core.Config, packetChan chan<- core.PacketEvent) {
 	}()
 }
 
-func handleTCPConn(ctx context.Context, conn net.Conn, cfg core.Config, packetChan chan<- core.PacketEvent) {
+func handleTCPConn(ctx context.Context, conn net.Conn, cfg core.Config, packetChan chan<- core.PacketEvent, tcpGSOFHook TCPInboundGSOFHook) {
 	closedOnDone := make(chan struct{})
+	remoteIP := conn.RemoteAddr().String()
+	if tcpGSOFHook != nil {
+		tcpGSOFHook.Register(remoteIP, conn.Close)
+	}
+	defer func() {
+		if tcpGSOFHook != nil {
+			tcpGSOFHook.InboundClosed(remoteIP)
+		}
+	}()
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -283,7 +301,6 @@ func handleTCPConn(ctx context.Context, conn net.Conn, cfg core.Config, packetCh
 	defer conn.Close()
 
 	buf := make([]byte, 2048)
-	remoteIP := conn.RemoteAddr().String()
 	slog.Info("TCP connection established", "remote_addr", remoteIP)
 
 	dcolParser := &parser.DCOLParser{}

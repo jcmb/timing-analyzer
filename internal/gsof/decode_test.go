@@ -22,6 +22,7 @@ func TestDecode01(t *testing.T) {
 	}
 	var tow, week, svs string
 	var flags1, flags2 *Field
+	var staticConstraint string
 	for i := range fields {
 		f := &fields[i]
 		switch f.Label {
@@ -35,10 +36,15 @@ func TestDecode01(t *testing.T) {
 			flags1 = f
 		case "Flags 2":
 			flags2 = f
+		case "Static constraint (Flags 2 bit 4)":
+			staticConstraint = f.Value
 		}
 	}
 	if tow != "1.00 s" || week != "2271" || svs != "5" {
 		t.Fatalf("decode mismatch tow=%q week=%q svs=%q\n%s", tow, week, svs, fieldText(fields))
+	}
+	if staticConstraint != "No" {
+		t.Fatalf("static constraint with flags2=0: %q", staticConstraint)
 	}
 	// Reserved bits at expected values are omitted by default (bit 6 clear);
 	// bit 4 should be set but is clear in this payload → one reserved row.
@@ -47,6 +53,27 @@ func TestDecode01(t *testing.T) {
 	}
 	if flags2 == nil || len(flags2.Detail) != 8 {
 		t.Fatalf("Flags 2 detail: %#v", flags2)
+	}
+}
+
+func TestDecode01StaticConstraintBit4(t *testing.T) {
+	payload := []byte{
+		0x00, 0x00, 0x03, 0xE8,
+		0x08, 0xDF,
+		0x05,
+		0x00, 0x10, // flags2: bit 4 set (static constraint)
+		0x00,
+	}
+	fields := Decode(1, payload)
+	var saw string
+	for _, f := range fields {
+		if f.Label == "Static constraint (Flags 2 bit 4)" {
+			saw = f.Value
+			break
+		}
+	}
+	if saw != "Yes" {
+		t.Fatalf("want Yes for bit4 set, got %q", saw)
 	}
 }
 
@@ -269,8 +296,11 @@ func TestDecode57RadioLayout(t *testing.T) {
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if got["GPS week"] != "3" || got["GPS time of week"] != "1.500 s" {
-		t.Fatalf("time header: %#v", got)
+	if _, ok := got["GPS week"]; ok {
+		t.Fatalf("GPS week should not appear in type 57 decode: %#v", got)
+	}
+	if _, ok := got["GPS time of week"]; ok {
+		t.Fatalf("GPS time of week should not appear in type 57 decode: %#v", got)
 	}
 	if got["Radio count"] != "1" {
 		t.Fatalf("count: %#v", got)
@@ -430,7 +460,7 @@ func TestDecode97SecondAntennaLayout(t *testing.T) {
 	if got["GPS week"] != "5" || got["GPS time of week"] != "3.000 s" {
 		t.Fatalf("time: %#v", got)
 	}
-	if !strings.Contains(got["Position type"], "7 —") || !strings.Contains(got["Position type"], "Full float RTK") {
+	if !strings.Contains(got["Position type"], "7 —") || !strings.Contains(got["Position type"], "Full Float RTK") {
 		t.Fatalf("pos type: %q", got["Position type"])
 	}
 	if !strings.Contains(got["Source"], "Moving-base") {
@@ -1251,6 +1281,16 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	if !strings.Contains(got["Position fix type"], "9 —") {
 		t.Fatalf("fix type: %q", got["Position fix type"])
 	}
+	var fixF *Field
+	for i := range fields {
+		if fields[i].Label == "Position fix type" {
+			fixF = &fields[i]
+			break
+		}
+	}
+	if fixF == nil || len(fixF.Detail) < 50 {
+		t.Fatalf("position fix type OEM reference detail: %#v", fixF)
+	}
 	if !strings.Contains(got["Tectonic plate"], "Australia") {
 		t.Fatalf("plate: %q", got["Tectonic plate"])
 	}
@@ -1265,13 +1305,13 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	}
 }
 
-func TestDecodePositionType38FixTypes52and53(t *testing.T) {
+func TestDecodePositionType38FixTypeExtendedUnknown(t *testing.T) {
 	for _, tc := range []struct {
 		code byte
 		want string
 	}{
-		{52, "52 — HAS"},
-		{53, "53 — INS HAS"},
+		{52, "52 — unknown (code 52)"},
+		{53, "53 — unknown (code 53)"},
 	} {
 		payload := make([]byte, 26)
 		payload[4] = 0x03
@@ -1396,11 +1436,11 @@ func TestDecode41BasePositionQuality(t *testing.T) {
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if !strings.Contains(got["GPS time of week"], "1234.50 s") {
-		t.Fatalf("tow: %q", got["GPS time of week"])
+	if _, ok := got["GPS week"]; ok {
+		t.Fatalf("GPS week should not appear in type 41 decode: %#v", got["GPS week"])
 	}
-	if got["GPS week"] != "2300" {
-		t.Fatalf("week: %q", got["GPS week"])
+	if _, ok := got["GPS time of week"]; ok {
+		t.Fatalf("GPS time of week should not appear in type 41 decode: %#v", got["GPS time of week"])
 	}
 	if !strings.Contains(got["Base latitude (DMS)"], "N") {
 		t.Fatalf("lat DMS: %q", got["Base latitude (DMS)"])

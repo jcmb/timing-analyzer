@@ -404,9 +404,6 @@
         blockRows(lines, "BASE INFORMATION (moving base · GSOF type 41)", rowsBase41(d.base_41_moving));
       }
     }
-    if (d.points && d.points.length) {
-      blockRows(lines, "LAST MATCHED POINT", rowsLastPoint(d));
-    }
     return lines.join("\n").replace(/\n+$/, "");
   }
 
@@ -667,33 +664,6 @@
     el.style.display = show ? "" : "none";
     if (show && !prev) revealCardPanel(el);
   }
-  function rowsLastPoint(d) {
-    var pts = d.points || [];
-    if (!pts.length) return [full("No matched points.")];
-    var p = pts[pts.length - 1];
-    var rows = [
-      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
-      row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
-      row("Bearing", p.bearing_deg.toFixed(3) + " °"),
-      row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
-      row("Slant range", p.slant_m.toFixed(5) + " m"),
-      row("Reference", String(p.reference_source)),
-      row("SVs (heading)", String(p.svs_heading)),
-      row("SVs (moving base)", String(p.svs_moving_base))
-    ];
-    if (p.range_note) {
-      rows.push(row("Ref source", formatRangeRefSource(p.range_note)));
-      if (p.range_ref_m != null && !isNaN(p.range_ref_m)) {
-        rows.push(row("Reference range (m)", p.range_ref_m.toFixed(4)));
-      }
-    }
-    if (rangeCompareActive(p)) {
-      rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
-      rows.push(row("Range OK", p.range_ok ? "yes" : "no"));
-    }
-    return rows;
-  }
-
   var CARD_STATE_KEY = "gsof-baseline-card-open";
   function readCardOpenMap() {
     try {

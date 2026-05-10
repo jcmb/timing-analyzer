@@ -97,6 +97,8 @@ type Stats struct {
 	positionTimeHistory []gsof.PositionTimePoint
 	// velocityHistory holds recent type-0x08 velocity samples paired with lastGPSTOWSec at decode time.
 	velocityHistory []gsof.VelocityPoint
+	// tcpListen tracks inbound TCP peers (listen mode) with no GSOF within grace; nil otherwise.
+	tcpListen *TCPListenTracker
 }
 
 func NewStats(suppressSingle bool) *Stats {
@@ -113,6 +115,13 @@ func NewStats(suppressSingle bool) *Stats {
 		lastRecordWire:       make(map[int][]byte),
 		suppressSingle:       suppressSingle,
 	}
+}
+
+// SetTCPListenTracker attaches optional inbound-TCP (listen) tracking for the dashboard.
+func (s *Stats) SetTCPListenTracker(t *TCPListenTracker) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tcpListen = t
 }
 
 var allowedPeriods = []float64{
@@ -555,12 +564,19 @@ type DashboardPayload struct {
 	StreamOK                 bool        `json:"stream_ok"`
 	DashboardVersion         string      `json:"dashboard_version,omitempty"`
 	ShowExpectedReservedBits bool        `json:"show_expected_reserved_bits"`
+	// EmbeddedStream is true when the server runs a single embedded CLI stream (-embedded-stream=true);
+	// the dashboard treats graph panels as read-only (no new plots / greyed controls).
+	EmbeddedStream bool `json:"embedded_stream,omitempty"`
+	// TCPInboundPending lists inbound TCP peers still within the no-GSOF grace window (listen mode only).
+	TCPInboundPending []TCPInboundPendingRow `json:"tcp_inbound_pending,omitempty"`
+	// TCPNoGSOFInbound lists peers dropped for no GSOF within the grace period (retained ~15 minutes).
+	TCPNoGSOFInbound []TCPInboundNoGSOFRow `json:"tcp_no_gsof_inbound,omitempty"`
 }
 
 // BuildDashboard returns a snapshot for JSON/SSE (sorted by record type).
 // dashboardVersion is the gsof-dashboard binary build (empty if not applicable).
 // remoteHost is the TCP peer when mode is tcp (e.g. from -host); omit with "" for listen/UDP.
-func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, remoteHost string) *DashboardPayload {
+func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, remoteHost string, embeddedStream bool) *DashboardPayload {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -676,9 +692,18 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 		rows = append(rows, row)
 	}
 
+	s.applyBaseStationFieldDedup(rows)
+
 	warn := append([]string(nil), s.warnings...)
 	if len(warn) > 50 {
 		warn = warn[len(warn)-50:]
+	}
+
+	var tcpPending []TCPInboundPendingRow
+	var tcpDropped []TCPInboundNoGSOFRow
+	if s.tcpListen != nil {
+		s.tcpListen.Tick(now)
+		tcpPending, tcpDropped = s.tcpListen.SnapshotForDashboard()
 	}
 
 	return &DashboardPayload{
@@ -692,6 +717,9 @@ func (s *Stats) BuildDashboard(mode string, port int, dashboardVersion string, r
 		StreamOK:                 streamOK,
 		DashboardVersion:         dashboardVersion,
 		ShowExpectedReservedBits: gsof.ShowExpectedReservedBits,
+		EmbeddedStream:           embeddedStream,
+		TCPInboundPending:        tcpPending,
+		TCPNoGSOFInbound:         tcpDropped,
 	}
 }
 

@@ -110,6 +110,12 @@
       color: var(--text);
       line-height: 1.45;
       min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    main {
+      flex: 1 1 auto;
+      min-height: 0;
     }
     header {
       padding: 1rem 1.25rem;
@@ -263,6 +269,54 @@
       flex-direction: column;
       gap: 0.5rem;
     }
+    .tcp-inbound-list {
+      margin-bottom: 1rem;
+      padding: 0.65rem 0.85rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+    }
+    .tcp-inbound-list h2 {
+      margin: 0 0 0.35rem;
+      font-size: 0.95rem;
+      font-weight: 650;
+      color: var(--text);
+    }
+    .tcp-inbound-list-note {
+      margin: 0 0 0.5rem;
+      font-size: 0.72rem;
+      line-height: 1.35;
+    }
+    .tcp-inbound-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+    }
+    .tcp-inbound-table th,
+    .tcp-inbound-table td {
+      text-align: left;
+      padding: 0.28rem 0.45rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tcp-inbound-table th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .tcp-inbound-row--pending td:first-child {
+      color: var(--warn);
+    }
+    .tcp-inbound-row--recent {
+      animation: tcpInboundFlash 5s ease-out 1;
+    }
+    @keyframes tcpInboundFlash {
+      0% {
+        background: var(--accent-bg);
+      }
+      100% {
+        background: transparent;
+      }
+    }
     article.card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -354,6 +408,27 @@
       border-top: 1px solid var(--border);
       padding-top: 0.55rem;
     }
+    .card-wire-debug {
+      margin: 0 0 0.55rem;
+      padding: 0.45rem 0.55rem;
+      background: rgba(127, 127, 127, 0.08);
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+    }
+    .wire-debug-caption {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    pre.wire-debug-hex {
+      margin: 0;
+      font-size: 0.75rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 14rem;
+      overflow: auto;
+    }
     .card-body dl {
       margin: 0;
       display: grid;
@@ -375,6 +450,19 @@
       white-space: pre-wrap;
       text-align: left;
       font-variant-numeric: tabular-nums;
+    }
+    .card-field-section-title {
+      grid-column: 1 / -1;
+      margin: 0.45rem 0 0;
+      padding-top: 0.45rem;
+      border-top: 1px solid var(--border);
+      font-weight: 650;
+      color: var(--text);
+      font-size: 0.8rem;
+    }
+    .card-field-section-dd.card-field-section-dd {
+      font-family: var(--sans);
+      color: var(--muted);
     }
     .field-dd-inner {
       display: flex;
@@ -616,6 +704,71 @@
       font-size: 0.8rem;
       color: var(--muted);
     }
+    .sv-skyplot-wrap {
+      margin: 0 0 0.85rem;
+      max-width: 100%;
+    }
+    .sv-skyplot-caption {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 0.35rem;
+      font-family: var(--sans);
+    }
+    .sv-skyplot-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.9rem;
+      margin: 0 0 0.45rem;
+      font-size: 0.76rem;
+      color: var(--text);
+      font-family: var(--sans);
+    }
+    .sv-skyplot-legend-title {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .sv-skyplot-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.28rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .sv-skyplot-legend-item input {
+      margin: 0;
+    }
+    .sv-skyplot-inner {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+    }
+    .sv-skyplot-canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: 520px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: crosshair;
+      vertical-align: top;
+    }
+    .sv-skyplot-tooltip {
+      position: fixed;
+      z-index: 80;
+      max-width: min(22rem, calc(100vw - 24px));
+      padding: 0.4rem 0.55rem;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      font-family: var(--mono);
+      white-space: pre-line;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
+    }
     .ionoguard92-sv-root {
       margin: 0;
       padding: 0 0.85rem 0.75rem;
@@ -839,11 +992,83 @@
       font-size: 0.75rem;
       color: var(--text);
     }
+    /* Bottom-docked graph panels (replaces separate browser windows). */
+    #graphDock {
+      flex: 0 0 auto;
+      border-top: 1px solid var(--border);
+      background: var(--card);
+      max-height: 46vh;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    #graphDock[hidden] {
+      display: none !important;
+    }
+    .graph-dock-inner {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex: 1;
+    }
+    .graph-dock-panels {
+      flex: 1 1 auto;
+      min-height: 200px;
+      position: relative;
+      overflow: hidden;
+    }
+    .graph-dock-panel {
+      position: absolute;
+      inset: 0;
+    }
+    .graph-dock-iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      background: #111618;
+    }
+    .graph-dock-tabs {
+      flex: 0 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 6px 8px;
+      border-top: 1px solid var(--border);
+      background: var(--btn-bg-weak);
+    }
+    .graph-dock-tab {
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      padding: 0.28rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .graph-dock-tab:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .graph-dock-tab[aria-selected="true"] {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    #graphDock.graph-dock--readonly .graph-dock-tabs {
+      opacity: 0.42;
+      pointer-events: none;
+    }
+    #graphDock.graph-dock--readonly .graph-dock-tab {
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
   <header>
-    <p class="build-banner" title="Increment cmd/gsof-dashboard/version.go when you change this app">Build <strong>__GSOF_DASHBOARD_VERSION__</strong></p>
+    <p class="build-banner" title="SemVer is set in cmd/gsof-dashboard/version.go; the running binary also appends a short Git revision when built from a VCS checkout (go build default).">Build <strong>__GSOF_DASHBOARD_VERSION__</strong></p>
     <h1>
       <a
         class="title-doc-link"
@@ -859,7 +1084,7 @@
     <div class="theme-control">
       <label for="themeSelect">Theme</label>
       <select id="themeSelect" title="Match system uses light or dark from your OS / browser setting">
-        <option value="system">Match system</option>
+        <option value="system" selected>Match system</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
@@ -885,12 +1110,36 @@
     </div>
   </header>
   <main>
+    <section id="tcpInboundListSection" class="tcp-inbound-list" hidden aria-live="polite">
+      <h2>Inbound TCP (no GSOF)</h2>
+      <p class="meta tcp-inbound-list-note">
+        TCP listen mode: if a peer sends no GSOF DCOL payload within <strong>5 seconds</strong>, the connection is closed.
+        <strong>Receiver</strong> is the client IP. Dropped rows disappear after <strong>15 minutes</strong>. Rows dropped in the last 5 seconds are highlighted.
+      </p>
+      <table class="tcp-inbound-table">
+        <thead>
+          <tr>
+            <th scope="col">Status</th>
+            <th scope="col">Receiver</th>
+            <th scope="col">Remote</th>
+            <th scope="col">Dropped</th>
+          </tr>
+        </thead>
+        <tbody id="tcpInboundListBody"></tbody>
+      </table>
+    </section>
     <div id="cards"></div>
     <section id="warnings">
       <h2>Recent warnings</h2>
       <pre id="warnBody"></pre>
     </section>
   </main>
+  <section id="graphDock" class="graph-dock" hidden aria-label="GSOF graph panels">
+    <div class="graph-dock-inner">
+      <div id="graphDockPanels" class="graph-dock-panels"></div>
+      <div id="graphDockTabs" class="graph-dock-tabs" role="tablist" aria-label="Open graphs"></div>
+    </div>
+  </section>
   <script>
     const cardsEl = document.getElementById("cards");
     const metaEl = document.getElementById("meta");
@@ -1502,6 +1751,346 @@
       container.appendChild(box);
     }
 
+    function svSkyplotFilterPlotRows(rows) {
+      const out = [];
+      if (!rows || !rows.length) {
+        return out;
+      }
+      for (const row of rows) {
+        const el = Number(row.elev);
+        const az = Number(row.azimuth);
+        if (!Number.isFinite(el) || !Number.isFinite(az)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out;
+    }
+
+    function svSkyplotTooltipLines(row, mode) {
+      const lines = [];
+      if (mode === "all-detailed") {
+        if (row.system_name) {
+          lines.push(String(row.system_name));
+        }
+        lines.push("PRN " + String(row.prn));
+        lines.push("Elevation " + String(row.elev) + "°");
+        lines.push("Azimuth " + String(row.azimuth) + "°");
+        lines.push("L1 SNR " + Number(row.snr_l1).toFixed(2));
+        lines.push("L2 SNR " + Number(row.snr_l2).toFixed(2));
+        lines.push("L5 SNR " + Number(row.snr_l5).toFixed(2));
+        lines.push("Flags 1 " + svBriefFmtU8Binary(row.flags1));
+        lines.push(
+          "Flags 2 " + svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits),
+        );
+      } else {
+        lines.push("PRN " + String(row.prn));
+        lines.push("Elevation " + String(row.elev) + "°");
+        lines.push("Azimuth " + String(row.azimuth) + "°");
+        lines.push("L1 SNR " + Number(row.snr_l1).toFixed(2));
+        lines.push("L2 SNR " + Number(row.snr_l2).toFixed(2));
+        lines.push("Flags 1 " + svBriefFmtU8Binary(row.flags1));
+        if (gsofShowExpectedReservedBits) {
+          lines.push("Flags 2 " + svBriefFmtU8Binary(row.flags2));
+        }
+      }
+      return lines;
+    }
+
+    function svSkyplotColorForRow(row, mode) {
+      const palette = [
+        "#3d8bfd",
+        "#3fb950",
+        "#d29922",
+        "#f85149",
+        "#a371f7",
+        "#79c0ff",
+        "#ffa657",
+        "#ff7b72",
+      ];
+      const key = mode === "all-detailed" ? String(row.system_name || "") + ":" + String(row.prn) : "p:" + String(row.prn);
+      let h = 0;
+      for (let i = 0; i < key.length; i++) {
+        h = (h * 31 + key.charCodeAt(i)) | 0;
+      }
+      return palette[Math.abs(h) % palette.length];
+    }
+
+    /** Polar sky plot (north up); rows need elev + azimuth (types 34 / 48 / 14). */
+    function mountSvSkyplotIfAny(root, rows, mode) {
+      const plotRows = svSkyplotFilterPlotRows(rows);
+      if (!plotRows.length) {
+        return;
+      }
+      const sysVisible = new Map();
+      const wrap = document.createElement("div");
+      wrap.className = "sv-skyplot-wrap";
+      const cap = document.createElement("div");
+      cap.className = "sv-skyplot-caption";
+      cap.textContent =
+        "Sky plot — hover an SV for details (elevation vs azimuth, north up, horizon at outer ring)";
+      const inner = document.createElement("div");
+      inner.className = "sv-skyplot-inner";
+      const canvas = document.createElement("canvas");
+      canvas.className = "sv-skyplot-canvas";
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", "Satellite sky plot");
+      const tip = document.createElement("div");
+      tip.className = "sv-skyplot-tooltip";
+      tip.hidden = true;
+      inner.appendChild(canvas);
+      inner.appendChild(tip);
+      wrap.appendChild(cap);
+      if (mode === "all-detailed") {
+        const seenSys = new Set();
+        const sysKeys = [];
+        for (const row of plotRows) {
+          const k = String(row.system_name || "").trim() || "—";
+          if (!seenSys.has(k)) {
+            seenSys.add(k);
+            sysKeys.push(k);
+            sysVisible.set(k, true);
+          }
+        }
+        if (sysKeys.length > 1) {
+          const leg = document.createElement("div");
+          leg.className = "sv-skyplot-legend";
+          const legTitle = document.createElement("span");
+          legTitle.className = "sv-skyplot-legend-title";
+          legTitle.textContent = "Systems";
+          leg.appendChild(legTitle);
+          for (const k of sysKeys) {
+            const lab = document.createElement("label");
+            lab.className = "sv-skyplot-legend-item";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = true;
+            cb.title = "Show or hide SVs for " + k;
+            cb.addEventListener("change", () => {
+              sysVisible.set(k, cb.checked);
+              draw();
+            });
+            lab.appendChild(cb);
+            const sp = document.createElement("span");
+            sp.textContent = k;
+            lab.appendChild(sp);
+            leg.appendChild(lab);
+          }
+          wrap.appendChild(leg);
+        }
+      }
+      wrap.appendChild(inner);
+      root.appendChild(wrap);
+
+      const ctx = canvas.getContext("2d");
+      let hitList = [];
+      const hitPx = 16;
+      const ptDrawR = 5;
+
+      function layoutCssSize() {
+        const w = root.clientWidth || 480;
+        const side = Math.min(520, Math.max(220, w - 8));
+        return { cssW: side, cssH: side };
+      }
+
+      function cssPointFromEvent(ev) {
+        const rect = canvas.getBoundingClientRect();
+        const cssW = parseFloat(canvas.style.width) || layoutCssSize().cssW;
+        const cssH = parseFloat(canvas.style.height) || layoutCssSize().cssH;
+        if (rect.width <= 0 || rect.height <= 0) {
+          return { x: 0, y: 0, cssW, cssH };
+        }
+        return {
+          x: ((ev.clientX - rect.left) / rect.width) * cssW,
+          y: ((ev.clientY - rect.top) / rect.height) * cssH,
+          cssW,
+          cssH,
+        };
+      }
+
+      function pickHit(mx, my) {
+        let best = null;
+        let bestD = hitPx + 1;
+        for (const h of hitList) {
+          const dx = mx - h.x;
+          const dy = my - h.y;
+          const d = Math.hypot(dx, dy);
+          if (d <= hitPx && d < bestD) {
+            bestD = d;
+            best = h;
+          }
+        }
+        return best;
+      }
+
+      function placeTip(ev, text) {
+        tip.textContent = text;
+        tip.hidden = false;
+        tip.style.left = "0px";
+        tip.style.top = "0px";
+        void tip.offsetWidth;
+        const tw = tip.offsetWidth;
+        const th = tip.offsetHeight;
+        let x = ev.clientX + 14;
+        let y = ev.clientY + 14;
+        if (x + tw > window.innerWidth - 6) {
+          x = ev.clientX - tw - 14;
+        }
+        if (y + th > window.innerHeight - 6) {
+          y = ev.clientY - th - 14;
+        }
+        x = Math.max(6, x);
+        y = Math.max(6, y);
+        tip.style.left = x + "px";
+        tip.style.top = y + "px";
+      }
+
+      function draw() {
+        const { cssW, cssH } = layoutCssSize();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        canvas.style.width = cssW + "px";
+        canvas.style.height = cssH + "px";
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+
+        const cs = getComputedStyle(document.documentElement);
+        const borderCol = (cs.getPropertyValue("--border") || "#2d3a4d").trim();
+        const textCol = (cs.getPropertyValue("--text") || "#e6edf3").trim();
+        const mutedCol = (cs.getPropertyValue("--muted") || "#8b9cb3").trim();
+        const cardCol = (cs.getPropertyValue("--card") || "#1a2332").trim();
+
+        ctx.fillStyle = cardCol;
+        ctx.fillRect(0, 0, cssW, cssH);
+
+        const pad = 16;
+        const cx = cssW / 2;
+        const cy = cssH / 2;
+        const rMax = Math.min(cx, cy) - pad - 20;
+        if (rMax < 40) {
+          hitList = [];
+          return;
+        }
+
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1;
+        for (const ringElev of [30, 60]) {
+          const rr = rMax * (1 - ringElev / 90);
+          ctx.beginPath();
+          ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.lineWidth = 1.35;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rMax, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = borderCol;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rMax);
+        ctx.lineTo(cx, cy + rMax);
+        ctx.moveTo(cx - rMax, cy);
+        ctx.lineTo(cx + rMax, cy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = mutedCol;
+        ctx.font = "11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("N", cx, cy - rMax - 2);
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillText("E", cx + rMax + 4, cy);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText("S", cx, cy + rMax + 2);
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText("W", cx - rMax - 4, cy);
+
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.fillStyle = mutedCol;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const ringElev of [30, 60]) {
+          const rr = rMax * (1 - ringElev / 90);
+          ctx.fillText(String(ringElev) + "°", cx + rr * 0.707 - 2, cy - rr * 0.707 - 2);
+        }
+
+        hitList = [];
+        function activePlotRows() {
+          if (mode !== "all-detailed" || sysVisible.size === 0) {
+            return plotRows;
+          }
+          return plotRows.filter((row) => {
+            const k = String(row.system_name || "").trim() || "—";
+            return sysVisible.get(k) !== false;
+          });
+        }
+        const rowsDraw = activePlotRows();
+        const sorted = rowsDraw.slice().sort((a, b) => Number(a.elev) - Number(b.elev));
+        for (const row of sorted) {
+          const elRaw = Number(row.elev);
+          const el = Math.max(0, Math.min(90, Number.isFinite(elRaw) ? elRaw : 0));
+          const az = ((Number(row.azimuth) % 360) + 360) % 360;
+          const r = rMax * (1 - el / 90);
+          const rad = (az * Math.PI) / 180;
+          const x = cx + r * Math.sin(rad);
+          const y = cy - r * Math.cos(rad);
+          hitList.push({ x, y, row });
+          const col = svSkyplotColorForRow(row, mode);
+          ctx.fillStyle = col;
+          ctx.strokeStyle = borderCol;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(x, y, ptDrawR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        const showPrnOnCanvas = rowsDraw.length <= 28;
+        if (showPrnOnCanvas) {
+          ctx.font = "bold 10px system-ui, sans-serif";
+          for (const h of hitList) {
+            const prn = String(h.row.prn);
+            ctx.fillStyle = textCol;
+            ctx.strokeStyle = cardCol;
+            ctx.lineWidth = 3;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.strokeText(prn, h.x + 7, h.y);
+            ctx.fillText(prn, h.x + 7, h.y);
+          }
+        }
+      }
+
+      canvas.addEventListener("mousemove", (ev) => {
+        const p = cssPointFromEvent(ev);
+        const hit = pickHit(p.x, p.y);
+        if (hit) {
+          placeTip(ev, svSkyplotTooltipLines(hit.row, mode).join("\n"));
+        } else {
+          tip.hidden = true;
+        }
+      });
+      canvas.addEventListener("mouseleave", () => {
+        tip.hidden = true;
+      });
+
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => {
+          draw();
+        });
+        ro.observe(wrap);
+      } else {
+        window.addEventListener("resize", draw);
+      }
+      draw();
+    }
+
     // extraColumns optional: [{ label, value(row) }].
     // extrasBeforeFlags: when true (with extraColumns), numeric columns precede flag bit columns (type 14).
     function satFlagsRenderDetailedGrid(
@@ -1780,6 +2369,9 @@
         root.appendChild(p);
         return;
       }
+      if (isAllDetailed) {
+        mountSvSkyplotIfAny(root, rows, "all-detailed");
+      }
       if (view === "basic") {
         const tbl = document.createElement("table");
         tbl.className = "sv-brief-basic-table";
@@ -1931,6 +2523,7 @@
         root.appendChild(p);
         return;
       }
+      mountSvSkyplotIfAny(root, rows, "sv14");
       if (view === "basic") {
         const tbl = document.createElement("table");
         tbl.className = "sv-brief-basic-table";
@@ -5527,19 +6120,195 @@
       return sub ? base + " — " + sub : base;
     }
 
-    function syncTangentGraphPlotWindow(data) {
-      const w = window.__gsofTangentPlotWin;
-      if (!w || w.closed) {
-        return;
+    /** Bottom tab strip + iframes for GSOF plot UIs (replaces popup windows). */
+    const graphDock = (function () {
+      const tabs = new Map();
+      let pendingLLHSourceType = null;
+
+      function els() {
+        return {
+          root: document.getElementById("graphDock"),
+          tabs: document.getElementById("graphDockTabs"),
+          panels: document.getElementById("graphDockPanels"),
+        };
       }
+
+      function graphPanelsReadOnly() {
+        if (window.__gsofServerEmbeddedStream === true) {
+          return true;
+        }
+        if (lastStreamData && lastStreamData.embedded_stream === true) {
+          return true;
+        }
+        return false;
+      }
+
+      function setReadOnlyClass(ro) {
+        const r = els().root;
+        if (r) {
+          r.classList.toggle("graph-dock--readonly", !!ro);
+        }
+      }
+
+      function show() {
+        const r = els().root;
+        if (r) {
+          r.hidden = false;
+        }
+      }
+
+      function selectTab(key) {
+        for (const [k, t] of tabs) {
+          const on = k === key;
+          t.btn.setAttribute("aria-selected", on ? "true" : "false");
+          t.wrap.hidden = !on;
+        }
+      }
+
+      function post(key, msg) {
+        const t = tabs.get(key);
+        if (!t || !t.iframe.contentWindow) {
+          return;
+        }
+        try {
+          t.iframe.contentWindow.postMessage(msg, "*");
+        } catch (e) {}
+      }
+
+      function openOrUpdate(key, tabLabel, htmlString, initialMessage) {
+        if (graphPanelsReadOnly()) {
+          return;
+        }
+        const e = els();
+        if (!e.root || !e.tabs || !e.panels) {
+          return;
+        }
+        show();
+        let t = tabs.get(key);
+        if (!t) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "graph-dock-tab";
+          btn.setAttribute("role", "tab");
+          btn.textContent = tabLabel;
+          btn.addEventListener("click", function () {
+            selectTab(key);
+          });
+          e.tabs.appendChild(btn);
+          const wrap = document.createElement("div");
+          wrap.className = "graph-dock-panel";
+          wrap.hidden = true;
+          const iframe = document.createElement("iframe");
+          iframe.className = "graph-dock-iframe";
+          iframe.title = tabLabel;
+          wrap.appendChild(iframe);
+          e.panels.appendChild(wrap);
+          t = { btn: btn, wrap: wrap, iframe: iframe, blobUrl: null };
+          tabs.set(key, t);
+          if (key === "llh") {
+            t.llhSourceType =
+              pendingLLHSourceType !== null && pendingLLHSourceType !== undefined
+                ? pendingLLHSourceType
+                : 2;
+            pendingLLHSourceType = null;
+          }
+        }
+        t.btn.textContent = tabLabel;
+        const blob = new Blob([htmlString], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const prevUrl = t.blobUrl;
+        t.blobUrl = url;
+        t.iframe.onload = function () {
+          try {
+            t.iframe.contentWindow.postMessage(initialMessage, "*");
+          } catch (err) {}
+          if (prevUrl) {
+            try {
+              URL.revokeObjectURL(prevUrl);
+            } catch (err2) {}
+          }
+        };
+        t.iframe.src = url;
+        selectTab(key);
+      }
+
+      function setLLHSourceType(st) {
+        const t = tabs.get("llh");
+        if (t) {
+          t.llhSourceType = st;
+        } else {
+          pendingLLHSourceType = st;
+        }
+      }
+
+      function getLLHSourceType() {
+        const t = tabs.get("llh");
+        if (t && typeof t.llhSourceType === "number") {
+          return t.llhSourceType;
+        }
+        if (pendingLLHSourceType !== null && pendingLLHSourceType !== undefined) {
+          return pendingLLHSourceType;
+        }
+        return 2;
+      }
+
+      /** If tab exists and iframe is up, postMessage and optionally focus tab (no reload). */
+      function notifyIfOpen(key, tabLabel, initialMessage, selectTabToo) {
+        if (graphPanelsReadOnly()) {
+          return false;
+        }
+        const t = tabs.get(key);
+        if (!t || !t.iframe.contentWindow) {
+          return false;
+        }
+        if (tabLabel) {
+          t.btn.textContent = tabLabel;
+          t.iframe.title = tabLabel;
+        }
+        try {
+          t.iframe.contentWindow.postMessage(initialMessage, "*");
+        } catch (e) {
+          return false;
+        }
+        show();
+        if (selectTabToo !== false) {
+          selectTab(key);
+        }
+        return true;
+      }
+
+      return {
+        openOrUpdate: openOrUpdate,
+        post: post,
+        notifyIfOpen: notifyIfOpen,
+        setReadOnlyClass: setReadOnlyClass,
+        setLLHSourceType: setLLHSourceType,
+        getLLHSourceType: getLLHSourceType,
+        graphPanelsReadOnly: graphPanelsReadOnly,
+      };
+    })();
+
+    function updateGraphButtonsReadOnlyState() {
+      const ro = graphDock.graphPanelsReadOnly();
+      graphDock.setReadOnlyClass(ro);
+      document
+        .querySelectorAll(
+          ".tangent-graph-open-btn,.llh-graph-open-btn,.second-ant-97-graph-open-btn,.second-ant-102-graph-open-btn,.dop-graph-open-btn,.sigma-graph-open-btn,.attitude-graph-open-btn,.pos1-graph-open-btn,.vel8-graph-open-btn,.rx28-graph-open-btn",
+        )
+        .forEach(function (b) {
+          b.disabled = ro;
+          b.style.opacity = ro ? "0.45" : "";
+          b.style.cursor = ro ? "not-allowed" : "";
+        });
+    }
+
+    function syncTangentGraphPlotWindow(data) {
       const row7 = (data.records || []).find((r) => r.type === 7);
       const payload = {
         title: graphWindowFullTitle(row7 ? row7.name : "", "GSOF type 7", data),
         points: row7 && row7.tangent_history ? row7.tangent_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-tangent-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("tangent", { type: "gsof-tangent-update", payload: payload });
     }
 
     function openTangentGraphWindow(r) {
@@ -5550,29 +6319,13 @@
         title: graphWindowFullTitle(r.name, "GSOF type 7", lastStreamData),
         points: Array.isArray(r.tangent_history) ? r.tangent_history : [],
       };
-      const existing = window.__gsofTangentPlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-tangent-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (
+        graphDock.notifyIfOpen("tangent", "Tangent (7)", { type: "gsof-tangent-update", payload: init })
+      ) {
         return;
       }
       const html = tangentGraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofTangentPlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-tangent-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("tangent", "Tangent (7)", html, { type: "gsof-tangent-update", payload: init });
     }
 
     function ensureTangentGraphOpenButton(art) {
@@ -5585,7 +6338,7 @@
       btn.type = "button";
       btn.className = "tangent-graph-open-btn";
       btn.textContent = "Graph";
-      btn.title = "Open dE / dN / dU vs GPS TOW in a new window (tick scales, seconds or hours on X)";
+      btn.title = "Open dE / dN / dU vs GPS TOW in the bottom plot panel (tick scales, seconds or hours on X)";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -5595,20 +6348,14 @@
     }
 
     function syncLLHGraphPlotWindow(data) {
-      const w = window.__gsofLLHPlotWin;
-      if (!w || w.closed) {
-        return;
-      }
-      const srcType = typeof w.__gsofLLHSourceType === "number" ? w.__gsofLLHSourceType : 2;
+      const srcType = graphDock.getLLHSourceType();
       const row = (data.records || []).find((r) => r.type === srcType);
       const fallback = srcType === 70 ? "GSOF type 70" : "GSOF type 2";
       const payload = {
         title: graphWindowFullTitle(row ? row.name : "", fallback, data),
         points: row && row.llh_history ? row.llh_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-llh-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("llh", { type: "gsof-llh-update", payload: payload });
     }
 
     function openLLHGraphWindow(r) {
@@ -5620,31 +6367,13 @@
         title: graphWindowFullTitle(r.name, srcType === 70 ? "GSOF type 70" : "GSOF type 2", lastStreamData),
         points: Array.isArray(r.llh_history) ? r.llh_history : [],
       };
-      const existing = window.__gsofLLHPlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.__gsofLLHSourceType = srcType;
-          existing.postMessage({ type: "gsof-llh-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      graphDock.setLLHSourceType(srcType);
+      const tabLab = "LLH (" + srcType + ")";
+      if (graphDock.notifyIfOpen("llh", tabLab, { type: "gsof-llh-update", payload: init })) {
         return;
       }
       const html = llhGraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofLLHPlotWin = w;
-        w.__gsofLLHSourceType = srcType;
-        try {
-          w.postMessage({ type: "gsof-llh-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("llh", tabLab, html, { type: "gsof-llh-update", payload: init });
     }
 
     function ensureLLHGraphOpenButton(art) {
@@ -5655,9 +6384,9 @@
       }
       const rec = art._llhRecord;
       const titleLL2 =
-        "Open latitude / longitude (°) and height (m) vs GPS TOW in a new window (seconds or time-of-day on X)";
+        "Open latitude / longitude (°) and height (m) vs GPS TOW in the bottom plot panel (seconds or time-of-day on X)";
       const titleLL70 =
-        "Open latitude / longitude (°) and MSL height (m) vs GPS TOW — same chart as type 2 (seconds or time-of-day on X)";
+        "Open latitude / longitude (°) and MSL height (m) vs GPS TOW — same chart as type 2 (bottom plot panel; seconds or time-of-day on X)";
       const tip = rec && rec.type === 70 ? titleLL70 : titleLL2;
       let btn = headTop.querySelector(".llh-graph-open-btn");
       if (btn) {
@@ -5678,18 +6407,12 @@
     }
 
     function syncSecondAnt97GraphPlotWindow(data) {
-      const w = window.__gsofAnt97PlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row97 = (data.records || []).find((r) => r.type === 97);
       const payload = {
         title: graphWindowFullTitle(row97 ? row97.name : "", "GSOF type 97", data),
         points: row97 && row97.second_antenna_97_history ? row97.second_antenna_97_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-ant97-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("ant97", { type: "gsof-ant97-update", payload: payload });
     }
 
     function openSecondAnt97GraphWindow(r) {
@@ -5700,29 +6423,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 97", lastStreamData),
         points: Array.isArray(r.second_antenna_97_history) ? r.second_antenna_97_history : [],
       };
-      const existing = window.__gsofAnt97PlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-ant97-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("ant97", "2nd ant (97)", { type: "gsof-ant97-update", payload: init })) {
         return;
       }
       const html = secondAntenna97GraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofAnt97PlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-ant97-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("ant97", "2nd ant (97)", html, { type: "gsof-ant97-update", payload: init });
     }
 
     function ensureSecondAnt97GraphOpenButton(art) {
@@ -5746,18 +6451,12 @@
     }
 
     function syncSecondAnt102GraphPlotWindow(data) {
-      const w = window.__gsofAnt102PlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row102 = (data.records || []).find((r) => r.type === 102);
       const payload = {
         title: graphWindowFullTitle(row102 ? row102.name : "", "GSOF type 102", data),
         points: row102 && row102.second_antenna_102_history ? row102.second_antenna_102_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-ant102-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("ant102", { type: "gsof-ant102-update", payload: payload });
     }
 
     function openSecondAnt102GraphWindow(r) {
@@ -5768,29 +6467,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 102", lastStreamData),
         points: Array.isArray(r.second_antenna_102_history) ? r.second_antenna_102_history : [],
       };
-      const existing = window.__gsofAnt102PlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-ant102-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("ant102", "Headings (102)", { type: "gsof-ant102-update", payload: init })) {
         return;
       }
       const html = secondAntenna102GraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofAnt102PlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-ant102-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("ant102", "Headings (102)", html, { type: "gsof-ant102-update", payload: init });
     }
 
     function ensureSecondAnt102GraphOpenButton(art) {
@@ -5814,33 +6495,21 @@
     }
 
     function syncDOPGraphPlotWindow(data) {
-      const w = window.__gsofDOPPlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row9 = (data.records || []).find((r) => r.type === 9);
       const payload = {
         title: graphWindowFullTitle(row9 ? row9.name : "", "GSOF type 9", data),
         points: row9 && row9.dop_history ? row9.dop_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-dop-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("dop", { type: "gsof-dop-update", payload: payload });
     }
 
     function syncReceiverDiag28GraphPlotWindow(data) {
-      const w = window.__gsofRx28PlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row28 = (data.records || []).find((r) => r.type === 28);
       const payload = {
         title: graphWindowFullTitle(row28 ? row28.name : "", "GSOF type 28", data),
         points: row28 && row28.receiver_diag_28_history ? row28.receiver_diag_28_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-rx28-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("rx28", { type: "gsof-rx28-update", payload: payload });
     }
 
     function openDOPGraphWindow(r) {
@@ -5851,29 +6520,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 9", lastStreamData),
         points: Array.isArray(r.dop_history) ? r.dop_history : [],
       };
-      const existing = window.__gsofDOPPlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-dop-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("dop", "DOP (9)", { type: "gsof-dop-update", payload: init })) {
         return;
       }
       const html = dopGraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofDOPPlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-dop-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("dop", "DOP (9)", html, { type: "gsof-dop-update", payload: init });
     }
 
     function ensureDOPGraphOpenButton(art) {
@@ -5886,7 +6537,7 @@
       btn.type = "button";
       btn.className = "dop-graph-open-btn";
       btn.textContent = "Graph";
-      btn.title = "Open PDOP / HDOP / TDOP / VDOP vs GPS TOW in a new window (seconds or time-of-day on X)";
+      btn.title = "Open PDOP / HDOP / TDOP / VDOP vs GPS TOW in the bottom plot panel (seconds or time-of-day on X)";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -5903,29 +6554,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 28", lastStreamData),
         points: Array.isArray(r.receiver_diag_28_history) ? r.receiver_diag_28_history : [],
       };
-      const existing = window.__gsofRx28PlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-rx28-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("rx28", "Rx diag (28)", { type: "gsof-rx28-update", payload: init })) {
         return;
       }
       const html = receiverDiag28GraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofRx28PlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-rx28-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("rx28", "Rx diag (28)", html, { type: "gsof-rx28-update", payload: init });
     }
 
     function ensureReceiverDiag28GraphOpenButton(art) {
@@ -5949,18 +6582,12 @@
     }
 
     function syncPositionTime1GraphPlotWindow(data) {
-      const w = window.__gsofPos1PlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row1 = (data.records || []).find((r) => r.type === 1);
       const payload = {
         title: graphWindowFullTitle(row1 ? row1.name : "", "GSOF type 1", data),
         points: row1 && row1.position_time_history ? row1.position_time_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-pos1-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("pos1", { type: "gsof-pos1-update", payload: payload });
     }
 
     function openPositionTime1GraphWindow(r) {
@@ -5971,29 +6598,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 1", lastStreamData),
         points: Array.isArray(r.position_time_history) ? r.position_time_history : [],
       };
-      const existing = window.__gsofPos1PlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-pos1-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("pos1", "Pos time (1)", { type: "gsof-pos1-update", payload: init })) {
         return;
       }
       const html = positionTime1GraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofPos1PlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-pos1-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("pos1", "Pos time (1)", html, { type: "gsof-pos1-update", payload: init });
     }
 
     function ensurePositionTime1GraphOpenButton(art) {
@@ -6017,18 +6626,12 @@
     }
 
     function syncVelocity8GraphPlotWindow(data) {
-      const w = window.__gsofVel8PlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row8 = (data.records || []).find((r) => r.type === 8);
       const payload = {
         title: graphWindowFullTitle(row8 ? row8.name : "", "GSOF type 8", data),
         points: row8 && row8.velocity_history ? row8.velocity_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-vel8-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("vel8", { type: "gsof-vel8-update", payload: payload });
     }
 
     function openVelocity8GraphWindow(r) {
@@ -6039,29 +6642,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 8", lastStreamData),
         points: Array.isArray(r.velocity_history) ? r.velocity_history : [],
       };
-      const existing = window.__gsofVel8PlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-vel8-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("vel8", "Velocity (8)", { type: "gsof-vel8-update", payload: init })) {
         return;
       }
       const html = velocity8GraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofVel8PlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-vel8-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("vel8", "Velocity (8)", html, { type: "gsof-vel8-update", payload: init });
     }
 
     function ensureVelocity8GraphOpenButton(art) {
@@ -6085,56 +6670,33 @@
     }
 
     function syncSigmaGraphPlotWindow(data) {
-      function post(winKey, row, fallbackTitle) {
-        const w = window[winKey];
-        if (!w || w.closed) {
-          return;
-        }
+      function send(key, row, fallbackTitle) {
         const payload = {
           title: graphWindowFullTitle(row ? row.name : "", fallbackTitle, data),
           points: row && row.sigma_history ? row.sigma_history : [],
         };
-        try {
-          w.postMessage({ type: "gsof-sigma-update", payload: payload }, "*");
-        } catch (e) {}
+        graphDock.post(key, { type: "gsof-sigma-update", payload: payload });
       }
       const recs = data.records || [];
-      post("__gsofSigmaPlotWin", recs.find((r) => r.type === 12), "GSOF type 12");
-      post("__gsofSigma74PlotWin", recs.find((r) => r.type === 74), "GSOF type 74");
+      send("sigma12", recs.find((r) => r.type === 12), "GSOF type 12");
+      send("sigma74", recs.find((r) => r.type === 74), "GSOF type 74");
     }
 
     function openSigmaGraphWindow(r) {
       if (!r) {
         return;
       }
-      const winKey = r.type === 74 ? "__gsofSigma74PlotWin" : "__gsofSigmaPlotWin";
+      const key = r.type === 74 ? "sigma74" : "sigma12";
+      const tabLab = r.type === 74 ? "Sigma (74)" : "Sigma (12)";
       const init = {
         title: graphWindowFullTitle(r.name, r.type === 74 ? "GSOF type 74" : "GSOF type 12", lastStreamData),
         points: Array.isArray(r.sigma_history) ? r.sigma_history : [],
       };
-      const existing = window[winKey];
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen(key, tabLab, { type: "gsof-sigma-update", payload: init })) {
         return;
       }
       const html = sigmaGraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window[winKey] = w;
-        try {
-          w.postMessage({ type: "gsof-sigma-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate(key, tabLab, html, { type: "gsof-sigma-update", payload: init });
     }
 
     function ensureSigmaGraphOpenButton(art) {
@@ -6148,7 +6710,7 @@
       btn.className = "sigma-graph-open-btn";
       btn.textContent = "Graph";
       btn.title =
-        "Open position RMS and σ_E / σ_N / σ_U / σ_H vs GPS TOW in a new window (seconds or time-of-day on X). Type 12 and type 74 each use their own plot window.";
+        "Open position RMS and σ_E / σ_N / σ_U / σ_H vs GPS TOW in the bottom plot panel (seconds or time-of-day on X). Type 12 and type 74 each use their own tab.";
       headTop.insertBefore(btn, copyBtn);
       btn.addEventListener("click", (ev) => {
         ev.preventDefault();
@@ -6158,18 +6720,12 @@
     }
 
     function syncAttitudeGraphPlotWindow(data) {
-      const w = window.__gsofAttitudePlotWin;
-      if (!w || w.closed) {
-        return;
-      }
       const row27 = (data.records || []).find((r) => r.type === 27);
       const payload = {
         title: graphWindowFullTitle(row27 ? row27.name : "", "GSOF type 27", data),
         points: row27 && row27.attitude_history ? row27.attitude_history : [],
       };
-      try {
-        w.postMessage({ type: "gsof-attitude-update", payload: payload }, "*");
-      } catch (e) {}
+      graphDock.post("attitude", { type: "gsof-attitude-update", payload: payload });
     }
 
     function openAttitudeGraphWindow(r) {
@@ -6180,29 +6736,11 @@
         title: graphWindowFullTitle(r.name, "GSOF type 27", lastStreamData),
         points: Array.isArray(r.attitude_history) ? r.attitude_history : [],
       };
-      const existing = window.__gsofAttitudePlotWin;
-      if (existing && !existing.closed) {
-        try {
-          existing.postMessage({ type: "gsof-attitude-update", payload: init }, "*");
-          existing.focus();
-        } catch (e) {}
+      if (graphDock.notifyIfOpen("attitude", "Attitude (27)", { type: "gsof-attitude-update", payload: init })) {
         return;
       }
       const html = attitudeGraphStandaloneDoc(init);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const w = window.open(url, "_blank", "width=980,height=900");
-      if (w) {
-        window.__gsofAttitudePlotWin = w;
-        try {
-          w.postMessage({ type: "gsof-attitude-update", payload: init }, "*");
-        } catch (e) {}
-        setTimeout(function () {
-          URL.revokeObjectURL(url);
-        }, 120000);
-      } else {
-        URL.revokeObjectURL(url);
-      }
+      graphDock.openOrUpdate("attitude", "Attitude (27)", html, { type: "gsof-attitude-update", payload: init });
     }
 
     function ensureAttitudeGraphOpenButton(art) {
@@ -6282,6 +6820,9 @@
 
       const body = document.createElement("div");
       body.className = "card-body";
+      const wireDebug = document.createElement("div");
+      wireDebug.className = "card-wire-debug";
+      wireDebug.hidden = true;
       const dl = document.createElement("dl");
       const docWrap = document.createElement("p");
       docWrap.className = "doc-link-wrap";
@@ -6291,6 +6832,7 @@
       docA.rel = "noopener noreferrer";
       docA.textContent = "Open Trimble documentation for this message ↗";
       docWrap.appendChild(docA);
+      body.appendChild(wireDebug);
       body.appendChild(dl);
       const nma91RowsRoot = document.createElement("div");
       nma91RowsRoot.className = "nma91-rows-root";
@@ -6315,6 +6857,11 @@
       body.appendChild(docWrap);
       det.appendChild(sum);
       det.appendChild(body);
+      // Position (type 1) merges velocity (type 8) into this card’s dl; keep details open by default
+      // so the merged velocity section is visible in the card body without an extra expand click.
+      if (key === "1") {
+        det.open = true;
+      }
 
       art.appendChild(det);
       return art;
@@ -6497,6 +7044,14 @@
 
     function updateCard(art, r) {
       art.querySelector("h2.card-title").textContent = r.name;
+      const body0 = art.querySelector(".card-body");
+      if (body0) {
+        const wd = body0.querySelector(".card-wire-debug");
+        if (wd) {
+          wd.hidden = true;
+          wd.replaceChildren();
+        }
+      }
       art.querySelector(".card-line").textContent =
         "Type " + r.type_hex + " (" + String(r.type) + ")  |  " + String(r.count);
       const stale = art.querySelector(".card-stale");
@@ -6510,11 +7065,19 @@
       copyAllBtn.onclick = (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        void copyText(spreadsheetTSVFromRecord(r));
+        let txt = spreadsheetTSVFromRecord(r);
+        if (r.type === 1) {
+          const vel = (lastStreamData && lastStreamData.records || []).find((x) => x.type === 8);
+          if (vel) {
+            txt += "\n\n" + spreadsheetTSVFromRecord(vel);
+          }
+        }
+        void copyText(txt);
       };
 
       const body = art.querySelector(".card-body");
       const dl = body.querySelector("dl");
+      const wireDbgLLH = body.querySelector(".card-wire-debug");
       const svRoot = body.querySelector(".sv-brief-root");
       const svDetRoot = body.querySelector(".sv-detailed-root");
       const iono92Root = body.querySelector(".ionoguard92-sv-root");
@@ -7027,6 +7590,19 @@
         ensureLLHGraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+        if (r.type === 2 && wireDbgLLH) {
+          wireDbgLLH.hidden = false;
+          const cap = document.createElement("div");
+          cap.className = "wire-debug-caption";
+          cap.textContent =
+            "Debug — GSOF subtype 2 on the wire (type byte · length byte · 24-byte payload), spaced hex:";
+          const pre = document.createElement("pre");
+          pre.className = "mono wire-debug-hex";
+          const ph = typeof r.payload_hex === "string" ? r.payload_hex : "";
+          pre.textContent = ph.length ? ph : "(empty — no 0x02 sub-record in the latest packet)";
+          wireDbgLLH.appendChild(cap);
+          wireDbgLLH.appendChild(pre);
+        }
       } else if (isLL97) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -7397,7 +7973,6 @@
         art._sigmaRecord = null;
         art._attitudeRecord = null;
         art._rx28Record = null;
-        art._velocity8Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1p = art.querySelector(".sv-brief-view-toggle");
@@ -7440,10 +8015,6 @@
         if (rx28p) {
           rx28p.remove();
         }
-        const v8p = art.querySelector(".vel8-graph-open-btn");
-        if (v8p) {
-          v8p.remove();
-        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -7453,6 +8024,28 @@
         ensurePositionTime1GraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+        const recs = lastStreamData && lastStreamData.records ? lastStreamData.records : [];
+        const velRow = recs.find((x) => x.type === 8);
+        art._velocity8Record = velRow || null;
+        if (velRow && velRow.fields && velRow.fields.length) {
+          const secDt = document.createElement("dt");
+          secDt.className = "card-field-section-title";
+          secDt.textContent = "Velocity (GSOF type 8)";
+          const secDd = document.createElement("dd");
+          secDd.className = "card-field-section-dd";
+          secDd.textContent = "";
+          dl.appendChild(secDt);
+          dl.appendChild(secDd);
+          velRow.fields.forEach((f, i) => {
+            appendFieldToDL(dl, f, "v8m-" + i + "-" + fieldRowKey(f, i));
+          });
+          ensureVelocity8GraphOpenButton(art);
+        } else {
+          const v8p = art.querySelector(".vel8-graph-open-btn");
+          if (v8p) {
+            v8p.remove();
+          }
+        }
       } else if (isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -7536,8 +8129,61 @@
       void copyText(parts.join("\n\n"));
     }
 
+    function renderTcpInboundList(data) {
+      const sec = document.getElementById("tcpInboundListSection");
+      const body = document.getElementById("tcpInboundListBody");
+      if (!sec || !body) {
+        return;
+      }
+      const pend = data.tcp_inbound_pending || [];
+      const drops = data.tcp_no_gsof_inbound || [];
+      if (pend.length === 0 && drops.length === 0) {
+        sec.hidden = true;
+        body.replaceChildren();
+        return;
+      }
+      sec.hidden = false;
+      body.replaceChildren();
+      const now = Date.now();
+      for (const p of pend) {
+        const tr = document.createElement("tr");
+        tr.className = "tcp-inbound-row tcp-inbound-row--pending";
+        const c0 = document.createElement("td");
+        c0.textContent = "Waiting for GSOF (≤5s)";
+        const c1 = document.createElement("td");
+        c1.textContent = p.receiver != null ? String(p.receiver) : "";
+        const c2 = document.createElement("td");
+        c2.textContent = p.remote_addr != null ? String(p.remote_addr) : "";
+        const c3 = document.createElement("td");
+        c3.textContent = "—";
+        tr.append(c0, c1, c2, c3);
+        body.appendChild(tr);
+      }
+      for (const d of drops) {
+        const tr = document.createElement("tr");
+        tr.className = "tcp-inbound-row";
+        const dropMs = Date.parse(String(d.dropped_at_rfc3339 || ""));
+        if (!Number.isNaN(dropMs) && now - dropMs >= 0 && now - dropMs < 5000) {
+          tr.classList.add("tcp-inbound-row--recent");
+        }
+        const c0 = document.createElement("td");
+        c0.textContent = "Dropped (no GSOF)";
+        const c1 = document.createElement("td");
+        c1.textContent = d.receiver != null ? String(d.receiver) : "";
+        const c2 = document.createElement("td");
+        c2.textContent = d.remote_addr != null ? String(d.remote_addr) : "";
+        const c3 = document.createElement("td");
+        c3.textContent = d.dropped_at_rfc3339 != null ? String(d.dropped_at_rfc3339) : "";
+        tr.append(c0, c1, c2, c3);
+        body.appendChild(tr);
+      }
+    }
+
     function render(data) {
       lastStreamData = data;
+      if (typeof data.embedded_stream === "boolean") {
+        window.__gsofServerEmbeddedStream = data.embedded_stream;
+      }
       gsofShowExpectedReservedBits = data.show_expected_reserved_bits === true;
       if (data.dashboard_version) {
         const srv = String(data.dashboard_version);
@@ -7580,6 +8226,12 @@
       for (const r of data.records) {
         wanted.add(subtypeKey(r));
       }
+      if (
+        data.records.some((x) => x.type === 1) &&
+        data.records.some((x) => x.type === 8)
+      ) {
+        wanted.delete("8");
+      }
 
       for (const r of data.records) {
         const key = subtypeKey(r);
@@ -7621,6 +8273,8 @@
       syncReceiverDiag28GraphPlotWindow(data);
       syncPositionTime1GraphPlotWindow(data);
       syncVelocity8GraphPlotWindow(data);
+      updateGraphButtonsReadOnlyState();
+      renderTcpInboundList(data);
     }
 
     function applyCliStreamHints(cfg) {
@@ -7792,6 +8446,10 @@
       fetch(gsofURL("/api/config"))
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("config " + r.status))))
         .then((cfg) => {
+          if (cfg && typeof cfg.embedded_stream === "boolean") {
+            window.__gsofServerEmbeddedStream = cfg.embedded_stream;
+          }
+          updateGraphButtonsReadOnlyState();
           if (cfg.ui_sessions_enabled) {
             applyCliStreamHints(cfg);
             loadConnFormFromStorage();

@@ -157,7 +157,7 @@ func main() {
 	defer cancel()
 
 	go func() {
-		err := stream.StartListenerContext(ctx, cfgHeading, chHeading, nil)
+		err := stream.StartListenerContext(ctx, cfgHeading, chHeading, nil, nil)
 		if err != nil && ctx.Err() == nil {
 			slog.Error("heading listener", "error", err)
 			os.Exit(1)
@@ -165,7 +165,7 @@ func main() {
 	}()
 	if mbEnabled {
 		go func() {
-			err := stream.StartListenerContext(ctx, cfgMB, chMB, nil)
+			err := stream.StartListenerContext(ctx, cfgMB, chMB, nil, nil)
 			if err != nil && ctx.Err() == nil {
 				slog.Error("moving-base listener", "error", err)
 				os.Exit(1)

@@ -226,7 +226,7 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 
 	chHeading := make(chan core.PacketEvent, 2000)
 	go func() {
-		_ = stream.StartListenerContext(ctx, streamReqToCfg(req.Heading, cfg.Verbose, cfg.IgnoreGap1), chHeading, nil)
+		_ = stream.StartListenerContext(ctx, streamReqToCfg(req.Heading, cfg.Verbose, cfg.IgnoreGap1), chHeading, nil, nil)
 	}()
 	go func() {
 		for {
@@ -244,7 +244,7 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 	if req.MovingBase != nil {
 		chMB := make(chan core.PacketEvent, 2000)
 		go func() {
-			_ = stream.StartListenerContext(ctx, streamReqToCfg(*req.MovingBase, cfg.Verbose, cfg.IgnoreGap1), chMB, nil)
+			_ = stream.StartListenerContext(ctx, streamReqToCfg(*req.MovingBase, cfg.Verbose, cfg.IgnoreGap1), chMB, nil, nil)
 		}()
 		go func() {
 			for {

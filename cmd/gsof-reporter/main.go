@@ -152,7 +152,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		dash := stats.BuildDashboard(cfg.IP, cfg.Port, "", cfg.Host)
+		dash := stats.BuildDashboard(cfg.IP, cfg.Port, "", cfg.Host, false)
 
 		if *verbose == 0 {
 			fmt.Print("\033[H\033[2J")

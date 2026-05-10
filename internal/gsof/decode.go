@@ -242,6 +242,7 @@ func decode01(payload []byte) []Field {
 			Value:  fmt.Sprintf("0x%02X · %08b", f2, f2),
 			Detail: decodePositionFlags2(f2),
 		},
+		kv("Static constraint (Flags 2 bit 4)", yesNo(bitOn(f2, 4))),
 		kv("Init counter", fmt.Sprintf("%d", init)),
 	}
 }
@@ -459,6 +460,37 @@ func formatDMS(deg float64, isLat bool) string {
 	d, m, s := splitDMS(abs)
 	// U+2032 prime (minutes), U+2033 double prime (seconds)
 	return fmt.Sprintf("%s %d° %d′ %.5f″", hemi, d, m, s)
+}
+
+// formatDMSSuffixHemisphere renders the same DMS as formatDMS with the hemisphere after the seconds
+// (e.g. 39° 56′ 23.3203″ N) for base-station one-line position text.
+func formatDMSSuffixHemisphere(deg float64, isLat bool) string {
+	var hemi string
+	var abs float64
+	if isLat {
+		if deg >= 0 {
+			hemi, abs = "N", deg
+		} else {
+			hemi, abs = "S", -deg
+		}
+	} else {
+		if deg >= 0 {
+			hemi, abs = "E", deg
+		} else {
+			hemi, abs = "W", -deg
+		}
+	}
+	d, m, s := splitDMS(abs)
+	return fmt.Sprintf("%d° %d′ %.4f″ %s", d, m, s, hemi)
+}
+
+// FormatLatLonHeightEllipsoidalLine formats latitude, longitude, and ellipsoidal height as a single
+// human-readable line for base station / antenna position summary.
+func FormatLatLonHeightEllipsoidalLine(latDeg, lonDeg, heightM float64) string {
+	return fmt.Sprintf("%s, %s · %.3f m ellipsoidal",
+		formatDMSSuffixHemisphere(latDeg, true),
+		formatDMSSuffixHemisphere(lonDeg, false),
+		heightM)
 }
 
 func formatDOP1(v float32) string {
@@ -1136,19 +1168,16 @@ func decodeBasePositionQuality(payload []byte) []Field {
 	if !br.ok(4 + 2 + 8 + 8 + 8 + 1) {
 		return shortFields(Lookup(41).Function, payload, 31)
 	}
-	gpsMS := br.u32()
-	week := br.u16()
+	_ = br.u32() // GPS TOW (ms) on wire — not listed in dashboard field list
+	_ = br.u16() // GPS week — not listed in dashboard field list
 	latRad := br.f64()
 	lonRad := br.f64()
 	h := br.f64()
 	qual := br.u8()
-	towSec := float64(gpsMS) / 1000.0
 	latDeg := latRad * 180 / math.Pi
 	lonDeg := lonRad * 180 / math.Pi
 	return []Field{
 		kv("Summary", Lookup(41).Function),
-		kv("GPS week", fmt.Sprintf("%d", week)),
-		kv("GPS time of week", fmt.Sprintf("%.2f s", towSec)),
 		kv("Base latitude (DMS)", formatDMS(latDeg, true)),
 		kv("Base longitude (DMS)", formatDMS(lonDeg, false)),
 		kv("Base latitude (decimal °)", formatDecimalDegrees(latDeg)),

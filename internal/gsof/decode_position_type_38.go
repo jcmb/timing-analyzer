@@ -2,8 +2,27 @@ package gsof
 
 import (
 	"fmt"
+	"sync"
 	"time"
 )
+
+var (
+	positionFixTypeDetailOnce sync.Once
+	positionFixTypeDetailMemo []Field
+)
+
+// positionFixTypeOEMReferenceDetail returns a static OEM code table (0–51) for UI / JSON Detail.
+func positionFixTypeOEMReferenceDetail() []Field {
+	positionFixTypeDetailOnce.Do(func() {
+		positionFixTypeDetailMemo = append(positionFixTypeDetailMemo,
+			kv("OEM reference", "Position fix type codes (Trimble GSOF type 38)"))
+		for code := 0; code <= 51; code++ {
+			positionFixTypeDetailMemo = append(positionFixTypeDetailMemo,
+				kv(fmt.Sprintf("%d", code), positionType38FixNameOnly(code)))
+		}
+	})
+	return positionFixTypeDetailMemo
+}
 
 // decodePositionType38 decodes GSOF type 38 (Position Type Information).
 // OEM layout (≥26 bytes, optional 27th when frame flag bit 7 set):
@@ -131,7 +150,11 @@ func decodePositionType38OEM(payload []byte) []Field {
 	out = append(out, kv("Pole wobble distance (m)", fmt.Sprintf("%.3f", poleDist)))
 
 	pos := br.u8()
-	out = append(out, kv("Position fix type", positionType38FixType(int(pos))))
+	out = append(out, Field{
+		Label:  "Position fix type",
+		Value:  positionType38FixType(int(pos)),
+		Detail: positionFixTypeOEMReferenceDetail(),
+	})
 
 	if br.i < len(payload) {
 		out = append(out, kv("Trailing payload (hex)", hexPreview(payload[br.i:], 64)))
@@ -282,14 +305,17 @@ func formatRTXSubscriptionMinutes(v int32) string {
 	return fmt.Sprintf("%d", v)
 }
 
-func positionType38FixType(code int) string {
+func positionType38FixNameOnly(code int) string {
 	if code >= 0 && code < len(positionType38FixNames) {
-		s := positionType38FixNames[code]
-		if s != "" {
-			return fmt.Sprintf("%d — %s", code, s)
+		if s := positionType38FixNames[code]; s != "" {
+			return s
 		}
 	}
-	return fmt.Sprintf("%d — unknown", code)
+	return fmt.Sprintf("unknown (code %d)", code)
+}
+
+func positionType38FixType(code int) string {
+	return fmt.Sprintf("%d — %s", code, positionType38FixNameOnly(code))
 }
 
 func positionType38TectonicPlate(code int) string {
@@ -302,50 +328,50 @@ func positionType38TectonicPlate(code int) string {
 	return fmt.Sprintf("%d — unknown", code)
 }
 
-// Trimble OEM "Position Fix Type" table (type 38).
+// Trimble OEM "Position Fix Type" table (type 38) — wording aligned with OEM receiver help.
 var positionType38FixNames = []string{
-	0:  "No fix or old position fix",
-	1:  "Full measurement autonomous",
-	2:  "Propagated autonomous",
-	3:  "Full differential SBAS",
+	0:  "No Fix or Old Position Fix",
+	1:  "Full Measurement Autonomous",
+	2:  "Propagated Autonomous",
+	3:  "Full Differential SBAS",
 	4:  "Propagated SBAS",
-	5:  "Full differential",
-	6:  "Propagated differential",
-	7:  "Full float RTK",
-	8:  "Propagated float RTK",
-	9:  "Full fixed-ambiguity RTK",
-	10: "Propagated fixed-ambiguity RTK",
-	11: "OmniSTAR HP differential",
-	12: "OmniSTAR XP differential",
-	13: "Location-RTK (dithered RTK)",
-	14: "OmniSTAR VBS differential",
-	15: "Beacon differential",
+	5:  "Full Differential",
+	6:  "Propagated Differential",
+	7:  "Full Float RTK",
+	8:  "Propagated Float RTK",
+	9:  "Full Fixed-ambiguity RTK",
+	10: "Propagated Fixed-ambiguity RTK",
+	11: "OmniSTAR HP Differential",
+	12: "OmniSTAR XP Differential",
+	13: "Location-RTK (Dithered RTK)",
+	14: "OmniSTAR VBS Differential",
+	15: "Beacon Differential",
 	16: "OmniSTAR HP/XP",
 	17: "OmniSTAR HP/G2",
 	18: "OmniSTAR G2",
 	19: "Synchronous RTX",
-	20: "Low-latency RTX",
-	21: "OmniSTAR multiple source",
+	20: "LowLatency RTX",
+	21: "OmniSTAR Multiple Source",
 	22: "OmniSTAR L1-only",
-	23: "INS autonomous",
+	23: "INS Autonomous",
 	24: "INS SBAS",
-	25: "INS code-phase DGNSS or OmniSTAR-VBS",
+	25: "INS code-phase DGNSS or Omnistar-VBS",
 	26: "INS RTX code-phase corrections",
 	27: "INS RTX carrier-phase corrections",
-	28: "INS OmniSTAR HP/XP/G2",
+	28: "INS Omnistar HP/XP/G2",
 	29: "INS RTK (fixed or float)",
-	30: "INS dead reckoning",
+	30: "INS Dead-Reckoning",
 	31: "RTX code-phase corrections",
-	32: "RTX Fast in sync mode",
-	33: "RTX Fast in low-latency mode",
+	32: "RTX Fast in Sync mode",
+	33: "RTX Fast in Low Latency mode",
 	34: "RESERVED",
 	35: "RESERVED",
 	36: "xFill-RTX",
-	37: "Low-latency RTX-RangePoint",
+	37: "LowLatency RTX-RangePoint",
 	38: "Synchronous RTX-RangePoint",
-	39: "Low-latency RTX-ViewPoint",
+	39: "LowLatency RTX-ViewPoint",
 	40: "Synchronous RTX-ViewPoint",
-	41: "Low-latency RTX-FieldPoint",
+	41: "LowLatency RTX-FieldPoint",
 	42: "Synchronous RTX-FieldPoint",
 	43: "OmniSTAR G2+ solution type",
 	44: "OmniSTAR G4+ solution type",
@@ -356,8 +382,6 @@ var positionType38FixNames = []string{
 	49: "INS xFill-RTX",
 	50: "CLAS",
 	51: "INS CLAS",
-	52: "HAS",
-	53: "INS HAS",
 }
 
 // NNR-Morvel56 plate indices (Trimble OEM type 38).
