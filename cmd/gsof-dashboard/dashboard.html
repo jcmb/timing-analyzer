@@ -430,6 +430,19 @@
       text-align: left;
       font-variant-numeric: tabular-nums;
     }
+    .card-field-section-title {
+      grid-column: 1 / -1;
+      margin: 0.45rem 0 0;
+      padding-top: 0.45rem;
+      border-top: 1px solid var(--border);
+      font-weight: 650;
+      color: var(--text);
+      font-size: 0.8rem;
+    }
+    .card-field-section-dd.card-field-section-dd {
+      font-family: var(--sans);
+      color: var(--muted);
+    }
     .field-dd-inner {
       display: flex;
       flex-direction: column;
@@ -669,6 +682,71 @@
       margin: 0 0 0.5rem;
       font-size: 0.8rem;
       color: var(--muted);
+    }
+    .sv-skyplot-wrap {
+      margin: 0 0 0.85rem;
+      max-width: 100%;
+    }
+    .sv-skyplot-caption {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0 0 0.35rem;
+      font-family: var(--sans);
+    }
+    .sv-skyplot-legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.9rem;
+      margin: 0 0 0.45rem;
+      font-size: 0.76rem;
+      color: var(--text);
+      font-family: var(--sans);
+    }
+    .sv-skyplot-legend-title {
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .sv-skyplot-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.28rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .sv-skyplot-legend-item input {
+      margin: 0;
+    }
+    .sv-skyplot-inner {
+      position: relative;
+      display: inline-block;
+      max-width: 100%;
+    }
+    .sv-skyplot-canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-width: 520px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: crosshair;
+      vertical-align: top;
+    }
+    .sv-skyplot-tooltip {
+      position: fixed;
+      z-index: 80;
+      max-width: min(22rem, calc(100vw - 24px));
+      padding: 0.4rem 0.55rem;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      font-family: var(--mono);
+      white-space: pre-line;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.28);
+      pointer-events: none;
     }
     .ionoguard92-sv-root {
       margin: 0;
@@ -969,7 +1047,7 @@
 </head>
 <body>
   <header>
-    <p class="build-banner" title="Increment cmd/gsof-dashboard/version.go when you change this app">Build <strong>__GSOF_DASHBOARD_VERSION__</strong></p>
+    <p class="build-banner" title="SemVer is set in cmd/gsof-dashboard/version.go; the running binary also appends a short Git revision when built from a VCS checkout (go build default).">Build <strong>__GSOF_DASHBOARD_VERSION__</strong></p>
     <h1>
       <a
         class="title-doc-link"
@@ -985,7 +1063,7 @@
     <div class="theme-control">
       <label for="themeSelect">Theme</label>
       <select id="themeSelect" title="Match system uses light or dark from your OS / browser setting">
-        <option value="system">Match system</option>
+        <option value="system" selected>Match system</option>
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
@@ -1023,7 +1101,6 @@
             <th scope="col">Status</th>
             <th scope="col">Receiver</th>
             <th scope="col">Remote</th>
-            <th scope="col">Connected</th>
             <th scope="col">Dropped</th>
           </tr>
         </thead>
@@ -1653,6 +1730,346 @@
       container.appendChild(box);
     }
 
+    function svSkyplotFilterPlotRows(rows) {
+      const out = [];
+      if (!rows || !rows.length) {
+        return out;
+      }
+      for (const row of rows) {
+        const el = Number(row.elev);
+        const az = Number(row.azimuth);
+        if (!Number.isFinite(el) || !Number.isFinite(az)) {
+          continue;
+        }
+        out.push(row);
+      }
+      return out;
+    }
+
+    function svSkyplotTooltipLines(row, mode) {
+      const lines = [];
+      if (mode === "all-detailed") {
+        if (row.system_name) {
+          lines.push(String(row.system_name));
+        }
+        lines.push("PRN " + String(row.prn));
+        lines.push("Elevation " + String(row.elev) + "°");
+        lines.push("Azimuth " + String(row.azimuth) + "°");
+        lines.push("L1 SNR " + Number(row.snr_l1).toFixed(2));
+        lines.push("L2 SNR " + Number(row.snr_l2).toFixed(2));
+        lines.push("L5 SNR " + Number(row.snr_l5).toFixed(2));
+        lines.push("Flags 1 " + svBriefFmtU8Binary(row.flags1));
+        lines.push(
+          "Flags 2 " + svBriefFmtU8BinaryF2Type33(row.flags2, gsofShowExpectedReservedBits),
+        );
+      } else {
+        lines.push("PRN " + String(row.prn));
+        lines.push("Elevation " + String(row.elev) + "°");
+        lines.push("Azimuth " + String(row.azimuth) + "°");
+        lines.push("L1 SNR " + Number(row.snr_l1).toFixed(2));
+        lines.push("L2 SNR " + Number(row.snr_l2).toFixed(2));
+        lines.push("Flags 1 " + svBriefFmtU8Binary(row.flags1));
+        if (gsofShowExpectedReservedBits) {
+          lines.push("Flags 2 " + svBriefFmtU8Binary(row.flags2));
+        }
+      }
+      return lines;
+    }
+
+    function svSkyplotColorForRow(row, mode) {
+      const palette = [
+        "#3d8bfd",
+        "#3fb950",
+        "#d29922",
+        "#f85149",
+        "#a371f7",
+        "#79c0ff",
+        "#ffa657",
+        "#ff7b72",
+      ];
+      const key = mode === "all-detailed" ? String(row.system_name || "") + ":" + String(row.prn) : "p:" + String(row.prn);
+      let h = 0;
+      for (let i = 0; i < key.length; i++) {
+        h = (h * 31 + key.charCodeAt(i)) | 0;
+      }
+      return palette[Math.abs(h) % palette.length];
+    }
+
+    /** Polar sky plot (north up); rows need elev + azimuth (types 34 / 48 / 14). */
+    function mountSvSkyplotIfAny(root, rows, mode) {
+      const plotRows = svSkyplotFilterPlotRows(rows);
+      if (!plotRows.length) {
+        return;
+      }
+      const sysVisible = new Map();
+      const wrap = document.createElement("div");
+      wrap.className = "sv-skyplot-wrap";
+      const cap = document.createElement("div");
+      cap.className = "sv-skyplot-caption";
+      cap.textContent =
+        "Sky plot — hover an SV for details (elevation vs azimuth, north up, horizon at outer ring)";
+      const inner = document.createElement("div");
+      inner.className = "sv-skyplot-inner";
+      const canvas = document.createElement("canvas");
+      canvas.className = "sv-skyplot-canvas";
+      canvas.setAttribute("role", "img");
+      canvas.setAttribute("aria-label", "Satellite sky plot");
+      const tip = document.createElement("div");
+      tip.className = "sv-skyplot-tooltip";
+      tip.hidden = true;
+      inner.appendChild(canvas);
+      inner.appendChild(tip);
+      wrap.appendChild(cap);
+      if (mode === "all-detailed") {
+        const seenSys = new Set();
+        const sysKeys = [];
+        for (const row of plotRows) {
+          const k = String(row.system_name || "").trim() || "—";
+          if (!seenSys.has(k)) {
+            seenSys.add(k);
+            sysKeys.push(k);
+            sysVisible.set(k, true);
+          }
+        }
+        if (sysKeys.length > 1) {
+          const leg = document.createElement("div");
+          leg.className = "sv-skyplot-legend";
+          const legTitle = document.createElement("span");
+          legTitle.className = "sv-skyplot-legend-title";
+          legTitle.textContent = "Systems";
+          leg.appendChild(legTitle);
+          for (const k of sysKeys) {
+            const lab = document.createElement("label");
+            lab.className = "sv-skyplot-legend-item";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = true;
+            cb.title = "Show or hide SVs for " + k;
+            cb.addEventListener("change", () => {
+              sysVisible.set(k, cb.checked);
+              draw();
+            });
+            lab.appendChild(cb);
+            const sp = document.createElement("span");
+            sp.textContent = k;
+            lab.appendChild(sp);
+            leg.appendChild(lab);
+          }
+          wrap.appendChild(leg);
+        }
+      }
+      wrap.appendChild(inner);
+      root.appendChild(wrap);
+
+      const ctx = canvas.getContext("2d");
+      let hitList = [];
+      const hitPx = 16;
+      const ptDrawR = 5;
+
+      function layoutCssSize() {
+        const w = root.clientWidth || 480;
+        const side = Math.min(520, Math.max(220, w - 8));
+        return { cssW: side, cssH: side };
+      }
+
+      function cssPointFromEvent(ev) {
+        const rect = canvas.getBoundingClientRect();
+        const cssW = parseFloat(canvas.style.width) || layoutCssSize().cssW;
+        const cssH = parseFloat(canvas.style.height) || layoutCssSize().cssH;
+        if (rect.width <= 0 || rect.height <= 0) {
+          return { x: 0, y: 0, cssW, cssH };
+        }
+        return {
+          x: ((ev.clientX - rect.left) / rect.width) * cssW,
+          y: ((ev.clientY - rect.top) / rect.height) * cssH,
+          cssW,
+          cssH,
+        };
+      }
+
+      function pickHit(mx, my) {
+        let best = null;
+        let bestD = hitPx + 1;
+        for (const h of hitList) {
+          const dx = mx - h.x;
+          const dy = my - h.y;
+          const d = Math.hypot(dx, dy);
+          if (d <= hitPx && d < bestD) {
+            bestD = d;
+            best = h;
+          }
+        }
+        return best;
+      }
+
+      function placeTip(ev, text) {
+        tip.textContent = text;
+        tip.hidden = false;
+        tip.style.left = "0px";
+        tip.style.top = "0px";
+        void tip.offsetWidth;
+        const tw = tip.offsetWidth;
+        const th = tip.offsetHeight;
+        let x = ev.clientX + 14;
+        let y = ev.clientY + 14;
+        if (x + tw > window.innerWidth - 6) {
+          x = ev.clientX - tw - 14;
+        }
+        if (y + th > window.innerHeight - 6) {
+          y = ev.clientY - th - 14;
+        }
+        x = Math.max(6, x);
+        y = Math.max(6, y);
+        tip.style.left = x + "px";
+        tip.style.top = y + "px";
+      }
+
+      function draw() {
+        const { cssW, cssH } = layoutCssSize();
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        canvas.style.width = cssW + "px";
+        canvas.style.height = cssH + "px";
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+
+        const cs = getComputedStyle(document.documentElement);
+        const borderCol = (cs.getPropertyValue("--border") || "#2d3a4d").trim();
+        const textCol = (cs.getPropertyValue("--text") || "#e6edf3").trim();
+        const mutedCol = (cs.getPropertyValue("--muted") || "#8b9cb3").trim();
+        const cardCol = (cs.getPropertyValue("--card") || "#1a2332").trim();
+
+        ctx.fillStyle = cardCol;
+        ctx.fillRect(0, 0, cssW, cssH);
+
+        const pad = 16;
+        const cx = cssW / 2;
+        const cy = cssH / 2;
+        const rMax = Math.min(cx, cy) - pad - 20;
+        if (rMax < 40) {
+          hitList = [];
+          return;
+        }
+
+        ctx.strokeStyle = borderCol;
+        ctx.lineWidth = 1;
+        for (const ringElev of [30, 60]) {
+          const rr = rMax * (1 - ringElev / 90);
+          ctx.beginPath();
+          ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.lineWidth = 1.35;
+        ctx.beginPath();
+        ctx.arc(cx, cy, rMax, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = borderCol;
+        ctx.globalAlpha = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - rMax);
+        ctx.lineTo(cx, cy + rMax);
+        ctx.moveTo(cx - rMax, cy);
+        ctx.lineTo(cx + rMax, cy);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+
+        ctx.fillStyle = mutedCol;
+        ctx.font = "11px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        ctx.fillText("N", cx, cy - rMax - 2);
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "left";
+        ctx.fillText("E", cx + rMax + 4, cy);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText("S", cx, cy + rMax + 2);
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillText("W", cx - rMax - 4, cy);
+
+        ctx.font = "10px system-ui, sans-serif";
+        ctx.fillStyle = mutedCol;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const ringElev of [30, 60]) {
+          const rr = rMax * (1 - ringElev / 90);
+          ctx.fillText(String(ringElev) + "°", cx + rr * 0.707 - 2, cy - rr * 0.707 - 2);
+        }
+
+        hitList = [];
+        function activePlotRows() {
+          if (mode !== "all-detailed" || sysVisible.size === 0) {
+            return plotRows;
+          }
+          return plotRows.filter((row) => {
+            const k = String(row.system_name || "").trim() || "—";
+            return sysVisible.get(k) !== false;
+          });
+        }
+        const rowsDraw = activePlotRows();
+        const sorted = rowsDraw.slice().sort((a, b) => Number(a.elev) - Number(b.elev));
+        for (const row of sorted) {
+          const elRaw = Number(row.elev);
+          const el = Math.max(0, Math.min(90, Number.isFinite(elRaw) ? elRaw : 0));
+          const az = ((Number(row.azimuth) % 360) + 360) % 360;
+          const r = rMax * (1 - el / 90);
+          const rad = (az * Math.PI) / 180;
+          const x = cx + r * Math.sin(rad);
+          const y = cy - r * Math.cos(rad);
+          hitList.push({ x, y, row });
+          const col = svSkyplotColorForRow(row, mode);
+          ctx.fillStyle = col;
+          ctx.strokeStyle = borderCol;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(x, y, ptDrawR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        const showPrnOnCanvas = rowsDraw.length <= 28;
+        if (showPrnOnCanvas) {
+          ctx.font = "bold 10px system-ui, sans-serif";
+          for (const h of hitList) {
+            const prn = String(h.row.prn);
+            ctx.fillStyle = textCol;
+            ctx.strokeStyle = cardCol;
+            ctx.lineWidth = 3;
+            ctx.textAlign = "left";
+            ctx.textBaseline = "middle";
+            ctx.strokeText(prn, h.x + 7, h.y);
+            ctx.fillText(prn, h.x + 7, h.y);
+          }
+        }
+      }
+
+      canvas.addEventListener("mousemove", (ev) => {
+        const p = cssPointFromEvent(ev);
+        const hit = pickHit(p.x, p.y);
+        if (hit) {
+          placeTip(ev, svSkyplotTooltipLines(hit.row, mode).join("\n"));
+        } else {
+          tip.hidden = true;
+        }
+      });
+      canvas.addEventListener("mouseleave", () => {
+        tip.hidden = true;
+      });
+
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(() => {
+          draw();
+        });
+        ro.observe(wrap);
+      } else {
+        window.addEventListener("resize", draw);
+      }
+      draw();
+    }
+
     // extraColumns optional: [{ label, value(row) }].
     // extrasBeforeFlags: when true (with extraColumns), numeric columns precede flag bit columns (type 14).
     function satFlagsRenderDetailedGrid(
@@ -1931,6 +2348,9 @@
         root.appendChild(p);
         return;
       }
+      if (isAllDetailed) {
+        mountSvSkyplotIfAny(root, rows, "all-detailed");
+      }
       if (view === "basic") {
         const tbl = document.createElement("table");
         tbl.className = "sv-brief-basic-table";
@@ -2082,6 +2502,7 @@
         root.appendChild(p);
         return;
       }
+      mountSvSkyplotIfAny(root, rows, "sv14");
       if (view === "basic") {
         const tbl = document.createElement("table");
         tbl.className = "sv-brief-basic-table";
@@ -6606,7 +7027,14 @@
       copyAllBtn.onclick = (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
-        void copyText(spreadsheetTSVFromRecord(r));
+        let txt = spreadsheetTSVFromRecord(r);
+        if (r.type === 1) {
+          const vel = (lastStreamData && lastStreamData.records || []).find((x) => x.type === 8);
+          if (vel) {
+            txt += "\n\n" + spreadsheetTSVFromRecord(vel);
+          }
+        }
+        void copyText(txt);
       };
 
       const body = art.querySelector(".card-body");
@@ -7493,7 +7921,6 @@
         art._sigmaRecord = null;
         art._attitudeRecord = null;
         art._rx28Record = null;
-        art._velocity8Record = null;
         delete art.dataset.svBriefView;
         delete art.dataset.svDetailedView;
         const t1p = art.querySelector(".sv-brief-view-toggle");
@@ -7536,10 +7963,6 @@
         if (rx28p) {
           rx28p.remove();
         }
-        const v8p = art.querySelector(".vel8-graph-open-btn");
-        if (v8p) {
-          v8p.remove();
-        }
         svRoot.hidden = true;
         svRoot.replaceChildren();
         svDetRoot.hidden = true;
@@ -7549,6 +7972,28 @@
         ensurePositionTime1GraphOpenButton(art);
         dl.hidden = false;
         fillFields(dl, r.fields);
+        const recs = lastStreamData && lastStreamData.records ? lastStreamData.records : [];
+        const velRow = recs.find((x) => x.type === 8);
+        art._velocity8Record = velRow || null;
+        if (velRow && velRow.fields && velRow.fields.length) {
+          const secDt = document.createElement("dt");
+          secDt.className = "card-field-section-title";
+          secDt.textContent = "Velocity (GSOF type 8)";
+          const secDd = document.createElement("dd");
+          secDd.className = "card-field-section-dd";
+          secDd.textContent = "";
+          dl.appendChild(secDt);
+          dl.appendChild(secDd);
+          velRow.fields.forEach((f, i) => {
+            appendFieldToDL(dl, f, "v8m-" + i + "-" + fieldRowKey(f, i));
+          });
+          ensureVelocity8GraphOpenButton(art);
+        } else {
+          const v8p = art.querySelector(".vel8-graph-open-btn");
+          if (v8p) {
+            v8p.remove();
+          }
+        }
       } else if (isAtt27) {
         art._svBriefRecord = null;
         art._svDetailedRecord = null;
@@ -7658,10 +8103,8 @@
         const c2 = document.createElement("td");
         c2.textContent = p.remote_addr != null ? String(p.remote_addr) : "";
         const c3 = document.createElement("td");
-        c3.textContent = p.connected_at_rfc3339 != null ? String(p.connected_at_rfc3339) : "";
-        const c4 = document.createElement("td");
-        c4.textContent = "—";
-        tr.append(c0, c1, c2, c3, c4);
+        c3.textContent = "—";
+        tr.append(c0, c1, c2, c3);
         body.appendChild(tr);
       }
       for (const d of drops) {
@@ -7678,10 +8121,8 @@
         const c2 = document.createElement("td");
         c2.textContent = d.remote_addr != null ? String(d.remote_addr) : "";
         const c3 = document.createElement("td");
-        c3.textContent = d.connected_at_rfc3339 != null ? String(d.connected_at_rfc3339) : "";
-        const c4 = document.createElement("td");
-        c4.textContent = d.dropped_at_rfc3339 != null ? String(d.dropped_at_rfc3339) : "";
-        tr.append(c0, c1, c2, c3, c4);
+        c3.textContent = d.dropped_at_rfc3339 != null ? String(d.dropped_at_rfc3339) : "";
+        tr.append(c0, c1, c2, c3);
         body.appendChild(tr);
       }
     }
@@ -7732,6 +8173,12 @@
       const wanted = new Set();
       for (const r of data.records) {
         wanted.add(subtypeKey(r));
+      }
+      if (
+        data.records.some((x) => x.type === 1) &&
+        data.records.some((x) => x.type === 8)
+      ) {
+        wanted.delete("8");
       }
 
       for (const r of data.records) {

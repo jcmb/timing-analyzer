@@ -124,13 +124,6 @@ func decodeRadio57(payload []byte) []Field {
 	if !pr.headerOK {
 		return shortFields(Lookup(57).Function, payload, 2+4+1)
 	}
-	out = append(out,
-		kv("GPS week", fmt.Sprintf("%d", pr.week)),
-		kv("GPS time of week", fmt.Sprintf("%.3f s", float64(pr.towMs)/1000.0)),
-	)
-	if pr.week == 0 && pr.towMs == 0 {
-		out = append(out, kv("GPS time availability", "Unavailable (week and ms are zero per specification)"))
-	}
 	out = append(out, kv("Radio count", fmt.Sprintf("%d", pr.nRadios)))
 	if pr.parseNote != "" {
 		out = append(out, kv("Parse", pr.parseNote))

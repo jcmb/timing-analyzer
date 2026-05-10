@@ -266,7 +266,7 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 			case <-sctx.Done():
 				return
 			case <-t.C:
-				dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host, false)
+				dash := stats.BuildDashboard(cfg.IP, cfg.Port, buildDisplayVersion(), cfg.Host, false)
 				data, err := json.Marshal(dash)
 				if err != nil {
 					slog.Warn("session dashboard JSON marshal failed", "session", id, "error", err)
@@ -295,7 +295,7 @@ func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg co
 	setNoCacheHeaders(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	out := configResponse{
-		Version:           Version,
+		Version:           buildDisplayVersion(),
 		EmbeddedStream:    embeddedStream,
 		UISessionsEnabled: !embeddedStream,
 		URLPrefix:         httpBasePath,
@@ -437,7 +437,7 @@ func (h *hub) serveSessionBranch(w http.ResponseWriter, r *http.Request, embedde
 	if len(parts) == 1 {
 		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-GSOF-Dashboard-Version", Version)
+		w.Header().Set("X-GSOF-Dashboard-Version", buildDisplayVersion())
 		_, _ = w.Write(dashboardHTML)
 		return
 	}

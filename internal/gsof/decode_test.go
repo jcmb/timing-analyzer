@@ -296,8 +296,11 @@ func TestDecode57RadioLayout(t *testing.T) {
 	for _, f := range fields {
 		got[f.Label] = f.Value
 	}
-	if got["GPS week"] != "3" || got["GPS time of week"] != "1.500 s" {
-		t.Fatalf("time header: %#v", got)
+	if _, ok := got["GPS week"]; ok {
+		t.Fatalf("GPS week should not appear in type 57 decode: %#v", got)
+	}
+	if _, ok := got["GPS time of week"]; ok {
+		t.Fatalf("GPS time of week should not appear in type 57 decode: %#v", got)
 	}
 	if got["Radio count"] != "1" {
 		t.Fatalf("count: %#v", got)
@@ -457,7 +460,7 @@ func TestDecode97SecondAntennaLayout(t *testing.T) {
 	if got["GPS week"] != "5" || got["GPS time of week"] != "3.000 s" {
 		t.Fatalf("time: %#v", got)
 	}
-	if !strings.Contains(got["Position type"], "7 —") || !strings.Contains(got["Position type"], "Full float RTK") {
+	if !strings.Contains(got["Position type"], "7 —") || !strings.Contains(got["Position type"], "Full Float RTK") {
 		t.Fatalf("pos type: %q", got["Position type"])
 	}
 	if !strings.Contains(got["Source"], "Moving-base") {
@@ -1278,6 +1281,16 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	if !strings.Contains(got["Position fix type"], "9 —") {
 		t.Fatalf("fix type: %q", got["Position fix type"])
 	}
+	var fixF *Field
+	for i := range fields {
+		if fields[i].Label == "Position fix type" {
+			fixF = &fields[i]
+			break
+		}
+	}
+	if fixF == nil || len(fixF.Detail) < 50 {
+		t.Fatalf("position fix type OEM reference detail: %#v", fixF)
+	}
 	if !strings.Contains(got["Tectonic plate"], "Australia") {
 		t.Fatalf("plate: %q", got["Tectonic plate"])
 	}
@@ -1292,13 +1305,13 @@ func TestDecodePositionType38OEM(t *testing.T) {
 	}
 }
 
-func TestDecodePositionType38FixTypes52and53(t *testing.T) {
+func TestDecodePositionType38FixTypeExtendedUnknown(t *testing.T) {
 	for _, tc := range []struct {
 		code byte
 		want string
 	}{
-		{52, "52 — HAS"},
-		{53, "53 — INS HAS"},
+		{52, "52 — unknown (code 52)"},
+		{53, "53 — unknown (code 53)"},
 	} {
 		payload := make([]byte, 26)
 		payload[4] = 0x03

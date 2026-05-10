@@ -109,7 +109,7 @@ func main() {
 	if httpBasePath == "" {
 		httpBasePath = normalizeHTTPBasePath(os.Getenv("GSOF_DASHBOARD_BASE_PATH"))
 	}
-	dashboardHTMLPrepared := prepareDashboardHTML(Version, httpBasePath)
+	dashboardHTMLPrepared := prepareDashboardHTML(buildDisplayVersion(), httpBasePath)
 
 	openBrowserFlagSet := false
 	flag.Visit(func(f *flag.Flag) {
@@ -262,7 +262,7 @@ func main() {
 		}
 		setNoCacheHeaders(w)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-GSOF-Dashboard-Version", Version)
+		w.Header().Set("X-GSOF-Dashboard-Version", buildDisplayVersion())
 		_, _ = w.Write(dashboardHTMLPrepared)
 	})
 
@@ -282,7 +282,7 @@ func main() {
 		}
 	}
 	fmt.Fprintf(os.Stdout, "gsof-dashboard version %s\n  web UI:  http://%s\n  GSOF:    %s\n",
-		Version, webAddr, streamDesc)
+		buildDisplayVersion(), webAddr, streamDesc)
 	if httpBasePath != "" {
 		fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (incoming paths strip this; configure proxy to forward full path including prefix, or equivalent)\n", httpBasePath)
 	}
@@ -308,7 +308,7 @@ func main() {
 	}
 
 	go func() {
-		slog.Info("GSOF dashboard listening", "version", Version, "addr", webAddr, "stream", streamDesc, "embedded_stream", *embeddedStream, "http_base_path", httpBasePath)
+		slog.Info("GSOF dashboard listening", "version", buildDisplayVersion(), "addr", webAddr, "stream", streamDesc, "embedded_stream", *embeddedStream, "http_base_path", httpBasePath)
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			slog.Error("http server", "error", err)
 			os.Exit(1)
