@@ -1,0 +1,8 @@
+---
+description: GitHub CLI full path for shells where it is not on PATH
+alwaysApply: true
+---
+
+# GitHub CLI location
+
+In agent shells, if the GitHub CLI is not found on `PATH`, invoke it as **`/usr/local/bin/github`**. Prefer that full path for GitHub CLI commands when automating (PRs, issues, API) so commands succeed without relying on interactive PATH setup.

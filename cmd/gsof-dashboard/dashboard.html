@@ -6832,6 +6832,11 @@
       body.appendChild(docWrap);
       det.appendChild(sum);
       det.appendChild(body);
+      // Position (type 1) merges velocity (type 8) into this card’s dl; keep details open by default
+      // so the merged velocity section is visible in the card body without an extra expand click.
+      if (key === "1") {
+        det.open = true;
+      }
 
       art.appendChild(det);
       return art;
