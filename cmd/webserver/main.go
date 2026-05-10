@@ -248,7 +248,7 @@ func handleStart(w http.ResponseWriter, r *http.Request) {
 	switch mode {
 	case "tcp_listen", "udp_listen":
 		go func() {
-			if err := stream.StartListenerContext(ctx, cfg, packetChan, nil); err != nil && ctx.Err() == nil {
+			if err := stream.StartListenerContext(ctx, cfg, packetChan, nil, nil); err != nil && ctx.Err() == nil {
 				slog.Warn("listen session ended", "session", sessionID, "error", err)
 			}
 		}()

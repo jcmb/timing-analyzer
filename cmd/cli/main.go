@@ -477,7 +477,7 @@ func main() {
 			sessCfg.TimeoutExit = false
 			packetChan := make(chan core.PacketEvent, 1000)
 			go func() {
-				_ = stream.StartListenerContext(ctx, sessCfg, packetChan, nil)
+				_ = stream.StartListenerContext(ctx, sessCfg, packetChan, nil, nil)
 			}()
 			go timing.Run(ctx, sessCfg, packetChan, broker.Notifier)
 			h.mu.Lock()

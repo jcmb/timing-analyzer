@@ -174,7 +174,16 @@ func main() {
 		embStats = gsofstats.NewStats(false)
 		embBroker = gsofstats.NewJSONBroker()
 		packetChan = make(chan core.PacketEvent, 1000)
-		go stream.StartListener(cfg, packetChan)
+		var tcpInbound *gsofstats.TCPListenTracker
+		if strings.EqualFold(cfg.IP, "tcp") && strings.TrimSpace(cfg.Host) == "" {
+			tcpInbound = gsofstats.NewTCPListenTracker()
+			embStats.SetTCPListenTracker(tcpInbound)
+		}
+		go func() {
+			if err := stream.StartListenerContext(context.Background(), cfg, packetChan, nil, tcpInbound); err != nil {
+				slog.Error("embedded stream listener failed", "error", err)
+			}
+		}()
 		go func() {
 			for pkt := range packetChan {
 				for _, w := range pkt.StreamWarnings {
@@ -182,6 +191,9 @@ func main() {
 				}
 				tcp := !strings.EqualFold(cfg.IP, "udp")
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+					if tcpInbound != nil {
+						tcpInbound.NotifyGSOF(pkt.RemoteAddr)
+					}
 					embStats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp, cfg.IgnoreTCPGSOFTransmissionGap1)
 				}
 			}
@@ -190,7 +202,7 @@ func main() {
 			t := time.NewTicker(500 * time.Millisecond)
 			defer t.Stop()
 			for range t.C {
-				dash := embStats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host)
+				dash := embStats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host, true)
 				data, err := json.Marshal(dash)
 				if err != nil {
 					slog.Warn("dashboard: JSON marshal failed (SSE not updated)", "error", err)

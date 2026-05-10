@@ -205,6 +205,12 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 	cfg.Verbose = verbose
 	cfg.Decode = "dcol"
 
+	var tcpInbound *gsofstats.TCPListenTracker
+	if strings.EqualFold(cfg.IP, "tcp") && strings.TrimSpace(cfg.Host) == "" {
+		tcpInbound = gsofstats.NewTCPListenTracker()
+		stats.SetTCPListenTracker(tcpInbound)
+	}
+
 	udPortCh := make(chan int, 1)
 	var udpCB func(int)
 	if strings.EqualFold(cfg.IP, "udp") {
@@ -217,7 +223,7 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 	}
 
 	go func() {
-		if err := stream.StartListenerContext(sctx, cfg, ch, udpCB); err != nil {
+		if err := stream.StartListenerContext(sctx, cfg, ch, udpCB, tcpInbound); err != nil {
 			slog.Warn("session stream ended", "session", id, "error", err)
 		}
 	}()
@@ -233,6 +239,9 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 				}
 				tcp := !strings.EqualFold(cfg.IP, "udp")
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+					if tcpInbound != nil {
+						tcpInbound.NotifyGSOF(pkt.RemoteAddr)
+					}
 					stats.Update(uint8(pkt.SequenceNumber), pkt.GSOFBuffer, tcp, cfg.IgnoreTCPGSOFTransmissionGap1)
 				}
 			}
@@ -257,7 +266,7 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 			case <-sctx.Done():
 				return
 			case <-t.C:
-				dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host)
+				dash := stats.BuildDashboard(cfg.IP, cfg.Port, Version, cfg.Host, false)
 				data, err := json.Marshal(dash)
 				if err != nil {
 					slog.Warn("session dashboard JSON marshal failed", "session", id, "error", err)
