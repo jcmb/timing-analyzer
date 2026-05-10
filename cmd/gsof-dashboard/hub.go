@@ -113,6 +113,10 @@ func validateStreamRequest(cfg core.Config, allowPrivate bool) error {
 		if cfg.Port < 1 || cfg.Port > 65535 {
 			return fmt.Errorf("port must be between 1 and 65535")
 		}
+		if strings.TrimSpace(cfg.Host) == "" {
+			// TCP listen: accept inbound connections on cfg.Port (same as embedded -host "").
+			return nil
+		}
 		return validateTCPStreamHost(cfg.Host, allowPrivate)
 	case "udp":
 		if cfg.Port < 0 || cfg.Port > 65535 {
