@@ -27,3 +27,5 @@ go.work.sum
 .DS_Store
 /bin
 web/chart.umd.min.js
+web/hammer.min.js
+web/chartjs-plugin-zoom.min.js

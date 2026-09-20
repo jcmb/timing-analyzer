@@ -3,6 +3,7 @@ package gsofbaseline
 import (
 	"fmt"
 	"net/http"
+	"time"
 )
 
 // JSONBroker fans out raw JSON messages to SSE clients (same framing as internal/gsofstats).
@@ -11,6 +12,7 @@ type JSONBroker struct {
 	newClients     chan chan []byte
 	closingClients chan chan []byte
 	clients        map[chan []byte]bool
+	last           []byte
 }
 
 func NewJSONBroker() *JSONBroker {
@@ -29,9 +31,17 @@ func (b *JSONBroker) listen() {
 		select {
 		case s := <-b.newClients:
 			b.clients[s] = true
+			if len(b.last) > 0 {
+				snap := append([]byte(nil), b.last...)
+				select {
+				case s <- snap:
+				default:
+				}
+			}
 		case s := <-b.closingClients:
 			delete(b.clients, s)
 		case data := <-b.notify:
+			b.last = append([]byte(nil), data...)
 			for ch := range b.clients {
 				select {
 				case ch <- data:
@@ -58,7 +68,7 @@ func (b *JSONBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Expires", "0")
@@ -68,21 +78,24 @@ func (b *JSONBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	padding := make([]byte, 2048)
-	for i := range padding {
-		padding[i] = ' '
-	}
-	fmt.Fprintf(w, ":%s\n\n", string(padding))
+	// Browsers only dispatch EventSource onmessage for "data:" lines (not comments).
+	fmt.Fprintf(w, "data: {\"sse\":\"open\"}\n\n")
 	flusher.Flush()
 
-	messageChan := make(chan []byte, 8)
+	messageChan := make(chan []byte, 32)
 	b.newClients <- messageChan
 	defer func() { b.closingClients <- messageChan }()
+
+	keepalive := time.NewTicker(15 * time.Second)
+	defer keepalive.Stop()
 
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-keepalive.C:
+			fmt.Fprintf(w, ": keepalive\n\n")
+			flusher.Flush()
 		case msg := <-messageChan:
 			fmt.Fprintf(w, "data: %s\n\n", msg)
 			flusher.Flush()

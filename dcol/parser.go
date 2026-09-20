@@ -2,6 +2,7 @@ package dcol
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -34,8 +35,14 @@ func NewParser(reg *Registry) *Parser {
 }
 
 func (p *Parser) appendGSOFTransportWarning(msg string, env Env) {
-	p.pendingStreamWarnings = append(p.pendingStreamWarnings, msg)
+	if env.Debug || !isSequenceGapDashboardWarning(msg) {
+		p.pendingStreamWarnings = append(p.pendingStreamWarnings, msg)
+	}
 	env.logf(2, "[VERBOSE2] %s\n", msg)
+}
+
+func isSequenceGapDashboardWarning(msg string) bool {
+	return strings.Contains(msg, "transmission gap") || strings.Contains(msg, "multi-page gap")
 }
 
 func (p *Parser) noteUndecodedAfterSync(n int, reason, remoteAddr string, env Env) {

@@ -10,10 +10,13 @@
       } catch (e) {}
     })();
   </script>
+  <script>window.__BASELINE_URL_PREFIX__ = __BASE_PATH_JSON__;</script>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GSOF baseline · __VERSION__</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="__CHART_JS_PATH__"></script>
+  <script src="__HAMMER_JS_PATH__"></script>
+  <script src="__CHART_ZOOM_JS_PATH__"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -95,6 +98,7 @@
     .card-chev { flex:0 0 auto; width:1.35em; text-align:center; font-size:1.15rem; line-height:1; opacity:0.9; }
     .card-title-text { flex:1; min-width:0; font-size:1rem; }
     .card-panel[hidden] { display:none !important; }
+    .chart-hint { margin:0 0 0.5rem;font-size:0.8rem;color:var(--muted,#8b9cb3); }
     .kv-grid {
       display:grid; grid-template-columns:auto minmax(0,1fr);
       column-gap:1rem; row-gap:0.35rem; font:12px/1.45 var(--mono); text-align:left;
@@ -179,7 +183,7 @@
       </div>
       <button type="button" id="btnPause" title="Stop refreshing panels and charts from the stream">Pause updates</button>
       <button type="button" id="btnCopy" title="Copy all panel text">Copy all</button>
-      <button type="button" id="btnPng" title="Stacked PNG of both chart panels">Save charts PNG</button>
+      <button type="button" id="btnPng" title="Stacked PNG of all chart panels">Save charts PNG</button>
     </div>
   </header>
   <main>
@@ -189,7 +193,7 @@
         <div class="card-panel"><div id="status" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-info">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · bearing &amp; range</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Baseline attitude &amp; range</span></button></h2>
         <div class="card-panel"><div id="headingInfo" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-check">
@@ -217,12 +221,36 @@
         <div class="card-panel"><div id="headingRover" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-base-41">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · base (GSOF type 41)</span></button></h2>
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Bearing reference · heading type 41</span></button></h2>
         <div class="card-panel"><div id="b41h" class="kv-grid"></div></div>
       </div>
-      <div class="card" id="cardMb35" data-card-id="moving-base-35" style="display:none">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Moving base · GSOF type 35</span></button></h2>
-        <div class="card-panel"><div id="b35m" class="kv-grid"></div></div>
+      <div class="card" data-card-id="heading-base-35" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading stream · received base (type 35)</span></button></h2>
+        <div class="card-panel"><div id="b35h" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMbLLH" data-card-id="moving-base-llh" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Bearing reference · moving-base types 1+2</span></button></h2>
+        <div class="card-panel"><div id="mbLLH" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardBaseStation" data-card-id="base-station-info" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Base station information</span></button></h2>
+        <div class="card-panel"><div id="baseStationInfo" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-dop" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">DOP · heading stream (GSOF type 9)</span></button></h2>
+        <div class="card-panel"><div id="headingDop" class="kv-grid"></div></div>
+      </div>
+      <div class="card" data-card-id="heading-sigma" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Position sigma · heading stream (GSOF type 12)</span></button></h2>
+        <div class="card-panel"><div id="headingSigma" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMbDop" data-card-id="moving-base-dop" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">DOP · moving-base stream (GSOF type 9)</span></button></h2>
+        <div class="card-panel"><div id="mbDop" class="kv-grid"></div></div>
+      </div>
+      <div class="card" id="cardMbSigma" data-card-id="moving-base-sigma" style="display:none">
+        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Position sigma · moving-base stream (GSOF type 12)</span></button></h2>
+        <div class="card-panel"><div id="mbSigma" class="kv-grid"></div></div>
       </div>
       <div class="card" data-card-id="heading-27">
         <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading · attitude (GSOF type 27)</span></button></h2>
@@ -240,32 +268,234 @@
         <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Type 41 (heading) vs moving base (types 1+2)</span></button></h2>
         <div class="card-panel"><div id="cross" class="kv-grid"></div></div>
       </div>
-      <div class="card" id="cardMb" data-card-id="moving-base" style="display:none">
-        <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Base information</span></button></h2>
-        <div class="card-panel"><div id="b41m" class="kv-grid"></div></div>
-      </div>
     </div>
     <div class="card" data-card-id="chart-range" style="margin-bottom:1rem">
-      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Heading (°) and range (m)</span></button></h2>
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Yaw / pitch (°)</span></button></h2>
       <div class="card-panel">
+        <p class="chart-hint">Drag a box to zoom · scroll or pinch to zoom · double-click to reset</p>
         <canvas id="ch1"></canvas>
       </div>
     </div>
-    <div class="card" data-card-id="chart-sv">
+    <div class="card" data-card-id="chart-sv" style="margin-bottom:1rem">
       <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">SV counts (GSOF type 1)</span></button></h2>
       <div class="card-panel">
+        <p class="chart-hint">Drag a box to zoom · scroll or pinch to zoom · double-click to reset</p>
         <canvas id="ch2"></canvas>
+      </div>
+    </div>
+    <div class="card" data-card-id="chart-sigma" style="margin-bottom:1rem;display:none">
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Position sigma (m)</span></button></h2>
+      <div class="card-panel">
+        <p class="chart-hint">Drag a box to zoom · scroll or pinch to zoom · double-click to reset</p>
+        <canvas id="ch5"></canvas>
+      </div>
+    </div>
+    <div class="card" data-card-id="chart-slant" style="margin-bottom:1rem">
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">Slant range (m)</span></button></h2>
+      <div class="card-panel">
+        <p class="chart-hint">Drag a box to zoom · scroll or pinch to zoom · double-click to reset</p>
+        <canvas id="ch3"></canvas>
+      </div>
+    </div>
+    <div class="card" data-card-id="chart-dop" style="margin-bottom:1rem;display:none">
+      <h2 class="card-h2"><button type="button" class="card-toggle" aria-expanded="true"><span class="card-chev" aria-hidden="true">▾</span><span class="card-title-text">DOP (PDOP / HDOP / TDOP / VDOP)</span></button></h2>
+      <div class="card-panel">
+        <p class="chart-hint">Drag a box to zoom · updates ≤1 Hz · double-click to reset</p>
+        <canvas id="ch4"></canvas>
       </div>
     </div>
   </main>
   <script>
 (function () {
-  var es = new EventSource("events");
-  var chart1, chart2;
+  if (typeof Chart !== "undefined" && typeof zoomPlugin !== "undefined") {
+    Chart.register(zoomPlugin);
+  }
+  var eventsPath = "__EVENTS_PATH__";
+  function baselineURL(path) {
+    var pre = typeof window.__BASELINE_URL_PREFIX__ === "string" ? window.__BASELINE_URL_PREFIX__ : "";
+    if (path.charAt(0) !== "/") path = "/" + path;
+    return pre + path;
+  }
+  function baselinePathForRouteMatch() {
+    var path = location.pathname;
+    var pre = typeof window.__BASELINE_URL_PREFIX__ === "string" ? window.__BASELINE_URL_PREFIX__ : "";
+    if (pre && path.indexOf(pre) === 0) path = path.slice(pre.length) || "/";
+    return path;
+  }
+  if (eventsPath.indexOf("__") >= 0) {
+    var sm = baselinePathForRouteMatch().match(/^\/s\/([a-f0-9]{32})(?:\/events)?\/?$/i);
+    eventsPath = sm ? baselineURL("/s/" + sm[1] + "/events") : baselineURL("/events");
+  }
+
+  var es = null;
+  var sseMsgCount = 0;
+  var sseMsgTimes = [];
+  var lastDopChartMs = 0;
+  var pendingDop = null;
+  var sseStatusEl = document.createElement("p");
+  sseStatusEl.id = "sseStatus";
+  sseStatusEl.style.cssText = "margin:0.5rem 0 0;font-size:0.85rem;color:var(--muted,#8b9cb3);max-width:36rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+  sseStatusEl.title = eventsPath;
+  sseStatusEl.textContent = "SSE: connecting…";
+  document.querySelector("header .hdr-actions").appendChild(sseStatusEl);
+
+  var chart1, chart2, chart3, chart4, chart5;
   var lastMbConfigured = null;
+  var lastDopMbConfigured = null;
+  var lastSigmaMbConfigured = null;
   var lastSnap = null;
   var updatesPaused = false;
-  var legendClickDefault = Chart.defaults.plugins.legend.onClick;
+
+  function sseRateHz() {
+    var now = Date.now();
+    var cutoff = now - 5000;
+    while (sseMsgTimes.length && sseMsgTimes[0] < cutoff) sseMsgTimes.shift();
+    if (sseMsgTimes.length < 2) return 0;
+    return (sseMsgTimes.length - 1) / ((now - sseMsgTimes[0]) / 1000);
+  }
+  function updateSSEStatus(prefix) {
+    var hz = sseRateHz();
+    var rate = hz > 0 ? hz.toFixed(1) + " Hz · " : "";
+    sseStatusEl.textContent = prefix + rate + sseMsgCount + " msg(s)";
+  }
+
+  function connectSSE(url) {
+    if (es) {
+      es.close();
+      es = null;
+    }
+    sseStatusEl.textContent = "SSE: connecting…";
+    sseStatusEl.title = url;
+    es = new EventSource(url);
+    es.onopen = function () {
+      updateSSEStatus("SSE: connected · ");
+    };
+    es.onmessage = function (ev) {
+      if (updatesPaused) return;
+      sseMsgCount++;
+      sseMsgTimes.push(Date.now());
+      var d;
+      try {
+        d = JSON.parse(ev.data);
+      } catch (err) {
+        sseStatusEl.textContent = "SSE: bad JSON";
+        return;
+      }
+      if (d && d.sse === "open") return;
+      updateSSEStatus("SSE: live · ");
+      renderSnap(d);
+    };
+    es.onerror = function () {
+      if (!es) return;
+      if (es.readyState === EventSource.CONNECTING) {
+        sseStatusEl.textContent = "SSE: reconnecting…";
+      } else {
+        sseStatusEl.textContent = "SSE: error";
+      }
+    };
+  }
+
+  connectSSE(eventsPath);
+
+  function chartZoomPlugins(extra) {
+    var plugins = { legend: { position: "bottom" } };
+    if (typeof zoomPlugin !== "undefined") {
+      plugins.zoom = {
+        pan: { enabled: false },
+        zoom: {
+          drag: { enabled: true, backgroundColor: "rgba(61,139,253,0.12)", borderColor: "rgba(61,139,253,0.45)", borderWidth: 1 },
+          wheel: { enabled: true },
+          pinch: { enabled: true },
+          mode: "xy"
+        },
+        limits: {
+          x: { min: "original", max: "original" },
+          y: { min: "original", max: "original" }
+        }
+      };
+    }
+    if (extra) {
+      Object.keys(extra).forEach(function (k) {
+        plugins[k] = extra[k];
+      });
+    }
+    return plugins;
+  }
+  function integerXScale(title, extra) {
+    var sc = {
+      type: "linear",
+      ticks: {
+        maxTicksLimit: 12,
+        stepSize: 1,
+        precision: 0,
+        callback: function (value) {
+          var n = Number(value);
+          if (!isFinite(n) || Math.floor(n) !== n) return "";
+          return String(n);
+        }
+      },
+      title: { display: true, text: title || "GPS TOW (s)" }
+    };
+    if (extra) {
+      Object.keys(extra).forEach(function (k) {
+        sc[k] = extra[k];
+      });
+    }
+    return sc;
+  }
+  function towXY(history, getter) {
+    return (history || []).map(function (p) {
+      return { x: Math.round(p.gps_tow_s), y: getter(p) };
+    });
+  }
+  function ptsTowXY(pts, getter) {
+    return (pts || []).map(function (p, i) {
+      return { x: Math.round(p.gps_tow_s), y: getter(p, i) };
+    });
+  }
+  function fmtDop(v) {
+    if (v == null || isNaN(v)) return "—";
+    return Number(v).toFixed(1);
+  }
+  function fmtSigmaM(v) {
+    if (v == null || isNaN(v)) return "—";
+    return Number(v).toFixed(5) + " m";
+  }
+  function lastHistoryItem(arr) {
+    return arr && arr.length ? arr[arr.length - 1] : null;
+  }
+  function rowsDOP(history, streamLabel) {
+    var p = lastHistoryItem(history);
+    if (!p) return [row("Status", "—")];
+    return [
+      row("Stream", streamLabel),
+      row("GPS TOW s", fmtTowSec2(p.gps_tow_s)),
+      row("PDOP", fmtDop(p.pdop)),
+      row("HDOP", fmtDop(p.hdop)),
+      row("TDOP", fmtDop(p.tdop)),
+      row("VDOP", fmtDop(p.vdop)),
+      row("Samples in graph", String(history.length))
+    ];
+  }
+  function rowsSigma(history, streamLabel) {
+    var p = lastHistoryItem(history);
+    if (!p) return [row("Status", "—")];
+    return [
+      row("Stream", streamLabel),
+      row("GPS TOW s", fmtTowSec2(p.gps_tow_s)),
+      row("Position RMS", fmtSigmaM(p.position_rms_m)),
+      row("σ East", fmtSigmaM(p.sigma_east_m)),
+      row("σ North", fmtSigmaM(p.sigma_north_m)),
+      row("σ Up", fmtSigmaM(p.sigma_up_m)),
+      row("σ Horizontal", fmtSigmaM(p.sigma_h_m)),
+      row("Samples in graph", String(history.length))
+    ];
+  }
+
+  var legendClickDefault =
+    typeof Chart !== "undefined" && Chart.defaults && Chart.defaults.plugins && Chart.defaults.plugins.legend
+      ? Chart.defaults.plugins.legend.onClick
+      : null;
 
   var THEME_KEY = "gsof-baseline-theme";
   function setTheme(mode) {
@@ -312,13 +542,20 @@
       if (sc.grid) sc.grid.color = grid;
     }
     if (chart1) {
-      chart1.data.datasets[0].borderColor = d0;
-      chart1.data.datasets[1].borderColor = d1;
-      chart1.data.datasets[2].borderColor = d2;
+      chart1.data.datasets[0].borderColor = d3;
+      chart1.data.datasets[1].borderColor = d0;
+      chart1.data.datasets[2].borderColor = d4;
       paintScale(chart1, "x");
       paintScale(chart1, "y");
       paintScale(chart1, "y2");
       chart1.update("none");
+    }
+    if (chart3) {
+      chart3.data.datasets[0].borderColor = d2;
+      if (chart3.data.datasets[1]) chart3.data.datasets[1].borderColor = d1;
+      paintScale(chart3, "x");
+      paintScale(chart3, "y");
+      chart3.update("none");
     }
     if (chart2) {
       chart2.data.datasets[0].borderColor = d3;
@@ -326,6 +563,24 @@
       paintScale(chart2, "x");
       paintScale(chart2, "y");
       chart2.update("none");
+    }
+    if (chart4) {
+      var dopCols = [d0, d1, d2, d3];
+      for (var di = 0; di < chart4.data.datasets.length; di++) {
+        chart4.data.datasets[di].borderColor = dopCols[di % 4];
+      }
+      paintScale(chart4, "x");
+      paintScale(chart4, "y");
+      chart4.update("none");
+    }
+    if (chart5) {
+      var sigCols = [d0, d1, d2, d3];
+      for (var si = 0; si < chart5.data.datasets.length; si++) {
+        chart5.data.datasets[si].borderColor = sigCols[si % 4];
+      }
+      paintScale(chart5, "x");
+      paintScale(chart5, "y");
+      chart5.update("none");
     }
   }
   function underline(title) {
@@ -375,7 +630,7 @@
     lines.push("");
   }
   var POP_NOTE_HEADING_CHECK =
-    "Bearing here is the horizontal initial bearing on the ellipsoid from heading positions toward the reference. Type 27 yaw is body attitude (rotation about the receiver's vertical axis in its attitude frame). Pitch and roll tilt that frame: the horizontal direction implied by yaw is not automatically the same as geographic bearing, and non-level mounting can widen the gap without either value being wrong. Large |Δ| with large |pitch| or |roll| often points to this geometry mismatch rather than a bad solution.";
+    "Computed yaw, pitch, and roll come from heading and reference LLH (local ENU at the rover): yaw is horizontal azimuth, pitch is elevation, roll is always 0 (not fixed by positions alone). Type 27 reports receiver body attitude; yaw is compared with circular Δ, pitch and roll with simple difference. Body frame tilt can separate computed baseline angles from type 27 even when both are valid.";
   var POP_NOTE_RANGE =
     "Check vs reference compares |slant − ref| to the range tolerance set on the command line (-range-check-tolerance).\n\nWhen ref is GSOF 27: slant is from LLH (heading type 1/2 to the matched reference); ref is the GSOF type-27 range at that TOW. These are different definitions, so a steady offset is common. If |slant − ref| barely moves as epochs update, you are usually seeing a bias between those two ranges, not random jitter. Five decimal places are shown on slant, horizontal range, and |slant − ref| so tiny drift is visible.\n\nWhen ref is from the CLI expected range: the reference is the fixed value you supplied; slant comes from the latest matched positions.";
   function buildPlainTextExport(d) {
@@ -393,23 +648,50 @@
     }
     blockRows(lines, "RANGE", rowsRangeCheck(d.points || []));
     blockRows(lines, "HEADING POSITION", rowsHeadingRover(d.heading_rover));
-    blockRows(lines, "HEADING — BASE (TYPE 41)", rowsBase41(d.base_41_heading));
+    if (d.heading_dop_history && d.heading_dop_history.length) {
+      blockRows(lines, "DOP — HEADING STREAM (TYPE 9)", rowsDOP(d.heading_dop_history, "Heading"));
+    }
+    if (d.heading_sigma_history && d.heading_sigma_history.length) {
+      blockRows(lines, "POSITION SIGMA — HEADING STREAM (TYPE 12)", rowsSigma(d.heading_sigma_history, "Heading"));
+    }
+      blockRows(lines, "BEARING REFERENCE — HEADING TYPE 41", rowsBase41(d.base_41_heading, "heading_ref"));
+      blockRows(lines, "HEADING STREAM — RECEIVED BASE (TYPE 35)", rowsBase35(d.base_35_heading, d.base_35_heading_updates, "heading_rx"));
     blockRows(lines, "HEADING — ATTITUDE TYPE 27", rowsType27(d.heading_type27));
     blockRows(lines, "POSITION TYPE", rowsPositionType(d));
     blockRows(lines, "RECEIVER SERIAL (type 15)", rowsSerials(d));
     if (d.moving_base_configured) {
       blockRows(lines, "TYPE 41 (HEADING) VS MOVING BASE (types 1 and 2)", rowsCross(d.heading_41_vs_moving_base));
-      blockRows(lines, "MOVING BASE — TYPE 35", rowsBase35(d.base_35_moving));
-      if (d.base_41_moving && !d.base_35_moving) {
-        blockRows(lines, "BASE INFORMATION (moving base · GSOF type 41)", rowsBase41(d.base_41_moving));
+      blockRows(lines, "BEARING REFERENCE — MOVING BASE TYPES 1+2", rowsMovingBaseLLH(d.moving_base_llh));
+      blockRows(lines, "BASE STATION INFORMATION", rowsBaseStationInfo(d));
+      if (d.moving_base_dop_history && d.moving_base_dop_history.length) {
+        blockRows(lines, "DOP — MOVING-BASE STREAM (TYPE 9)", rowsDOP(d.moving_base_dop_history, "Moving base"));
+      }
+      if (d.moving_base_sigma_history && d.moving_base_sigma_history.length) {
+        blockRows(lines, "POSITION SIGMA — MOVING-BASE STREAM (TYPE 12)", rowsSigma(d.moving_base_sigma_history, "Moving base"));
       }
     }
     return lines.join("\n").replace(/\n+$/, "");
   }
 
-  function rowsBase35(x) {
+  function rowsBaseStationInfo(d) {
+    if (!d || (!d.base_35_moving && !d.base_41_moving)) {
+      return [row("Status", "—")];
+    }
+    var rows = [row("Note", "Not used for bearing")];
+    if (d.base_35_moving) {
+      rows.unshift(row("Source", "GSOF type 35"));
+      return rows.concat(rowsBase35(d.base_35_moving, d.base_35_moving_updates, null));
+    }
+    rows.unshift(row("Source", "GSOF type 41"));
+    return rows.concat(rowsBase41(d.base_41_moving, null));
+  }
+  function rowsBase35(x, updates, role) {
     if (!x) return [row("Status", "—")];
-    return [
+    var rows = [];
+    if (role === "heading_rx") {
+      rows.push(row("Role", "Received-base info on the heading stream — not used for bearing"));
+    }
+    rows.push(
       row("Name", String(x.name)),
       row("Base ID", String(x.base_id)),
       row("Valid", String(x.info_valid)),
@@ -417,18 +699,51 @@
       row("Longitude °", String(x.lon_deg)),
       row("Height m", String(x.height_m)),
       row("Flags", String(x.flags_detail))
-    ];
+    );
+    if (updates != null && updates > 0) {
+      rows.push(row("Records seen", String(updates)));
+    }
+    if (role === "heading_rx") {
+      rows.push(
+        row(
+          "Note",
+          "Type 35 has no GPS TOW; coordinates may stay fixed while records still arrive."
+        )
+      );
+    }
+    return rows;
   }
-  function rowsBase41(x) {
+  function rowsBase41(x, role) {
     if (!x) return [row("Status", "—")];
-    return [
+    var rows = [];
+    if (role === "heading_ref") {
+      rows.push(row("Role", "Bearing reference when TOW-matched (priority over moving-base types 1+2)"));
+    }
+    rows.push(
       row("GPS week", String(x.gps_week)),
       row("GPS TOW s", fmtTowSec2(x.gps_tow_s)),
       row("Latitude °", String(x.lat_deg)),
       row("Longitude °", String(x.lon_deg)),
       row("Height m", String(x.height_m)),
       row("Quality", String(x.quality_label))
+    );
+    return rows;
+  }
+  function rowsMovingBaseLLH(r) {
+    if (!r) return [full("—\n(No moving-base type 1+2 yet — needed as bearing reference when heading type 41 is absent.)")];
+    return [
+      row("Role", "Bearing reference when heading type 41 is absent (TOW-matched to heading type 1)"),
+      row("GPS TOW s (type 1)", fmtTowSec2(r.gps_tow_s)),
+      row("Latitude °", String(r.lat_deg)),
+      row("Longitude °", String(r.lon_deg)),
+      row("Height m (type 2)", String(r.height_m)),
+      row("SVs used (type 1)", String(r.svs_used))
     ];
+  }
+  function labelReferenceSource(src) {
+    if (src === "type41") return "Heading stream type 41";
+    if (src === "moving_base") return "Moving-base stream types 1+2";
+    return String(src || "—");
   }
   function rowsHeadingRover(r) {
     if (!r) return [full("—\n(No heading type 1+2 yet.)")];
@@ -456,13 +771,66 @@
         : rm == null || rm === undefined
           ? "—"
           : String(rm);
-    return [
-      row("GPS TOW s", fmtTowSec2(a.gps_tow_s)),
-      row("Yaw °", String(a.yaw_deg)),
-      row("Pitch °", String(a.pitch_deg)),
-      row("Roll °", String(a.roll_deg)),
-      row("Range m", rs)
-    ];
+    var rows = [row("GPS TOW s", fmtTowSec2(a.gps_tow_s))];
+    if (!angleNearZero(a.yaw_deg)) rows.push(row("Yaw °", String(a.yaw_deg)));
+    if (!angleNearZero(a.pitch_deg)) rows.push(row("Pitch °", String(a.pitch_deg)));
+    if (!angleNearZero(a.roll_deg)) rows.push(row("Roll °", String(a.roll_deg)));
+    rows.push(row("Range m", rs));
+    return rows;
+  }
+  function fmtAngleDeg(v) {
+    if (typeof v !== "number" || isNaN(v)) return "—";
+    return v.toFixed(3) + " °";
+  }
+  var ANGLE_ZERO_EPS = 1e-6;
+  function angleNearZero(v) {
+    return v == null || isNaN(v) || Math.abs(v) < ANGLE_ZERO_EPS;
+  }
+  function pointYawDeg(p) {
+    return p.yaw_deg != null ? p.yaw_deg : p.bearing_deg;
+  }
+  function seriesAllZero(vals) {
+    if (!vals || !vals.length) return true;
+    for (var i = 0; i < vals.length; i++) {
+      if (!angleNearZero(vals[i])) return false;
+    }
+    return true;
+  }
+  function pointsAngleAllZero(pts, getter) {
+    if (!pts || !pts.length) return true;
+    for (var i = 0; i < pts.length; i++) {
+      if (!angleNearZero(getter(pts[i]))) return false;
+    }
+    return true;
+  }
+  function updateChart1Title(yawHidden, pitchHidden, rollHidden) {
+    var el = document.querySelector('[data-card-id="chart-range"] .card-title-text');
+    if (!el) return;
+    var parts = [];
+    if (!yawHidden) parts.push("Yaw");
+    if (!pitchHidden) parts.push("Pitch");
+    if (!rollHidden) parts.push("Roll");
+    el.textContent = parts.length ? parts.join(" / ") + " (°)" : "Yaw / pitch (°)";
+  }
+  function applyAngleDatasetAutoHide(chart, pitch, roll, yaw) {
+    if (!chart) return;
+    chart._angleUserShown = chart._angleUserShown || {};
+    var keys = ["pitch", "yaw", "roll"];
+    var ds = chart.data.datasets;
+    if (!chart._angleUserShown.pitch) ds[0].hidden = false;
+    if (!chart._angleUserShown.yaw) ds[1].hidden = false;
+    if (!chart._angleUserShown.roll) ds[2].hidden = true;
+    var pitchOn = !ds[0].hidden;
+    var rightOn = !ds[1].hidden || !ds[2].hidden;
+    chart.options.scales.y.display = pitchOn;
+    if (chart.options.scales.y.title) {
+      chart.options.scales.y.title.display = pitchOn;
+    }
+    chart.options.scales.y2.display = rightOn;
+    if (chart.options.scales.y2.title) {
+      chart.options.scales.y2.title.display = rightOn;
+    }
+    updateChart1Title(ds[1].hidden, ds[0].hidden, ds[2].hidden);
   }
   function rowsHeadingCheck(h) {
     if (!h) return [full("—\n(No check data.)")];
@@ -478,18 +846,25 @@
       if (h.note && h.note !== "no_type27_same_tow") s += "\nNote: " + h.note;
       return [full(s.trim())];
     }
-    var pitch =
-      typeof h.type27_pitch_deg === "number" && !isNaN(h.type27_pitch_deg) ? h.type27_pitch_deg.toFixed(3) : "—";
-    var roll =
-      typeof h.type27_roll_deg === "number" && !isNaN(h.type27_roll_deg) ? h.type27_roll_deg.toFixed(3) : "—";
-    var rows = [
-      row("Computed bearing (heading → ref)", h.computed_bearing_deg.toFixed(3) + " °"),
-      row("Type 27 yaw (reported)", h.type27_yaw_deg.toFixed(3) + " °"),
-      row("Type 27 pitch / roll (reported)", pitch + " ° / " + roll + " °"),
-      row("Δ (computed − yaw)", h.delta_deg.toFixed(3) + " °"),
-      row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)),
-      row("TOW (type 27)", fmtTowSec2(h.tow_type27_s))
-    ];
+    var rows = [];
+    var cy = h.computed_yaw_deg != null ? h.computed_yaw_deg : h.computed_bearing_deg;
+    if (!angleNearZero(cy)) rows.push(row("Computed yaw °", fmtAngleDeg(cy)));
+    if (!angleNearZero(h.computed_pitch_deg)) rows.push(row("Computed pitch °", fmtAngleDeg(h.computed_pitch_deg)));
+    if (!angleNearZero(h.computed_roll_deg)) rows.push(row("Computed roll °", fmtAngleDeg(h.computed_roll_deg)));
+    if (!angleNearZero(h.type27_yaw_deg)) rows.push(row("Type 27 yaw °", fmtAngleDeg(h.type27_yaw_deg)));
+    if (!angleNearZero(h.type27_pitch_deg)) rows.push(row("Type 27 pitch °", fmtAngleDeg(h.type27_pitch_deg)));
+    if (!angleNearZero(h.type27_roll_deg)) rows.push(row("Type 27 roll °", fmtAngleDeg(h.type27_roll_deg)));
+    if (!angleNearZero(cy) || !angleNearZero(h.type27_yaw_deg)) {
+      rows.push(row("Δ yaw (computed − type 27)", fmtAngleDeg(h.delta_deg)));
+    }
+    if (!angleNearZero(h.computed_pitch_deg) || !angleNearZero(h.type27_pitch_deg)) {
+      rows.push(row("Δ pitch", fmtAngleDeg(h.delta_pitch_deg)));
+    }
+    if (!angleNearZero(h.computed_roll_deg) || !angleNearZero(h.type27_roll_deg)) {
+      rows.push(row("Δ roll", fmtAngleDeg(h.delta_roll_deg)));
+    }
+    rows.push(row("TOW (type 1 solution)", fmtTowSec2(h.tow_last_point_s)));
+    rows.push(row("TOW (type 27)", fmtTowSec2(h.tow_type27_s)));
     return rows;
   }
   function parseType38TextBlock(text) {
@@ -543,15 +918,20 @@
       ];
     }
     var p = pts[pts.length - 1];
-    var rows = [
-      row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s)),
-      row("Bearing (heading → reference)", p.bearing_deg.toFixed(3) + " °"),
+    var hideYaw = pointsAngleAllZero(pts, pointYawDeg);
+    var hidePitch = pointsAngleAllZero(pts, function (pt) { return pt.pitch_deg; });
+    var hideRoll = pointsAngleAllZero(pts, function (pt) { return pt.roll_deg; });
+    var rows = [row("GPS TOW (heading, type 1)", fmtTowSec2(p.gps_tow_s))];
+    if (!hideYaw) rows.push(row("Computed yaw °", fmtAngleDeg(pointYawDeg(p))));
+    if (!hidePitch) rows.push(row("Computed pitch °", fmtAngleDeg(p.pitch_deg)));
+    if (!hideRoll) rows.push(row("Computed roll °", fmtAngleDeg(p.roll_deg)));
+    rows.push(
       row("Horizontal range", p.horiz_m.toFixed(5) + " m"),
       row("Slant range", p.slant_m.toFixed(5) + " m"),
       row("Position Latency", p.delta_tow_s.toFixed(3) + " s"),
-      row("Reference", String(p.reference_source)),
+      row("Reference", labelReferenceSource(p.reference_source)),
       row("SVs used (heading)", String(p.svs_heading))
-    ];
+    );
     if (d.moving_base_configured) {
       rows.push(row("SVs used (moving base)", String(p.svs_moving_base)));
     }
@@ -571,14 +951,70 @@
     ];
     return rows;
   }
+  function formatStreamTransport(ep) {
+    if (!ep || !ep.mode) return "—";
+    var mode = String(ep.mode).toLowerCase();
+    if (mode === "udp") {
+      var bind = ep.host ? "bind " + ep.host + " " : "";
+      return "udp " + bind + ":" + ep.port;
+    }
+    if (ep.host) return "tcp → " + ep.host + ":" + ep.port;
+    return "tcp listen :" + ep.port;
+  }
+  function receiverHostFromAddr(addr) {
+    if (!addr) return "";
+    var s = String(addr).trim();
+    if (!s) return "";
+    if (s.charAt(0) === "[") {
+      var end = s.indexOf("]:");
+      if (end >= 0) return s.slice(0, end + 1);
+    }
+    var idx = s.lastIndexOf(":");
+    if (idx > 0) {
+      var host = s.slice(0, idx);
+      var port = s.slice(idx + 1);
+      if (/^\d+$/.test(port)) return host;
+    }
+    return s;
+  }
+  function formatReceiverIP(ep) {
+    if (!ep || !ep.remote_addr) return "— (waiting for data)";
+    return receiverHostFromAddr(ep.remote_addr) || String(ep.remote_addr);
+  }
   function rowsStatus(d) {
-    var rows = [
+    var bearingRef = "none yet";
+    if (d.has_heading_type41) {
+      bearingRef = "Heading stream type 41 (priority when TOW-matched)";
+    } else if (d.moving_base_configured) {
+      bearingRef = d.moving_base_llh
+        ? "Moving-base stream types 1+2 (TOW-matched)"
+        : "Moving-base stream types 1+2 (waiting for type 1+2)";
+    }
+    var rows = [];
+    if (d.heading_stream && d.heading_stream.mode) {
+      rows.push(row("Heading stream", formatStreamTransport(d.heading_stream)));
+      rows.push(row("Heading receiver IP", formatReceiverIP(d.heading_stream)));
+    }
+    if (d.moving_base_configured && d.moving_base_stream && d.moving_base_stream.mode) {
+      rows.push(row("Moving-base stream", formatStreamTransport(d.moving_base_stream)));
+      rows.push(row("Moving-base receiver IP", formatReceiverIP(d.moving_base_stream)));
+    }
+    rows.push(
       row("Moving base transport", d.moving_base_configured ? "enabled" : "disabled"),
+      row("Bearing reference source", bearingRef),
       row(
         "Type 41 on heading stream",
-        d.has_heading_type41 ? "yes (used for bearing when TOW-matched)" : "not seen yet"
+        d.has_heading_type41 ? "yes" : "not seen yet"
       )
-    ];
+    );
+    if (d.moving_base_configured) {
+      rows.push(
+        row(
+          "Base station information",
+          "Types 35 or 41 from the moving-base receiver — not used for bearing"
+        )
+      );
+    }
     if (d.needs_moving_base) {
       rows.push(
         row(
@@ -587,9 +1023,15 @@
         )
       );
     }
+    if (d.base_35_heading_updates) {
+      rows.push(row("Type 35 on heading stream", String(d.base_35_heading_updates) + " record(s) (not bearing ref)"));
+    }
+    if (d.moving_base_configured && d.base_35_moving_updates) {
+      rows.push(row("Type 35 on base station stream", String(d.base_35_moving_updates) + " record(s) (monitor only)"));
+    }
     var pts = d.points || [];
     if (pts.length) {
-      rows.push(row("Last reference", String(pts[pts.length - 1].reference_source)));
+      rows.push(row("Last solution reference", labelReferenceSource(pts[pts.length - 1].reference_source)));
     }
     return rows;
   }
@@ -631,7 +1073,7 @@
     rows.push(row("Slant range (computed)", p.slant_m.toFixed(5) + " m"));
     rows.push(row("Horizontal range (computed)", p.horiz_m.toFixed(5) + " m"));
     rows.push(row("Position Latency", p.delta_tow_s.toFixed(3) + " s"));
-    rows.push(row("Bearing reference", String(p.reference_source)));
+    rows.push(row("Bearing reference", labelReferenceSource(p.reference_source)));
     if (rangeCompareActive(p)) {
       rows.push(row("|slant − ref|", p.range_delta_m.toFixed(5) + " m"));
       rows.push(row("Check vs reference", p.range_ok ? "Within tolerance" : "Outside tolerance"));
@@ -707,6 +1149,9 @@
         if (!willCollapse) {
           requestAnimationFrame(function () {
             if (id === "chart-range" && chart1) chart1.resize();
+            if (id === "chart-slant" && chart3) chart3.resize();
+            if (id === "chart-dop" && chart4) chart4.resize();
+            if (id === "chart-sigma" && chart5) chart5.resize();
             if (id === "chart-sv" && chart2) chart2.resize();
           });
         }
@@ -764,23 +1209,126 @@
       });
     });
   }
-  function buildChart2(labels, svH, svM, mbOn) {
-    var datasets = [{ label: "SVs heading", data: svH, borderColor: "#d29922", stepped: true, pointRadius: 0 }];
+  function wireChartZoomReset(ch) {
+    if (!ch || ch._zoomResetWired) return;
+    ch._zoomResetWired = true;
+    ch.canvas.addEventListener("dblclick", function () {
+      if (typeof ch.resetZoom === "function") ch.resetZoom();
+    });
+  }
+  function lineDs(label, data, color, dashed) {
+    var ds = { label: label, data: data, borderColor: color, tension: 0.15, pointRadius: 0 };
+    if (dashed) ds.borderDash = [4, 3];
+    return ds;
+  }
+  function buildChart4(hDop, mDop, mbOn) {
+    var datasets = [
+      lineDs("PDOP heading", towXY(hDop, function (p) { return p.pdop; }), "#3d8bfd", false),
+      lineDs("HDOP heading", towXY(hDop, function (p) { return p.hdop; }), "#3fb950", false),
+      lineDs("TDOP heading", towXY(hDop, function (p) { return p.tdop; }), "#79c0ff", false),
+      lineDs("VDOP heading", towXY(hDop, function (p) { return p.vdop; }), "#d29922", false)
+    ];
     if (mbOn) {
-      datasets.push({ label: "SVs moving base", data: svM, borderColor: "#a371f7", stepped: true, pointRadius: 0 });
+      datasets.push(
+        lineDs("PDOP moving base", towXY(mDop, function (p) { return p.pdop; }), "#3d8bfd", true),
+        lineDs("HDOP moving base", towXY(mDop, function (p) { return p.hdop; }), "#3fb950", true),
+        lineDs("TDOP moving base", towXY(mDop, function (p) { return p.tdop; }), "#79c0ff", true),
+        lineDs("VDOP moving base", towXY(mDop, function (p) { return p.vdop; }), "#d29922", true)
+      );
     }
-    return new Chart(document.getElementById("ch2").getContext("2d"), {
+    var ch = new Chart(document.getElementById("ch4").getContext("2d"), {
       type: "line",
-      data: { labels: labels, datasets: datasets },
+      data: { datasets: datasets },
       options: {
         responsive: true,
+        parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
         scales: {
-          x: { ticks: { maxTicksLimit: 12 } },
-          y: { beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: "SVs used" } }
+          x: integerXScale("GPS TOW (s)"),
+          y: { type: "linear", title: { display: true, text: "DOP" } }
         },
-        plugins: { legend: { position: "bottom" } }
+        plugins: chartZoomPlugins()
       }
     });
+    wireChartZoomReset(ch);
+    return ch;
+  }
+  function buildChart5(hSig, mSig, mbOn) {
+    var datasets = [
+      lineDs("σ East heading", towXY(hSig, function (p) { return p.sigma_east_m; }), "#3d8bfd", false),
+      lineDs("σ North heading", towXY(hSig, function (p) { return p.sigma_north_m; }), "#3fb950", false),
+      lineDs("σ Up heading", towXY(hSig, function (p) { return p.sigma_up_m; }), "#79c0ff", false),
+      lineDs("σ Horiz heading", towXY(hSig, function (p) { return p.sigma_h_m; }), "#d29922", false)
+    ];
+    if (mbOn) {
+      datasets.push(
+        lineDs("σ East moving base", towXY(mSig, function (p) { return p.sigma_east_m; }), "#3d8bfd", true),
+        lineDs("σ North moving base", towXY(mSig, function (p) { return p.sigma_north_m; }), "#3fb950", true),
+        lineDs("σ Up moving base", towXY(mSig, function (p) { return p.sigma_up_m; }), "#79c0ff", true),
+        lineDs("σ Horiz moving base", towXY(mSig, function (p) { return p.sigma_h_m; }), "#d29922", true)
+      );
+    }
+    var ch = new Chart(document.getElementById("ch5").getContext("2d"), {
+      type: "line",
+      data: { datasets: datasets },
+      options: {
+        responsive: true,
+        parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        scales: {
+          x: integerXScale("GPS TOW (s)"),
+          y: { type: "linear", title: { display: true, text: "Sigma (m)" } }
+        },
+        plugins: chartZoomPlugins()
+      }
+    });
+    wireChartZoomReset(ch);
+    return ch;
+  }
+  function buildChart3(pts, slant, horiz) {
+    var ch = new Chart(document.getElementById("ch3").getContext("2d"), {
+      type: "line",
+      data: {
+        datasets: [
+          { label: "Slant range m", data: ptsTowXY(pts, function (p, i) { return slant[i]; }), borderColor: "#79c0ff", tension: 0.15, pointRadius: 0 },
+          { label: "Horiz range m", data: ptsTowXY(pts, function (p, i) { return horiz[i]; }), borderColor: "#3fb950", borderDash: [4, 3], tension: 0.15, pointRadius: 0 }
+        ]
+      },
+      options: {
+        responsive: true,
+        parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        scales: {
+          x: integerXScale("GPS TOW (s) heading"),
+          y: { type: "linear", position: "left", title: { display: true, text: "Range m" } }
+        },
+        plugins: chartZoomPlugins()
+      }
+    });
+    wireChartZoomReset(ch);
+    return ch;
+  }
+  function buildChart2(pts, svH, svM, mbOn) {
+    var datasets = [{ label: "SVs heading", data: ptsTowXY(pts, function (p, i) { return svH[i]; }), borderColor: "#d29922", stepped: true, pointRadius: 0 }];
+    if (mbOn) {
+      datasets.push({ label: "SVs moving base", data: ptsTowXY(pts, function (p, i) { return svM[i]; }), borderColor: "#a371f7", stepped: true, pointRadius: 0 });
+    }
+    var ch = new Chart(document.getElementById("ch2").getContext("2d"), {
+      type: "line",
+      data: { datasets: datasets },
+      options: {
+        responsive: true,
+        parsing: false,
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        scales: {
+          x: integerXScale("GPS TOW (s) heading"),
+          y: { beginAtZero: true, ticks: { stepSize: 1, precision: 0 }, title: { display: true, text: "SVs used" } }
+        },
+        plugins: chartZoomPlugins()
+      }
+    });
+    wireChartZoomReset(ch);
+    return ch;
   }
   document.getElementById("themeSelect").onchange = function () {
     setTheme(this.value);
@@ -813,29 +1361,71 @@
   };
 
   document.getElementById("btnPng").onclick = function () {
-    if (!chart1 || !chart2) { alert("Charts not ready yet."); return; }
-    var c1 = chart1.canvas;
-    var c2 = chart2.canvas;
+    var stack = [chart1, chart2, chart5, chart3, chart4].filter(function (c) { return !!c; });
+    if (!stack.length) { alert("Charts not ready yet."); return; }
     var gap = 24;
-    var w = Math.max(c1.width, c2.width);
-    var h = c1.height + gap + c2.height;
+    var w = 0;
+    var h = gap * (stack.length - 1);
+    stack.forEach(function (c) {
+      w = Math.max(w, c.canvas.width);
+      h += c.canvas.height;
+    });
     var out = document.createElement("canvas");
     out.width = w;
     out.height = h;
     var g = out.getContext("2d");
     g.fillStyle = cssVar("--bg", "#0f1419");
     g.fillRect(0, 0, w, h);
-    g.drawImage(c1, 0, 0);
-    g.drawImage(c2, 0, c1.height + gap);
+    var y = 0;
+    stack.forEach(function (c, i) {
+      g.drawImage(c.canvas, 0, y);
+      y += c.canvas.height + (i < stack.length - 1 ? gap : 0);
+    });
     var a = document.createElement("a");
     a.download = "gsof-baseline-charts.png";
     a.href = out.toDataURL("image/png");
     a.click();
   };
-  es.onmessage = function (ev) {
-    if (updatesPaused) return;
-    var d;
-    try { d = JSON.parse(ev.data); } catch (err) { return; }
+  function setDopChartData(ch, hDop, mDop, mbOn) {
+    ch.data.datasets[0].data = towXY(hDop, function (p) { return p.pdop; });
+    ch.data.datasets[1].data = towXY(hDop, function (p) { return p.hdop; });
+    ch.data.datasets[2].data = towXY(hDop, function (p) { return p.tdop; });
+    ch.data.datasets[3].data = towXY(hDop, function (p) { return p.vdop; });
+    if (mbOn && ch.data.datasets.length > 4) {
+      ch.data.datasets[4].data = towXY(mDop, function (p) { return p.pdop; });
+      ch.data.datasets[5].data = towXY(mDop, function (p) { return p.hdop; });
+      ch.data.datasets[6].data = towXY(mDop, function (p) { return p.tdop; });
+      ch.data.datasets[7].data = towXY(mDop, function (p) { return p.vdop; });
+    }
+  }
+  function syncDopChart(hDop, mDop, mbOn, force) {
+    var hasDop = hDop.length > 0 || (mbOn && mDop.length > 0);
+    if (!hasDop) {
+      if (chart4) {
+        chart4.destroy();
+        chart4 = null;
+      }
+      pendingDop = null;
+      return;
+    }
+    var now = Date.now();
+    if (!force && chart4 && now - lastDopChartMs < 1000) {
+      pendingDop = { hDop: hDop, mDop: mDop, mbOn: mbOn };
+      return;
+    }
+    pendingDop = null;
+    lastDopChartMs = now;
+    if (!chart4 || lastDopMbConfigured !== mbOn) {
+      if (chart4) chart4.destroy();
+      chart4 = buildChart4(hDop, mDop, mbOn);
+      lastDopMbConfigured = mbOn;
+      applyChartColors();
+      return;
+    }
+    setDopChartData(chart4, hDop, mDop, mbOn);
+    chart4.update("none");
+  }
+  function renderSnap(d) {
     lastSnap = d;
     var mbOn = !!d.moving_base_configured;
     var pts = d.points || [];
@@ -846,9 +1436,14 @@
     setDataCardVisible("range-check", hasPts);
     setDataCardVisible("heading-rover", !!d.heading_rover);
     setDataCardVisible("heading-base-41", !!d.base_41_heading);
+    setDataCardVisible("heading-base-35", !!d.base_35_heading);
     setMbCardVisible(
-      document.getElementById("cardMb35"),
-      mbOn && !!d.base_35_moving
+      document.getElementById("cardMbLLH"),
+      mbOn && !!d.moving_base_llh
+    );
+    setMbCardVisible(
+      document.getElementById("cardBaseStation"),
+      mbOn && !!(d.base_35_moving || d.base_41_moving)
     );
     setDataCardVisible("heading-27", !!d.heading_type27);
     setDataCardVisible(
@@ -862,11 +1457,21 @@
       "serials",
       !!(d.heading_serial || (mbOn && d.moving_base_serial))
     );
-    setMbCardVisible(
-      document.getElementById("cardMb"),
-      mbOn && !!d.base_41_moving && !d.base_35_moving
-    );
+    var hDop = d.heading_dop_history || [];
+    var hSig = d.heading_sigma_history || [];
+    var mDop = d.moving_base_dop_history || [];
+    var mSig = d.moving_base_sigma_history || [];
+    var hasDop = hDop.length > 0 || (mbOn && mDop.length > 0);
+    var hasSig = hSig.length > 0 || (mbOn && mSig.length > 0);
+
+    setDataCardVisible("heading-dop", hDop.length > 0);
+    setDataCardVisible("heading-sigma", hSig.length > 0);
+    setMbCardVisible(document.getElementById("cardMbDop"), mbOn && mDop.length > 0);
+    setMbCardVisible(document.getElementById("cardMbSigma"), mbOn && mSig.length > 0);
     setDataCardVisible("chart-range", hasPts);
+    setDataCardVisible("chart-slant", hasPts);
+    setDataCardVisible("chart-dop", hasDop);
+    setDataCardVisible("chart-sigma", hasSig);
     setDataCardVisible("chart-sv", hasPts);
 
     renderKv("status", rowsStatus(d));
@@ -874,13 +1479,18 @@
     renderKv("headingCheck", rowsHeadingCheck(d.heading_check));
     renderKv("rcheck", rowsRangeCheck(d.points || []));
     renderKv("headingRover", rowsHeadingRover(d.heading_rover));
-    renderKv("b41h", rowsBase41(d.base_41_heading));
+    renderKv("headingDop", rowsDOP(hDop, "Heading"));
+    renderKv("headingSigma", rowsSigma(hSig, "Heading"));
+    renderKv("b41h", rowsBase41(d.base_41_heading, "heading_ref"));
+    renderKv("b35h", rowsBase35(d.base_35_heading, d.base_35_heading_updates, "heading_rx"));
     renderKv("heading27", rowsType27(d.heading_type27));
     renderKv("heading38", rowsPositionType(d));
     renderKv("serials", rowsSerials(d));
     if (mbOn) {
-      renderKv("b35m", rowsBase35(d.base_35_moving));
-      renderKv("b41m", rowsBase41(d.base_41_moving));
+      renderKv("mbLLH", rowsMovingBaseLLH(d.moving_base_llh));
+      renderKv("baseStationInfo", rowsBaseStationInfo(d));
+      renderKv("mbDop", rowsDOP(mDop, "Moving base"));
+      renderKv("mbSigma", rowsSigma(mSig, "Moving base"));
     }
     var cc = d.heading_41_vs_moving_base;
     var cardCross = document.getElementById("cardCross");
@@ -893,71 +1503,124 @@
     } else {
       setMbCardVisible(cardCross, false);
     }
-    var labels = pts.map(function (p) { return p.gps_tow_s.toFixed(2); });
-    var bear = pts.map(function (p) { return p.bearing_deg; });
+    var yaw = pts.map(function (p) { return p.yaw_deg != null ? p.yaw_deg : p.bearing_deg; });
+    var pitch = pts.map(function (p) { return p.pitch_deg; });
+    var roll = pts.map(function (p) { return p.roll_deg; });
     var horiz = pts.map(function (p) { return p.horiz_m; });
     var slant = pts.map(function (p) { return p.slant_m; });
     var svH = pts.map(function (p) { return p.svs_heading; });
     var svM = pts.map(function (p) { return p.svs_moving_base; });
+    if (typeof Chart === "undefined") {
+      return;
+    }
     if (!chart1) {
       chart1 = new Chart(document.getElementById("ch1").getContext("2d"), {
         type: "line",
         data: {
-          labels: labels,
           datasets: [
-            { label: "Heading °", data: bear, yAxisID: "y", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
-            { label: "Horiz range m", data: horiz, yAxisID: "y2", borderColor: "#3fb950", tension: 0.15, pointRadius: 0 },
-            { label: "Slant range m", data: slant, yAxisID: "y2", borderColor: "#79c0ff", borderDash: [4, 3], tension: 0.15, pointRadius: 0, hidden: true }
+            { label: "Pitch °", data: ptsTowXY(pts, function (p, i) { return pitch[i]; }), yAxisID: "y", borderColor: "#d29922", tension: 0.15, pointRadius: 0 },
+            { label: "Yaw °", data: ptsTowXY(pts, function (p, i) { return yaw[i]; }), yAxisID: "y2", borderColor: "#3d8bfd", tension: 0.15, pointRadius: 0 },
+            { label: "Roll °", data: ptsTowXY(pts, function (p, i) { return roll[i]; }), yAxisID: "y2", borderColor: "#a371f7", tension: 0.15, pointRadius: 0, hidden: true }
           ]
         },
         options: {
           responsive: true,
-          interaction: { mode: "index", intersect: false },
+          parsing: false,
+          interaction: { mode: "nearest", axis: "x", intersect: false },
           scales: {
-            x: { ticks: { maxTicksLimit: 12 }, title: { display: true, text: "GPS TOW (s) heading" } },
-            y: { type: "linear", position: "left", title: { display: true, text: "Heading °" } },
-            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Range m" } }
+            x: integerXScale("GPS TOW (s) heading"),
+            y: { type: "linear", position: "left", title: { display: true, text: "Pitch °" } },
+            y2: { type: "linear", position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Roll / yaw °" } }
           },
-          plugins: {
+          plugins: chartZoomPlugins({
             legend: {
               position: "bottom",
               onClick: function (evt, item, legend) {
-                if (item.datasetIndex === 2) {
-                  var ch = legend.chart;
-                  ch.setDatasetVisibility(2, !ch.isDatasetVisible(2));
+                var ch = legend.chart;
+                var idx = item.datasetIndex;
+                if (idx >= 0 && idx <= 2) {
+                  ch._angleUserShown = ch._angleUserShown || {};
+                  ch._angleUserShown[["pitch", "yaw", "roll"][idx]] = true;
+                  ch.setDatasetVisibility(idx, !ch.isDatasetVisible(idx));
+                  var ds = ch.data.datasets;
+                  var pitchOn = !ds[0].hidden;
+                  var rightOn = !ds[1].hidden || !ds[2].hidden;
+                  ch.options.scales.y.display = pitchOn;
+                  if (ch.options.scales.y.title) ch.options.scales.y.title.display = pitchOn;
+                  ch.options.scales.y2.display = rightOn;
+                  if (ch.options.scales.y2.title) ch.options.scales.y2.title.display = rightOn;
+                  updateChart1Title(ds[1].hidden, ds[0].hidden, ds[2].hidden);
                   ch.update();
                   return;
                 }
                 if (legendClickDefault) legendClickDefault.call(this, evt, item, legend);
               }
             }
-          }
+          })
         }
       });
-      chart2 = buildChart2(labels, svH, svM, mbOn);
+      wireChartZoomReset(chart1);
+      applyAngleDatasetAutoHide(chart1, pitch, roll, yaw);
+      chart1.update("none");
+      chart2 = buildChart2(pts, svH, svM, mbOn);
+      chart3 = buildChart3(pts, slant, horiz);
       lastMbConfigured = mbOn;
+      if (hasSig) {
+        chart5 = buildChart5(hSig, mSig, mbOn);
+        lastSigmaMbConfigured = mbOn;
+      }
+      syncDopChart(hDop, mDop, mbOn, true);
       applyChartColors();
     } else {
       if (lastMbConfigured !== mbOn) {
         chart2.destroy();
-        chart2 = buildChart2(labels, svH, svM, mbOn);
+        chart2 = buildChart2(pts, svH, svM, mbOn);
         lastMbConfigured = mbOn;
         applyChartColors();
       }
-      chart1.data.labels = labels;
-      chart1.data.datasets[0].data = bear;
-      chart1.data.datasets[1].data = horiz;
-      chart1.data.datasets[2].data = slant;
+      if (!hasSig) {
+        if (chart5) { chart5.destroy(); chart5 = null; }
+      } else if (!chart5 || lastSigmaMbConfigured !== mbOn) {
+        if (chart5) chart5.destroy();
+        chart5 = buildChart5(hSig, mSig, mbOn);
+        lastSigmaMbConfigured = mbOn;
+        applyChartColors();
+      } else {
+        chart5.data.datasets[0].data = towXY(hSig, function (p) { return p.sigma_east_m; });
+        chart5.data.datasets[1].data = towXY(hSig, function (p) { return p.sigma_north_m; });
+        chart5.data.datasets[2].data = towXY(hSig, function (p) { return p.sigma_up_m; });
+        chart5.data.datasets[3].data = towXY(hSig, function (p) { return p.sigma_h_m; });
+        if (mbOn && chart5.data.datasets.length > 4) {
+          chart5.data.datasets[4].data = towXY(mSig, function (p) { return p.sigma_east_m; });
+          chart5.data.datasets[5].data = towXY(mSig, function (p) { return p.sigma_north_m; });
+          chart5.data.datasets[6].data = towXY(mSig, function (p) { return p.sigma_up_m; });
+          chart5.data.datasets[7].data = towXY(mSig, function (p) { return p.sigma_h_m; });
+        }
+        chart5.update("none");
+      }
+      syncDopChart(hDop, mDop, mbOn, false);
+      chart1.data.datasets[0].data = ptsTowXY(pts, function (p, i) { return pitch[i]; });
+      chart1.data.datasets[1].data = ptsTowXY(pts, function (p, i) { return yaw[i]; });
+      chart1.data.datasets[2].data = ptsTowXY(pts, function (p, i) { return roll[i]; });
+      applyAngleDatasetAutoHide(chart1, pitch, roll, yaw);
       chart1.update("none");
-      chart2.data.labels = labels;
-      chart2.data.datasets[0].data = svH;
+      chart3.data.datasets[0].data = ptsTowXY(pts, function (p, i) { return slant[i]; });
+      chart3.data.datasets[1].data = ptsTowXY(pts, function (p, i) { return horiz[i]; });
+      chart3.update("none");
+      chart2.data.datasets[0].data = ptsTowXY(pts, function (p, i) { return svH[i]; });
       if (mbOn && chart2.data.datasets.length > 1) {
-        chart2.data.datasets[1].data = svM;
+        chart2.data.datasets[1].data = ptsTowXY(pts, function (p, i) { return svM[i]; });
       }
       chart2.update("none");
     }
-  };
-  es.onerror = function () {};
+  }
+
+  setInterval(function () {
+    if (!pendingDop) return;
+    if (Date.now() - lastDopChartMs < 1000) return;
+    syncDopChart(pendingDop.hDop, pendingDop.mDop, pendingDop.mbOn, true);
+  }, 200);
+
   initCollapsibleCards();
   initCardInfoAnchors();
   updateThemeButtons();

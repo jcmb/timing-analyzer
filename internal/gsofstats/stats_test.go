@@ -32,7 +32,7 @@ func TestTowDeltaSeconds_rejectNonPositiveOrHuge(t *testing.T) {
 }
 
 func TestStats_UpdateAndDashboard(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// One GSOF record: type 1, len 0 (no payload bytes)
 	s.Update(1, []byte{0x01, 0x00}, false, false)
 	d := s.BuildDashboard("udp", 2101, "test", "", false)
@@ -45,7 +45,7 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	if d.Records[0].PayloadHex != "01 00" {
 		t.Fatalf("payload_hex should be full sub-record type+len+body, got %q", d.Records[0].PayloadHex)
 	}
-	s2 := NewStats(false)
+	s2 := NewStats(false, false)
 	// GSOF sub-record: type 1, 3-byte body 0xAA 0xBB 0xCC
 	s2.Update(1, []byte{0x01, 0x03, 0xAA, 0xBB, 0xCC}, false, false)
 	d2 := s2.BuildDashboard("udp", 2101, "test", "", false)
@@ -54,26 +54,36 @@ func TestStats_UpdateAndDashboard(t *testing.T) {
 	}
 }
 
-func TestStats_TCPEmitsSequenceGapByDefault(t *testing.T) {
-	s := NewStats(false)
+func TestStats_TCPSequenceGapHiddenUnlessDebug(t *testing.T) {
 	buf := []byte{0x01, 0x00}
-	s.Update(1, buf, true, false)
-	s.Update(10, buf, true, false)
-	d := s.BuildDashboard("tcp", 2101, "", "", false)
+	sOff := NewStats(false, false)
+	sOff.Update(1, buf, true, false)
+	sOff.Update(10, buf, true, false)
+	dOff := sOff.BuildDashboard("tcp", 2101, "", "", false)
+	for _, w := range dOff.Warnings {
+		if strings.Contains(w, "Sequence Gap") {
+			t.Fatalf("expected no sequence-gap warnings without debug; got %q", w)
+		}
+	}
+
+	sOn := NewStats(false, true)
+	sOn.Update(1, buf, true, false)
+	sOn.Update(10, buf, true, false)
+	dOn := sOn.BuildDashboard("tcp", 2101, "", "", false)
 	found := false
-	for _, w := range d.Warnings {
+	for _, w := range dOn.Warnings {
 		if strings.Contains(w, "Sequence Gap") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatal("TCP with ignore flag off should emit sequence-gap warnings")
+		t.Fatal("TCP with debug on should emit sequence-gap warnings")
 	}
 }
 
 func TestStats_TCPIgnoreGSOFGap1SuppressesSingleStep(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{0x01, 0x00}
 	s.Update(1, buf, true, true)
 	s.Update(3, buf, true, true)
@@ -86,7 +96,7 @@ func TestStats_TCPIgnoreGSOFGap1SuppressesSingleStep(t *testing.T) {
 }
 
 func TestStats_TCPIgnoreGSOFGap1StillWarnsMultiStep(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, true)
 	buf := []byte{0x01, 0x00}
 	s.Update(1, buf, true, true)
 	s.Update(4, buf, true, true)
@@ -113,7 +123,7 @@ func TestStats_RateNotInflatedByMicroBurstWallClock(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := positionTimeBufGPSMS(5000)
 	s.Update(1, buf, false, false)
 	time.Sleep(2 * time.Millisecond)
@@ -142,7 +152,7 @@ func TestStats_StreamRateFromPositionTOWIgnoresSeqJump(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := positionTimeBufGPSMS(5000)
 	s.Update(1, buf, false, false)
 	time.Sleep(520 * time.Millisecond)
@@ -178,7 +188,7 @@ func TestStats_PerSubtypeSolveRatesFromSamePacketTOW(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Odd indices: position time + type 33. Even: position time only. TOW advances 0.1 s every packet → type 1 at 10 Hz; type 33 every 0.2 s GNSS-time → 5 Hz.
 	base := uint32(3_600_000) // GPS TOW ms (~1 h), room to add 2.4 s
 	for i := 0; i < 24; i++ {
@@ -218,7 +228,7 @@ func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
 	if testing.Short() {
 		t.Skip()
 	}
-	s := NewStats(false)
+	s := NewStats(false, false)
 	s.Update(1, positionTimeBufGPSMS(5000), false, false)
 	time.Sleep(105 * time.Millisecond)
 	s.Update(2, positionTimeBufGPSMS(5100), false, false)
@@ -243,7 +253,7 @@ func TestStats_RateEMASmoothsSingleLongGap(t *testing.T) {
 }
 
 func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 (TOW 5 s) then type 34: count=1, PRN=6, GPS, flags 0x0A/0x0B, elev=10, az=270, SNR bytes 4,8,12 → 1,2,3
 	buf := []byte{
 		0x01, 0x0A,
@@ -280,7 +290,7 @@ func TestStats_Type34AllSVDetailedJSON(t *testing.T) {
 }
 
 func TestStats_Type48AllSVDetailedJSON(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 48: version 1, page 1 of 2 (0x12), count=1, same SV row as type-34 test.
 	buf := []byte{
 		0x01, 0x0A,
@@ -315,7 +325,7 @@ func TestStats_Type48AllSVDetailedJSON(t *testing.T) {
 }
 
 func TestStats_Type33AllSVBriefJSON(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 33: count=1, PRN=4, system=0 (GPS), flags1=0x0F, flags2=0x30
 	s.Update(1, []byte{0x21, 0x05, 0x01, 0x04, 0x00, 0x0F, 0x30}, false, false)
 	d := s.BuildDashboard("udp", 2101, "", "", false)
@@ -339,7 +349,7 @@ func TestStats_Type33AllSVBriefJSON(t *testing.T) {
 }
 
 func TestStats_Type13SVBriefJSON(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 13: count=1, PRN=5, flags1=0x0F, flags2=0x30
 	s.Update(1, []byte{0x0D, 0x04, 0x01, 0x05, 0x0F, 0x30}, false, false)
 	d := s.BuildDashboard("udp", 2101, "", "", false)
@@ -374,7 +384,7 @@ func f32be(v float32) []byte {
 }
 
 func TestStats_TangentHistoryFromType1And7(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1: 10-byte payload (GPS TOW ms = 5000 → 5 s), then type 7: 24 bytes ENU.
 	buf := []byte{
 		0x01, 0x0A,
@@ -407,7 +417,7 @@ func TestStats_TangentHistoryFromType1And7(t *testing.T) {
 }
 
 func TestStats_PositionTimeHistoryFromType1(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{
 		0x01, 0x0A,
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
@@ -435,7 +445,7 @@ func TestStats_PositionTimeHistoryFromType1(t *testing.T) {
 }
 
 func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 97: week 1, TOW 0, pos 0, source 1, lat=0, lon=0, h=10, sigmas 3,4,5 → σ_H=5
 	buf := []byte{
 		0x01, 0x0A,
@@ -474,7 +484,7 @@ func TestStats_SecondAntenna97HistoryFromType1And97(t *testing.T) {
 }
 
 func TestStats_SecondAntenna102HistoryFromType1And102(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{
 		0x01, 0x0A,
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
@@ -508,7 +518,7 @@ func TestStats_SecondAntenna102HistoryFromType1And102(t *testing.T) {
 }
 
 func TestStats_Type99InvalidExtendedEmits243FullWireHex(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{
 		0x01, 0x0A,
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
@@ -535,7 +545,7 @@ func TestStats_Type99InvalidExtendedEmits243FullWireHex(t *testing.T) {
 }
 
 func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{
 		0x01, 0x0A,
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
@@ -578,7 +588,7 @@ func TestStats_Type99ExpandedTo100No99Row(t *testing.T) {
 }
 
 func TestStats_LLHHistoryFromType1And2(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	buf := []byte{
 		0x01, 0x0A,
 		0x00, 0x00, 0x13, 0x88, 0x00, 0x00,
@@ -610,7 +620,7 @@ func TestStats_LLHHistoryFromType1And2(t *testing.T) {
 }
 
 func TestStats_LLHMSLHistoryFromType1And70(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 70: 24-byte body (lat/lon rad, MSL height m) — same numeric layout as type 2 for history.
 	buf := []byte{
 		0x01, 0x0A,
@@ -643,7 +653,7 @@ func TestStats_LLHMSLHistoryFromType1And70(t *testing.T) {
 }
 
 func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 9 DOP 1..4, type 12 sigma (E=3 N=4 → σ_H=5)
 	buf := []byte{
 		0x01, 0x0A,
@@ -698,7 +708,7 @@ func TestStats_DOPAndSigmaHistoryFromType1Packet(t *testing.T) {
 }
 
 func TestStats_Sigma74HistoryPairedWithType1TOW(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 74 second-antenna sigma (same 38-byte layout as type 12: E=3 N=4 → σ_H=5).
 	buf := []byte{
 		0x01, 0x0A,
@@ -735,7 +745,7 @@ func TestStats_Sigma74HistoryPairedWithType1TOW(t *testing.T) {
 }
 
 func TestStats_AttitudeHistoryFromType1And27(t *testing.T) {
-	s := NewStats(false)
+	s := NewStats(false, false)
 	// Type 1 TOW 5 s, type 27 attitude (this record carries its own TOW: 7000 ms → 7 s).
 	buf := []byte{
 		0x01, 0x0A,

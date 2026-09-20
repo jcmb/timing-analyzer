@@ -1,13 +1,50 @@
 # timing-analyzer
 
+Network timing and jitter analyzer for GNSS and correction-data streams. Measure packet arrival deltas, detect missed packets, and monitor jitter against an expected rate.
 
-# Network Timing and Jitter Analyzer
+## Binaries
 
+| Command | Role |
+| :--- | :--- |
+| `cmd/cli` | Local tool with embedded or hub-mode web dashboard |
+| `cmd/webserver` | Multi-tenant web UI (setup form + live SSE dashboard) |
+| `cmd/gsof-dashboard` | GSOF stream statistics dashboard |
+| `cmd/gsof-baseline` | Dual-stream GSOF baseline comparison |
 
+Build everything (all OS/arch targets):
 
-This application is a robust network monitoring tool designed to analyze packet arrival times, measure jitter, and detect dropped or missed packets. Operating as either a server or a client, it uses a precise timing engine to track network stability against expected data rates.
+```bash
+./build.sh
+```
 
-## 🚀 Features
+Outputs land under `bin/<application>/` (see `DEVELOPER_GUIDE.md`).
+
+## Documentation
+
+| Guide | Audience |
+| :--- | :--- |
+| `CLI_USER_GUIDE.md` | CLI flags, hub mode, local dashboard |
+| `WEB_USER_GUIDE.md` | Web setup form, connection types, live dashboard |
+| `GSOF_BASELINE_GUIDE.md` | GSOF baseline dual-stream setup and required GSOF message types |
+| `DEVELOPER_GUIDE.md` | Architecture, build, webserver flags, reverse-proxy deployment |
+
+## Web server quick start
+
+```bash
+./bin/webserver/server-linux-amd64 --bind=127.0.0.1 --port=2102 --base-path=/jitter
+```
+
+Open `http://127.0.0.1:2102/jitter/`. To pre-fill outbound Direct TCP on embedded devices:
+
+```bash
+./bin/webserver/server-linux-arm32 \
+  --bind=127.0.0.1 --port=7001 --base-path=/jitter \
+  --host=192.168.1.50 --stream-port=5018 --rate=1.0 --jitter=10% --decode=dcol
+```
+
+---
+
+## Features
 
 * **Multi-Protocol Support:** Supports both UDP and TCP protocols.
 * **Flexible Modes:** Operates in either a server listening mode or a TCP client connection mode.

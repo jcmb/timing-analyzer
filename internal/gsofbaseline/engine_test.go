@@ -93,3 +93,28 @@ func TestEngine_headingType41Target(t *testing.T) {
 		t.Fatal("expected type41 ring")
 	}
 }
+
+func TestEngine_type35UpdatesPerStream(t *testing.T) {
+	eng := NewEngine(EngineConfig{MovingBaseConfigured: true})
+	pl35 := make([]byte, 35)
+	pl35[0] = 0x0F
+	copy(pl35[1:9], []byte("BASE1234"))
+	binary.BigEndian.PutUint16(pl35[9:11], 42)
+	binary.BigEndian.PutUint64(pl35[27:35], math.Float64bits(100.0))
+	buf := gsofRec(35, pl35)
+
+	eng.IngestHeading(buf)
+	eng.IngestHeading(buf)
+	eng.IngestMovingBase(buf)
+
+	s := eng.Snapshot("t")
+	if s.Base35HeadingUpdates != 2 {
+		t.Fatalf("heading type 35 updates %d", s.Base35HeadingUpdates)
+	}
+	if s.Base35MovingUpdates != 1 {
+		t.Fatalf("moving base type 35 updates %d", s.Base35MovingUpdates)
+	}
+	if s.Base35Heading == nil || s.Base35Moving == nil {
+		t.Fatal("expected type 35 on both streams")
+	}
+}

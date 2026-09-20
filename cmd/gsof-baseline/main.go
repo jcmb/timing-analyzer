@@ -25,33 +25,50 @@ import (
 //go:embed ui.html
 var uiHTML []byte
 
-var uiHTMLLive = func() []byte {
-	return bytes.ReplaceAll(uiHTML, []byte("__VERSION__"), []byte(Version))
-}()
+func baselineDashboardHTML(eventsPath, basePath string) []byte {
+	prefixJSON, err := json.Marshal(basePath)
+	if err != nil {
+		prefixJSON = []byte(`""`)
+	}
+	html := bytes.ReplaceAll(uiHTML, []byte("__VERSION__"), []byte(buildDisplayVersion()))
+	html = bytes.ReplaceAll(html, []byte("__BASE_PATH_JSON__"), prefixJSON)
+	html = bytes.ReplaceAll(html, []byte("__EVENTS_PATH__"), []byte(publicPath(basePath, eventsPath)))
+	html = bytes.ReplaceAll(html, []byte("__CHART_JS_PATH__"), []byte(publicPath(basePath, "/assets/chart.umd.min.js")))
+	html = bytes.ReplaceAll(html, []byte("__HAMMER_JS_PATH__"), []byte(publicPath(basePath, "/assets/hammer.min.js")))
+	html = bytes.ReplaceAll(html, []byte("__CHART_ZOOM_JS_PATH__"), []byte(publicPath(basePath, "/assets/chartjs-plugin-zoom.min.js")))
+	return html
+}
 
 func streamCfg(ip, host string, port int, verbose int, ignoreGap1 bool) core.Config {
+	transport := strings.ToLower(strings.TrimSpace(ip))
 	cfg := core.Config{
-		IP:                            strings.ToLower(strings.TrimSpace(ip)),
 		Host:                          strings.TrimSpace(host),
 		Port:                          port,
 		Decode:                        "dcol",
 		Verbose:                       verbose,
 		IgnoreTCPGSOFTransmissionGap1: ignoreGap1,
 	}
-	if cfg.Host != "" {
+	switch transport {
+	case "udp":
+		cfg.IP = "udp"
+	default:
+		cfg.IP = "tcp"
+	}
+	// Non-UDP with host set is outbound TCP dial (legacy default when -heading-ip was omitted).
+	if cfg.Host != "" && !strings.EqualFold(cfg.IP, "udp") {
 		cfg.IP = "tcp"
 	}
 	return cfg
 }
 
 func main() {
-	headingIP := flag.String("heading-ip", "udp", "Heading receiver: tcp or udp")
-	headingHost := flag.String("heading-host", "", "Heading receiver: TCP dial host (optional)")
-	headingPort := flag.Int("heading-port", 2101, "Heading receiver: UDP listen or TCP port")
+	headingIP := flag.String("heading-ip", "tcp", "Heading receiver: tcp or udp")
+	headingHost := flag.String("heading-host", "172.27.0.14", "Heading receiver: TCP dial host (optional)")
+	headingPort := flag.Int("heading-port", 6000, "Heading receiver: UDP listen or TCP port")
 
-	mbIP := flag.String("moving-base-ip", "udp", "Moving base: tcp or udp (ignored when -moving-base-port is 0)")
-	mbHost := flag.String("moving-base-host", "", "Moving base: TCP dial host (optional)")
-	mbPort := flag.Int("moving-base-port", 0, "Moving base: UDP listen or TCP port; 0 = disabled (not required when GSOF type 41 is on the heading stream)")
+	mbIP := flag.String("moving-base-ip", "tcp", "Moving base: tcp or udp (ignored when -moving-base-port is 0)")
+	mbHost := flag.String("moving-base-host", "172.27.0.14", "Moving base: TCP dial host (optional)")
+	mbPort := flag.Int("moving-base-port", 6001, "Moving base: UDP listen or TCP port; 0 = disabled (not required when GSOF type 41 is on the heading stream)")
 
 	matchMax := flag.Float64("match-max-tow-delta-sec", 0.25, "Max GPS TOW gap (s, week-wrapped) between heading epoch and reference (type 41 or moving-base type 1)")
 	rangeTol := flag.Float64("range-check-tolerance", 0.01, "Metres: pass if |computed slant − reference| is at most this (0 disables range check)")
@@ -63,7 +80,10 @@ func main() {
 	hub := flag.Bool("hub", true, "Shorthand for hub mode: -embedded-stream=false and -web-host=0.0.0.0 (configure streams from browser)")
 	verbose := flag.Int("verbose", 0, "DCOL verbosity (same as gsof-dashboard)")
 	ignoreGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP: suppress warnings for a single skipped GSOF transmission id")
+	basePathFlag := flag.String("base-path", "", "Public URL path prefix when mounted under a site path (e.g. /baseline). Baked into HTML for links/SSE and stripped from incoming HTTP paths. Must match proxy X-Forwarded-Prefix. Env: GSOF_BASELINE_BASE_PATH.")
 	flag.Parse()
+
+	httpBasePath := resolveHTTPBasePath(*basePathFlag, os.Getenv("GSOF_BASELINE_BASE_PATH"))
 
 	tol := *rangeTol
 	if *expectedRange > 0 && tol <= 0 {
@@ -72,12 +92,18 @@ func main() {
 
 	embeddedStreamSet := false
 	hubSet := false
+	cliHeadingSet := false
+	cliMBSet := false
 	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "embedded-stream" {
+		switch f.Name {
+		case "embedded-stream":
 			embeddedStreamSet = true
-		}
-		if f.Name == "hub" {
+		case "hub":
 			hubSet = true
+		case "heading-host", "heading-ip", "heading-port":
+			cliHeadingSet = true
+		case "moving-base-host", "moving-base-ip", "moving-base-port":
+			cliMBSet = true
 		}
 	})
 	if *hub && (hubSet || !embeddedStreamSet) {
@@ -94,19 +120,28 @@ func main() {
 
 	addr := net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
 	if !*embeddedStream {
-		h := newBaselineHub()
+		h := newBaselineHub(httpBasePath)
 		mux := http.NewServeMux()
 		defaultMB := baselineStreamRequest{Transport: "udp", Port: 0}
 		if mbEnabled {
 			defaultMB = baselineDefaultStreamReq(cfgMB)
 		}
 		defaultHeading := baselineDefaultStreamReq(cfgHeading)
+		lockConnectDefaults := cliHeadingSet && cliMBSet && mbEnabled
+		hubCfg := baselineConfigResponse{
+			DefaultHeading:      defaultHeading,
+			DefaultMovingBase:   defaultMB,
+			LockSavedConnection: lockConnectDefaults,
+		}
+		mux.HandleFunc("/assets/chart.umd.min.js", serveBaselineChartJS)
+		mux.HandleFunc("/assets/hammer.min.js", serveBaselineHammerJS)
+		mux.HandleFunc("/assets/chartjs-plugin-zoom.min.js", serveBaselineChartZoomJS)
 		mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != http.MethodGet {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			h.handleConfig(w, false, defaultHeading, defaultMB)
+			h.handleConfig(w, false, hubCfg)
 		})
 		mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
 			h.handleCreateSession(w, r, false, EngineSessionDefaults{
@@ -118,8 +153,9 @@ func main() {
 			})
 		})
 		mux.HandleFunc("/api/sessions/", h.handleSessionDelete)
+		mux.HandleFunc("/events", h.handleHubEvents)
 		mux.HandleFunc("/s/", func(w http.ResponseWriter, r *http.Request) {
-			h.serveSessionBranch(w, r, uiHTMLLive, h.brokerForID)
+			h.serveSessionBranch(w, r)
 		})
 		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/" {
@@ -128,11 +164,21 @@ func main() {
 			}
 			w.Header().Set("Cache-Control", "no-store")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write(baselineConnectHTML(defaultHeading, defaultMB))
+			_, _ = w.Write(baselineConnectHTML(hubCfg, httpBasePath))
 		})
-		srv := &http.Server{Addr: addr, Handler: mux}
-		fmt.Fprintf(os.Stdout, "gsof-baseline version %s\n  web UI:  http://%s\n  mode:    hub (configure streams in browser)\n", Version, addr)
-		slog.Info("gsof-baseline hub listening", "addr", addr)
+		srv := &http.Server{Addr: addr, Handler: stripHTTPBasePath(httpBasePath, mux)}
+		appURL := "http://" + net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
+		if httpBasePath != "" {
+			appURL += httpBasePath
+		}
+		fmt.Fprintf(os.Stdout, "gsof-baseline version %s\n  web UI:  %s/\n  mode:    hub (configure streams in browser)\n", buildDisplayVersion(), appURL)
+		if httpBasePath != "" {
+			fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (must match proxy X-Forwarded-Prefix; forward full path including prefix)\n", httpBasePath)
+		}
+		if lockConnectDefaults {
+			fmt.Fprintf(os.Stdout, "  connect form: CLI heading + moving-base defaults (browser saved settings ignored)\n")
+		}
+		slog.Info("gsof-baseline hub listening", "addr", addr, "base_path", httpBasePath)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("http", "error", err)
 			os.Exit(1)
@@ -145,6 +191,8 @@ func main() {
 		RangeCheckTolM:         tol,
 		ExpectedRangeM:         *expectedRange,
 		MovingBaseConfigured:   mbEnabled,
+		HeadingStream:          gsofbaseline.StreamEndpointFromConfig(cfgHeading),
+		MovingBaseStream:       gsofbaseline.StreamEndpointFromConfig(cfgMB),
 	})
 
 	chHeading := make(chan core.PacketEvent, 2000)
@@ -183,6 +231,7 @@ func main() {
 					slog.Debug("heading warn", "msg", w)
 				}
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+					eng.NoteHeadingRemoteAddr(pkt.RemoteAddr)
 					eng.IngestHeading(pkt.GSOFBuffer)
 				}
 			}
@@ -199,6 +248,7 @@ func main() {
 						slog.Debug("moving-base warn", "msg", w)
 					}
 					if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+						eng.NoteMovingBaseRemoteAddr(pkt.RemoteAddr)
 						eng.IngestMovingBase(pkt.GSOFBuffer)
 					}
 				}
@@ -215,7 +265,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				snap := eng.Snapshot(Version)
+				snap := eng.Snapshot(buildDisplayVersion())
 				data, err := json.Marshal(snap)
 				if err != nil {
 					slog.Warn("json marshal", "error", err)
@@ -227,6 +277,9 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/assets/chart.umd.min.js", serveBaselineChartJS)
+	mux.HandleFunc("/assets/hammer.min.js", serveBaselineHammerJS)
+	mux.HandleFunc("/assets/chartjs-plugin-zoom.min.js", serveBaselineChartZoomJS)
 	mux.HandleFunc("/events", broker.ServeHTTP)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -235,14 +288,14 @@ func main() {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-GSOF-Baseline-Version", Version)
-		_, _ = w.Write(uiHTMLLive)
+		w.Header().Set("X-GSOF-Baseline-Version", buildDisplayVersion())
+		_, _ = w.Write(baselineDashboardHTML("/events", httpBasePath))
 	})
 
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{Addr: addr, Handler: stripHTTPBasePath(httpBasePath, mux)}
 
 	fmt.Fprintf(os.Stdout, "gsof-baseline version %s\n  web UI:  http://%s\n  heading: %s\n",
-		Version, addr, describeStream(cfgHeading))
+		buildDisplayVersion(), addr, describeStream(cfgHeading))
 	if mbEnabled {
 		fmt.Fprintf(os.Stdout, "  moving base: %s\n", describeStream(cfgMB))
 	} else {

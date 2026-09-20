@@ -1,6 +1,8 @@
 # Timing Analyzer: Web Interface User Guide
 
-The Web version of the Timing Analyzer is a multi-tenant cloud application. It allows you to connect to remote GNSS streams, NTRIP Casters, and Trimble IBSS networks directly from your web browser to monitor real-time packet latency and jitter.
+The Web version of the Timing Analyzer is a multi-tenant application. It allows you to connect to remote GNSS streams, NTRIP Casters, and Trimble IBSS networks directly from your web browser to monitor real-time packet latency and jitter.
+
+On a **self-hosted** deployment, an administrator can pre-fill the setup form for **outbound Direct TCP** using webserver flags (`-host`, `-stream-port`, `-rate`, `-jitter`, `-decode`). Those server defaults appear when you open the page and override any connection settings saved in your browser from a previous visit. You can still change the fields before clicking **Connect & Analyze**. See `DEVELOPER_GUIDE.md` for deployment examples.
 
 ## Starting a Session
 
@@ -44,3 +46,7 @@ Once connected, you will see the Live Telemetry view.
 ## Managing Your Session
 * **Pause/Resume:** Click the "Live / Paused" indicator in the top right corner to freeze the charts so you can inspect a specific event. The server continues to process data in the background.
 * **Stop & New Setup:** Click this button to completely terminate your connection to the remote stream and return to the Setup menu.
+
+## Saved connection settings
+
+If the server was not preconfigured by an administrator, the setup form remembers your last connection choices in the browser (`localStorage`) and restores them the next time you open the page. Server-side defaults always take precedence when present.

@@ -12,6 +12,14 @@ func enableKernelTimestamps(fd uintptr) error {
 	return syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_TIMESTAMP, 1)
 }
 
+// enableUDPListenSocket sets options needed to receive subnet and limited broadcast datagrams.
+func enableUDPListenSocket(fd uintptr) error {
+	if err := syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+		return err
+	}
+	return syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_BROADCAST, 1)
+}
+
 func extractKernelTimestamp(oob []byte) (time.Time, bool) {
 	cmsgs, err := syscall.ParseSocketControlMessage(oob)
 	if err == nil {

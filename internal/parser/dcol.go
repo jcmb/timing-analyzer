@@ -39,6 +39,7 @@ func (p *DCOLParser) Process(data []byte, bestTime, goTime, kernelTime time.Time
 		RemoteAddr:                    remoteAddr,
 		TransportIsUDP:                strings.EqualFold(cfg.IP, "udp"),
 		IgnoreTCPGSOFTransmissionGap1: cfg.IgnoreTCPGSOFTransmissionGap1,
+		Debug:                         cfg.Debug,
 		BestTime:                      bestTime,
 		GoTime:                        goTime,
 		KernelTime:                    kernelTime,

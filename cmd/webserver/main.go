@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -25,7 +26,68 @@ import (
 )
 
 // Global Application Version
-const AppVersion = "v1.3.3"
+const AppVersion = "v1.3.4"
+
+// serverDefaultSetupPlaceholder is replaced with JSON defaults for the setup form (see index_server.html).
+const serverDefaultSetupPlaceholder = "__TA_SERVER_DEFAULT_SETUP_JSON__"
+
+// serverDefaultSetup holds outbound TCP defaults baked into the setup page when -host is set.
+type serverDefaultSetup struct {
+	ConnType string  `json:"connType"`
+	Host     string  `json:"host"`
+	Port     int     `json:"port"`
+	Rate     float64 `json:"rate"`
+	Jitter   string  `json:"jitter"`
+	Decode   string  `json:"decode"`
+}
+
+func prepareIndexServerHTML(version string, defaults *serverDefaultSetup) []byte {
+	html := bytes.ReplaceAll(web.IndexServerHTML, []byte("{{VERSION}}"), []byte(version))
+	var raw []byte
+	if defaults != nil {
+		var err error
+		raw, err = json.Marshal(defaults)
+		if err != nil {
+			raw = []byte("null")
+		}
+	} else {
+		raw = []byte("null")
+	}
+	return bytes.Replace(html, []byte(serverDefaultSetupPlaceholder), raw, 1)
+}
+
+func buildServerDefaultSetup(host string, streamPort int, rate float64, jitter, decode string) *serverDefaultSetup {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil
+	}
+	if streamPort < 1 || streamPort > 65535 {
+		streamPort = 2101
+	}
+	decode = strings.TrimSpace(strings.ToLower(decode))
+	switch decode {
+	case "", "dcol":
+		decode = "dcol"
+	case "none", "mb-cmr":
+	default:
+		decode = "dcol"
+	}
+	jitter = strings.TrimSpace(jitter)
+	if jitter == "" {
+		jitter = "10%"
+	}
+	if rate <= 0 {
+		rate = 1.0
+	}
+	return &serverDefaultSetup{
+		ConnType: "tcp",
+		Host:     host,
+		Port:     streamPort,
+		Rate:     rate,
+		Jitter:   jitter,
+		Decode:   decode,
+	}
+}
 
 // webListenPortMin/Max restrict inbound listener ports for the multi-tenant web UI
 // so sessions do not collide with other well-known services on the host.
@@ -344,6 +406,41 @@ func listHostIPv4Hints() []string {
 	return out
 }
 
+// responseRecorder captures the HTTP status code for debug logging.
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (rr *responseRecorder) WriteHeader(code int) {
+	rr.status = code
+	rr.ResponseWriter.WriteHeader(code)
+}
+
+func debugRequestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &responseRecorder{ResponseWriter: w, status: http.StatusOK}
+		slog.Info("incoming request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"raw_query", r.URL.RawQuery,
+			"request_uri", r.RequestURI,
+			"remote_addr", r.RemoteAddr,
+			"host", r.Host,
+			"proto", r.Proto,
+			"referer", r.Referer(),
+			"user_agent", r.UserAgent(),
+			"x_forwarded_for", r.Header.Get("X-Forwarded-For"),
+			"x_forwarded_prefix", r.Header.Get("X-Forwarded-Prefix"),
+			"x_forwarded_proto", r.Header.Get("X-Forwarded-Proto"),
+		)
+		next.ServeHTTP(rec, r)
+		if rec.status >= http.StatusBadRequest {
+			slog.Info("request completed", "method", r.Method, "path", r.URL.Path, "status", rec.status)
+		}
+	})
+}
+
 func handleListenInfo(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -361,6 +458,12 @@ func main() {
 	port := flag.Int("port", 2102, "HTTP port to run the web server on")
 	bindIP := flag.String("bind", "127.0.0.1", "IP to bind the server to (use 0.0.0.0 for public)")
 	basePath := flag.String("base-path", "/", "Base URL path (e.g., '/jitter')")
+	debug := flag.Bool("debug", false, "Log each incoming HTTP request to stderr (method, path, headers)")
+	streamHost := flag.String("host", "", "Pre-fill the web setup form for outbound TCP (host or IP to connect to)")
+	streamPort := flag.Int("stream-port", 2101, "Pre-fill outbound TCP port (used with -host)")
+	streamRate := flag.Float64("rate", 1.0, "Pre-fill expected stream rate in Hz (used with -host)")
+	streamJitter := flag.String("jitter", "10%", "Pre-fill allowable jitter, e.g. 10%% or 5ms (used with -host)")
+	streamDecode := flag.String("decode", "dcol", "Pre-fill payload decoder: none, dcol, or mb-cmr (used with -host)")
 	flag.Parse()
 
 	path := *basePath
@@ -371,20 +474,30 @@ func main() {
 		path = path + "/"
 	}
 
+	defaultSetup := buildServerDefaultSetup(*streamHost, *streamPort, *streamRate, *streamJitter, *streamDecode)
+	indexHTMLPrepared := prepareIndexServerHTML(AppVersion, defaultSetup)
+	if defaultSetup != nil {
+		slog.Info("setup form preconfigured for outbound TCP",
+			"host", defaultSetup.Host,
+			"stream_port", defaultSetup.Port,
+			"rate_hz", defaultSetup.Rate,
+			"jitter", defaultSetup.Jitter,
+			"decode", defaultSetup.Decode,
+		)
+	}
+
 	http.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != path && r.URL.Path != strings.TrimSuffix(path, "/") {
 			http.NotFound(w, r)
 			return
 		}
 
-		html := strings.ReplaceAll(string(web.IndexServerHTML), "{{VERSION}}", AppVersion)
-
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 		w.Header().Set("Content-Type", "text/html")
 
-		w.Write([]byte(html))
+		w.Write(indexHTMLPrepared)
 	})
 
 	http.HandleFunc(path+"chart.js", func(w http.ResponseWriter, r *http.Request) {
@@ -406,7 +519,12 @@ func main() {
 		return
 	}
 
-	srv := &http.Server{Handler: nil}
+	handler := http.Handler(http.DefaultServeMux)
+	if *debug {
+		handler = debugRequestLogger(handler)
+	}
+
+	srv := &http.Server{Handler: handler}
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		slog.Error("Server crashed", "error", err)
 	}

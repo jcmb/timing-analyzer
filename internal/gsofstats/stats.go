@@ -61,6 +61,7 @@ type Stats struct {
 	hasSeenType01  bool
 	warnings       []string
 	suppressSingle bool
+	debug          bool
 	lastPayload    map[int][]byte // last GSOF record inner payload per type (for dashboard decode)
 	lastRecordWire map[int][]byte // last full on-wire sub-record bytes for PayloadHex ([type][len][inner]; 100+ from 99 uses full [99][len][pl])
 	// lastGPSTOWSec is the GPS time-of-week (s) from the latest type-0x01 in stream order.
@@ -101,7 +102,7 @@ type Stats struct {
 	tcpListen *TCPListenTracker
 }
 
-func NewStats(suppressSingle bool) *Stats {
+func NewStats(suppressSingle bool, debug bool) *Stats {
 	return &Stats{
 		counts:               make(map[int]int),
 		lastSeen:             make(map[int]time.Time),
@@ -114,7 +115,15 @@ func NewStats(suppressSingle bool) *Stats {
 		lastPayload:          make(map[int][]byte),
 		lastRecordWire:       make(map[int][]byte),
 		suppressSingle:       suppressSingle,
+		debug:                debug,
 	}
+}
+
+// IsSequenceGapWarning reports dashboard warnings about skipped GSOF transmission or sequence ids.
+func IsSequenceGapWarning(msg string) bool {
+	return strings.Contains(msg, "Sequence Gap") ||
+		strings.Contains(msg, "transmission gap") ||
+		strings.Contains(msg, "multi-page gap")
 }
 
 // SetTCPListenTracker attaches optional inbound-TCP (listen) tracking for the dashboard.
@@ -248,7 +257,7 @@ func (s *Stats) Update(seq uint8, buffer []byte, tcpTransport, ignoreTCPGSOFTran
 					suppress = true
 				}
 			}
-			if !suppress {
+			if !suppress && s.debug {
 				s.warnings = append(s.warnings, fmt.Sprintf("[%s] WARNING: Sequence Gap! Jumped %d to %d (Missed %d)",
 					now.Format("15:04:05"), s.lastSeq, seq, gap))
 			}
@@ -775,6 +784,9 @@ func (s *Stats) ClearWarnings() {
 
 // AddWarning appends a dashboard-visible warning (e.g. from the DCOL parser).
 func (s *Stats) AddWarning(msg string) {
+	if !s.debug && IsSequenceGapWarning(msg) {
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.warnings = append(s.warnings, msg)

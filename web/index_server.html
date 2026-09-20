@@ -189,6 +189,7 @@
 
     <script>
         // --- Form Interaction Logic ---
+        const SERVER_DEFAULT_SETUP = __TA_SERVER_DEFAULT_SETUP_JSON__;
         const LAST_SETUP_STORAGE_KEY = 'timing-analyzer-webserver-last-setup-v1';
 
         function randomListenPortStr() {
@@ -294,23 +295,27 @@
         }
 
         function loadLastConnectionForm() {
-            let raw = null;
-            try {
-                raw = localStorage.getItem(LAST_SETUP_STORAGE_KEY);
-            } catch (e) {
-                toggleFields();
-                return;
-            }
-            if (!raw) {
-                toggleFields();
-                return;
-            }
-            let s;
-            try {
-                s = JSON.parse(raw);
-            } catch (e) {
-                toggleFields();
-                return;
+            let s = null;
+            if (SERVER_DEFAULT_SETUP && typeof SERVER_DEFAULT_SETUP === 'object') {
+                s = SERVER_DEFAULT_SETUP;
+            } else {
+                let raw = null;
+                try {
+                    raw = localStorage.getItem(LAST_SETUP_STORAGE_KEY);
+                } catch (e) {
+                    toggleFields();
+                    return;
+                }
+                if (!raw) {
+                    toggleFields();
+                    return;
+                }
+                try {
+                    s = JSON.parse(raw);
+                } catch (e) {
+                    toggleFields();
+                    return;
+                }
             }
             if (!s || typeof s !== 'object') {
                 toggleFields();
@@ -376,8 +381,12 @@
         }
 
         function updatePrivateHostNotice() {
-            const mode = document.getElementById('connType').value;
             const box = document.getElementById('private-host-notice');
+            if (SERVER_DEFAULT_SETUP && typeof SERVER_DEFAULT_SETUP === 'object') {
+                box.style.display = 'none';
+                return;
+            }
+            const mode = document.getElementById('connType').value;
             const host = document.getElementById('host').value;
             if ((mode === 'tcp' || mode === 'ntrip') && isPrivateOrLocalHost(host)) {
                 box.style.display = 'block';

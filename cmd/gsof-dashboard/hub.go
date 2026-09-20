@@ -199,7 +199,7 @@ func (h *hub) startSession(parent context.Context, cfg core.Config, verbose int,
 		return nil, err
 	}
 	sctx, cancel := context.WithCancel(parent)
-	stats := gsofstats.NewStats(false)
+	stats := gsofstats.NewStats(false, cfg.Debug)
 	broker := gsofstats.NewJSONBroker()
 	ch := make(chan core.PacketEvent, 1000)
 	s := &gsofSession{id: id, cancel: cancel, broker: broker}
@@ -320,7 +320,7 @@ func (h *hub) handleAPIConfig(w http.ResponseWriter, embeddedStream bool, cfg co
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string, serverIgnoreTCPGSOFGap1 bool, httpBasePath string) {
+func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, embeddedStream bool, verbose int, allowPrivate bool, advertiseHost string, serverIgnoreTCPGSOFGap1 bool, serverDebug bool, httpBasePath string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -359,6 +359,7 @@ func (h *hub) handleAPICreateSession(w http.ResponseWriter, r *http.Request, emb
 		return
 	}
 	cfg.IgnoreTCPGSOFTransmissionGap1 = req.IgnoreTCPGSOFTransmissionGap1 || serverIgnoreTCPGSOFGap1
+	cfg.Debug = serverDebug
 
 	// Session streams must outlive this HTTP request: r.Context() is cancelled as soon as the
 	// POST response is sent, which would immediately tear down TCP dials and UDP listeners.

@@ -28,17 +28,6 @@ import (
 //go:embed dashboard.html
 var dashboardHTML []byte
 
-func normalizeHTTPBasePath(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" || s == "/" {
-		return ""
-	}
-	if !strings.HasPrefix(s, "/") {
-		s = "/" + s
-	}
-	return strings.TrimSuffix(s, "/")
-}
-
 func prepareDashboardHTML(version, basePath string) []byte {
 	prefixJSON, err := json.Marshal(basePath)
 	if err != nil {
@@ -101,14 +90,13 @@ func main() {
 	maxUISessions := flag.Int("max-ui-sessions", 64, "Maximum concurrent UI-defined GSOF sessions (hub / -embedded-stream=false)")
 	allowPrivateGSOF := flag.Bool("allow-private-gsof-targets", false, "In hub mode (-hub), allow UI/API TCP targets that resolve to loopback or RFC1918 (off by default). Non-hub runs always allow private targets.")
 	advertiseHost := flag.String("advertise-host", "", "If set (e.g. trimbletools.com), UDP session API responses include this hostname so receivers can be aimed at the correct public address")
+	debug := flag.Bool("debug", false, "Show sequence-gap warnings on the dashboard (off by default)")
 	ignoreTCPGSOFGap1 := flag.Bool("ignore-tcp-gsof-transmission-gap1", false, "TCP only: suppress Stats/parser warnings for a single skipped GSOF transmission id; applies to embedded streams and (with -embedded-stream=false) is merged into each browser-started session")
-	httpBasePathFlag := flag.String("http-base-path", "", "Public URL path prefix when mounted under a site path (e.g. /GSOF). Same value is stripped from incoming HTTP paths and baked into the HTML for links/SSE. Empty = serve at site root. Env: GSOF_DASHBOARD_BASE_PATH.")
+	httpBasePathFlag := flag.String("http-base-path", "", "Alias for -base-path (deprecated). Env: GSOF_DASHBOARD_BASE_PATH.")
+	basePathFlag := flag.String("base-path", "", "Public URL path prefix when mounted under a site path (e.g. /GSOF). Baked into the HTML for links/SSE and stripped from incoming HTTP paths. Must match proxy X-Forwarded-Prefix. Env: GSOF_DASHBOARD_BASE_PATH.")
 	flag.Parse()
 
-	httpBasePath := normalizeHTTPBasePath(*httpBasePathFlag)
-	if httpBasePath == "" {
-		httpBasePath = normalizeHTTPBasePath(os.Getenv("GSOF_DASHBOARD_BASE_PATH"))
-	}
+	httpBasePath := resolveHTTPBasePath(*basePathFlag, *httpBasePathFlag, os.Getenv("GSOF_DASHBOARD_BASE_PATH"))
 	dashboardHTMLPrepared := prepareDashboardHTML(buildDisplayVersion(), httpBasePath)
 
 	hubFlagExplicit := false
@@ -178,6 +166,7 @@ func main() {
 		Decode:                        "dcol",
 		Verbose:                       *verbose,
 		IgnoreTCPGSOFTransmissionGap1: *ignoreTCPGSOFGap1,
+		Debug:                         *debug,
 	}
 	if cfg.Host != "" {
 		cfg.IP = "tcp"
@@ -190,7 +179,7 @@ func main() {
 	var packetChan chan core.PacketEvent
 
 	if *embeddedStream {
-		embStats = gsofstats.NewStats(false)
+		embStats = gsofstats.NewStats(false, cfg.Debug)
 		embBroker = gsofstats.NewJSONBroker()
 		packetChan = make(chan core.PacketEvent, 1000)
 		var tcpInbound *gsofstats.TCPListenTracker
@@ -241,7 +230,7 @@ func main() {
 		h.handleAPIConfig(w, *embeddedStream, cfg, httpBasePath)
 	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
-		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, effectiveAllowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1, httpBasePath)
+		h.handleAPICreateSession(w, r, *embeddedStream, *verbose, effectiveAllowPrivateGSOF, strings.TrimSpace(*advertiseHost), *ignoreTCPGSOFGap1, *debug, httpBasePath)
 	})
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
 		h.handleAPIDeleteSession(w, r, *embeddedStream)
@@ -287,7 +276,7 @@ func main() {
 
 	var handler http.Handler = mux
 	if httpBasePath != "" {
-		handler = http.StripPrefix(httpBasePath, mux)
+		handler = stripHTTPBasePath(httpBasePath, mux)
 	}
 
 	webAddr := net.JoinHostPort(*webHost, strconv.Itoa(*webPort))
@@ -306,7 +295,7 @@ func main() {
 		fmt.Fprintf(os.Stdout, "  note:    %s desktop — -hub omitted: opened browser (unless -open-browser=false) and private LAN TCP targets allowed (same as -allow-private-gsof-targets)\n", runtime.GOOS)
 	}
 	if httpBasePath != "" {
-		fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (incoming paths strip this; configure proxy to forward full path including prefix, or equivalent)\n", httpBasePath)
+		fmt.Fprintf(os.Stdout, "  HTTP prefix: %s (must match proxy X-Forwarded-Prefix; forward full path including prefix)\n", httpBasePath)
 	}
 	if !*embeddedStream {
 		fmt.Fprintf(os.Stdout, "  mode:    multi-user (open http://%s%s/ and set TCP or UDP in the header)\n", webAddr, httpBasePath)

@@ -35,3 +35,15 @@ func SlantM(horizM, h1M, h2M float64) float64 {
 	dh := h2M - h1M
 	return math.Sqrt(horizM*horizM + dh*dh)
 }
+
+// BaselineAttitudeDeg returns yaw, pitch, and roll (degrees) for the line of sight from
+// the rover (point 1) to the reference (point 2) in a local ENU frame at the rover:
+//   - yaw: horizontal azimuth [0, 360) — same as InitialBearingDeg
+//   - pitch: elevation (+ when reference is above rover)
+//   - roll: always 0 (not observable from LLH positions alone)
+func BaselineAttitudeDeg(lat1Deg, lon1Deg, h1M, lat2Deg, lon2Deg, h2M float64) (yawDeg, pitchDeg, rollDeg float64) {
+	horiz := HaversineM(lat1Deg, lon1Deg, lat2Deg, lon2Deg)
+	yawDeg = InitialBearingDeg(lat1Deg, lon1Deg, lat2Deg, lon2Deg)
+	pitchDeg = math.Atan2(h2M-h1M, horiz) * 180 / math.Pi
+	return yawDeg, pitchDeg, 0
+}

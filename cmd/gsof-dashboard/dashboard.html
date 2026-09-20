@@ -1103,9 +1103,6 @@
       <input id="connPort" type="number" min="0" max="65535" value="5018" title="TCP destination port, or UDP listen port (0 = assign automatically)" />
       <button type="button" id="connBtn">Connect</button>
       <p id="connHint" class="meta"></p>
-      <p id="proxyBaseNote" class="meta" hidden style="max-width: 46rem; line-height: 1.35; opacity: 0.9">
-        <strong id="proxyBaseStr"></strong>: one binary covers both deployments. At the site root, leave the prefix unset—routes are <code>/api/…</code>, <code>/events</code>, and <code>/s/…</code>. Under a reverse-proxy path such as <code>/GSOF/</code>, start the server with <code>-http-base-path=/GSOF</code> (or <code>GSOF_DASHBOARD_BASE_PATH=/GSOF</code>): the UI and SSE use that prefix, and this process strips it internally. Forward requests that still include the prefix (e.g. nginx passes the full URI), or adjust your proxy so paths stay consistent.
-      </p>
       <p id="connErr" class="meta" hidden></p>
     </div>
   </header>
@@ -1166,16 +1163,6 @@
       }
       return path;
     }
-    (function revealProxyPrefixNote() {
-      const pre = typeof window.__GSOF_URL_PREFIX__ === "string" ? window.__GSOF_URL_PREFIX__ : "";
-      if (!pre) return;
-      const note = document.getElementById("proxyBaseNote");
-      const strong = document.getElementById("proxyBaseStr");
-      if (note && strong) {
-        strong.textContent = "Using URL prefix " + pre;
-        note.hidden = false;
-      }
-    })();
     /** Mirrors server `show_expected_reserved_bits` (gsof-dashboard `-show-expected-reserved-bits`). */
     let gsofShowExpectedReservedBits = false;
     const CLIENT_BUILD = document.documentElement.dataset.gsofBuild || "";

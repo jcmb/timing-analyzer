@@ -134,9 +134,12 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 		}
 
 	case "udp":
-		// Use IPv4 any (udp4) so hub / embedded UDP listen matches receivers aimed at x.x.x.x:port.
-		// ":port" commonly becomes [::]:port, which skips IPv4 datagrams on typical Linux/macOS setups.
-		address := fmt.Sprintf("0.0.0.0:%d", cfg.Port)
+		// Use IPv4 (udp4) so hub / embedded UDP listen matches receivers aimed at x.x.x.x:port.
+		// SO_BROADCAST + SO_REUSEADDR allow subnet and limited broadcast (255.255.255.255) RX.
+		address, err := udpListenAddress(cfg)
+		if err != nil {
+			return err
+		}
 		addr, err := net.ResolveUDPAddr("udp4", address)
 		if err != nil {
 			return fmt.Errorf("udp resolve %s: %w", address, err)
@@ -144,6 +147,10 @@ func StartListenerContext(ctx context.Context, cfg core.Config, packetChan chan<
 		conn, err := net.ListenUDP("udp4", addr)
 		if err != nil {
 			return fmt.Errorf("udp listen %s: %w", address, err)
+		}
+		if err := prepareUDPListenConn(conn); err != nil {
+			_ = conn.Close()
+			return fmt.Errorf("udp socket options %s: %w", address, err)
 		}
 		go func() {
 			<-ctx.Done()

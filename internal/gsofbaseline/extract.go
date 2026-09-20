@@ -36,6 +36,9 @@ type PacketWalkResult struct {
 	Heading27All []gsof.AttitudePoint
 	// Last38Payload is the last type-38 inner payload in packet order (heading stream).
 	Last38Payload []byte
+	// DOPPoints and SigmaPoints are type-9 / type-12 samples paired with the latest type-1 TOW in the packet.
+	DOPPoints    []gsof.DOPPoint
+	SigmaPoints  []gsof.SigmaPoint
 }
 
 // WalkGSOFPacket walks one flattened GSOF payload like gsofstats.ExpandGSOFStream.
@@ -104,6 +107,22 @@ func WalkGSOFPacket(gsofBuffer []byte) PacketWalkResult {
 					HeightM:   h,
 					SVsUsed:   lastSV,
 				})
+			}
+		case 9:
+			if !hasTOW {
+				continue
+			}
+			if pt, ok := gsof.ParseDOPPoint(pld); ok {
+				pt.GPSTOWSec = lastTOW
+				out.DOPPoints = append(out.DOPPoints, pt)
+			}
+		case 12:
+			if !hasTOW {
+				continue
+			}
+			if pt, ok := gsof.ParseSigmaPoint(pld); ok {
+				pt.GPSTOWSec = lastTOW
+				out.SigmaPoints = append(out.SigmaPoints, pt)
 			}
 		}
 	}

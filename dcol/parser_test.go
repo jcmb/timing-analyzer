@@ -77,7 +77,7 @@ func TestDCOL_GSOFTransmissionGapWarningUDP(t *testing.T) {
 	p := newTestParser()
 	var got []Message
 	emit := func(m Message) { got = append(got, m) }
-	env := Env{Verbose: 0, RemoteAddr: "u:1", TransportIsUDP: true}
+	env := Env{Verbose: 0, RemoteAddr: "u:1", TransportIsUDP: true, Debug: true}
 	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
 	f3 := buildDCOL40(3, 0, 0, []byte{0x01, 0x00})
 	p.Process(f1, env, emit)
@@ -102,7 +102,7 @@ func TestDCOL_GSOFTransmissionGapTCPDefaultWarnsSingleSkip(t *testing.T) {
 	p := newTestParser()
 	var got []Message
 	emit := func(m Message) { got = append(got, m) }
-	env := Env{Verbose: 0, RemoteAddr: "t:1", TransportIsUDP: false}
+	env := Env{Verbose: 0, RemoteAddr: "t:1", TransportIsUDP: false, Debug: true}
 	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
 	f3 := buildDCOL40(3, 0, 0, []byte{0x01, 0x00})
 	p.Process(f1, env, emit)
@@ -129,6 +129,7 @@ func TestDCOL_GSOFTransmissionGapSuppressedTCPWithFlag(t *testing.T) {
 		RemoteAddr:                    "t:1",
 		TransportIsUDP:                false,
 		IgnoreTCPGSOFTransmissionGap1: true,
+		Debug:                         true,
 	}
 	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
 	f3 := buildDCOL40(3, 0, 0, []byte{0x01, 0x00})
@@ -151,6 +152,7 @@ func TestDCOL_GSOFTransmissionGapTCPWarnsTwoSkippedEvenWithFlag(t *testing.T) {
 		RemoteAddr:                    "t:1",
 		TransportIsUDP:                false,
 		IgnoreTCPGSOFTransmissionGap1: true,
+		Debug:                         true,
 	}
 	f1 := buildDCOL40(1, 0, 0, []byte{0x01, 0x00})
 	f4 := buildDCOL40(4, 0, 0, []byte{0x01, 0x00})

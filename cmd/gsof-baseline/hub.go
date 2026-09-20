@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ const maxBaselineSessionCreateBodyBytes = 8192
 type baselineHub struct {
 	mu       sync.Mutex
 	sessions map[string]*baselineSession
+	basePath string
 }
 
 type baselineSession struct {
@@ -43,17 +45,22 @@ type baselineCreateSessionRequest struct {
 
 type baselineCreateSessionResponse struct {
 	ID            string `json:"id"`
+	EventsPath    string `json:"events_path"`
 	DashboardPath string `json:"dashboard_path"`
 }
 
 type baselineConfigResponse struct {
-	EmbeddedStream bool                 `json:"embedded_stream"`
-	DefaultHeading baselineStreamRequest `json:"default_heading"`
-	DefaultMovingBase baselineStreamRequest `json:"default_moving_base"`
+	EmbeddedStream      bool                  `json:"embedded_stream"`
+	DefaultHeading      baselineStreamRequest `json:"default_heading"`
+	DefaultMovingBase   baselineStreamRequest `json:"default_moving_base"`
+	LockSavedConnection bool                  `json:"lock_saved_connection,omitempty"`
 }
 
-func newBaselineHub() *baselineHub {
-	return &baselineHub{sessions: make(map[string]*baselineSession)}
+func newBaselineHub(basePath string) *baselineHub {
+	return &baselineHub{
+		sessions: make(map[string]*baselineSession),
+		basePath: normalizeHTTPBasePath(basePath),
+	}
 }
 
 func newBaselineSessionID() (string, error) {
@@ -99,7 +106,11 @@ func validateBaselineStream(req baselineStreamRequest) error {
 	return nil
 }
 
-func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []byte {
+func baselineConnectHTML(cfg baselineConfigResponse, basePath string) []byte {
+	prefixJSON, err := json.Marshal(normalizeHTTPBasePath(basePath))
+	if err != nil {
+		prefixJSON = []byte(`""`)
+	}
 	return []byte(fmt.Sprintf(`<!doctype html>
 <html>
 <head>
@@ -125,7 +136,7 @@ func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []
     <h2>Heading stream</h2>
     <div class="row">
       <div><label>Transport</label><select id="hTransport"><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
-      <div><label>Host (TCP)</label><input id="hHost" placeholder="e.g. 192.0.2.10" /></div>
+      <div><label>Host</label><input id="hHost" placeholder="TCP: dial host · UDP: optional bind IP (empty = all interfaces)" /></div>
       <div><label>Port</label><input id="hPort" type="number" min="0" max="65535" value="%d" /></div>
     </div>
   </div>
@@ -136,22 +147,96 @@ func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []
     </div>
     <div class="row">
       <div><label>Transport</label><select id="mbTransport"><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
-      <div><label>Host (TCP)</label><input id="mbHost" placeholder="e.g. 192.0.2.20" /></div>
+      <div><label>Host</label><input id="mbHost" placeholder="TCP: dial host · UDP: optional bind IP (empty = all interfaces)" /></div>
       <div><label>Port</label><input id="mbPort" type="number" min="0" max="65535" value="%d" /></div>
     </div>
   </div>
   <button id="connect">Connect</button>
   <p id="err"></p>
   <script>
+    window.__BASELINE_URL_PREFIX__ = %s;
+    function baselineURL(path) {
+      const pre = typeof window.__BASELINE_URL_PREFIX__ === "string" ? window.__BASELINE_URL_PREFIX__ : "";
+      if (!path.startsWith("/")) path = "/" + path;
+      return pre + path;
+    }
+    const CONN_FORM_STORAGE_KEY = "gsof-baseline-last-connection-v1";
     const defaults = %s;
-    document.getElementById("hTransport").value = defaults.default_heading.transport || "udp";
-    document.getElementById("hHost").value = defaults.default_heading.host || "";
-    document.getElementById("mbTransport").value = defaults.default_moving_base.transport || "udp";
-    document.getElementById("mbHost").value = defaults.default_moving_base.host || "";
+
+    function applyStreamDefaults(req, prefix) {
+      document.getElementById(prefix + "Transport").value = req.transport || "udp";
+      document.getElementById(prefix + "Host").value = req.host || "";
+      if (req.port != null) {
+        document.getElementById(prefix + "Port").value = String(req.port);
+      }
+    }
+
+    function saveConnFormToStorage() {
+      try {
+        const body = {
+          heading: {
+            transport: document.getElementById("hTransport").value,
+            host: (document.getElementById("hHost").value || "").trim(),
+            port: parseInt(document.getElementById("hPort").value, 10),
+          },
+          moving_base: {
+            enabled: document.getElementById("mbEnable").checked,
+            transport: document.getElementById("mbTransport").value,
+            host: (document.getElementById("mbHost").value || "").trim(),
+            port: parseInt(document.getElementById("mbPort").value, 10),
+          },
+        };
+        localStorage.setItem(CONN_FORM_STORAGE_KEY, JSON.stringify(body));
+      } catch (e) {}
+    }
+
+    function loadConnFormFromStorage() {
+      try {
+        const raw = localStorage.getItem(CONN_FORM_STORAGE_KEY);
+        if (!raw) return;
+        const o = JSON.parse(raw);
+        if (o.heading) {
+          const h = o.heading;
+          const tr = document.getElementById("hTransport");
+          if (tr && (h.transport === "tcp" || h.transport === "udp")) tr.value = h.transport;
+          const hostEl = document.getElementById("hHost");
+          if (hostEl && typeof h.host === "string") hostEl.value = h.host;
+          const portEl = document.getElementById("hPort");
+          if (portEl && h.port != null) {
+            const p = parseInt(String(h.port), 10);
+            if (!Number.isNaN(p) && p >= 0 && p <= 65535) portEl.value = String(p);
+          }
+        }
+        if (o.moving_base) {
+          const mb = o.moving_base;
+          const en = document.getElementById("mbEnable");
+          if (en && typeof mb.enabled === "boolean") en.checked = mb.enabled;
+          const tr = document.getElementById("mbTransport");
+          if (tr && (mb.transport === "tcp" || mb.transport === "udp")) tr.value = mb.transport;
+          const hostEl = document.getElementById("mbHost");
+          if (hostEl && typeof mb.host === "string") hostEl.value = mb.host;
+          const portEl = document.getElementById("mbPort");
+          if (portEl && mb.port != null) {
+            const p = parseInt(String(mb.port), 10);
+            if (!Number.isNaN(p) && p >= 0 && p <= 65535) portEl.value = String(p);
+          }
+        }
+      } catch (e) {}
+    }
+
+    applyStreamDefaults(defaults.default_heading, "h");
+    applyStreamDefaults(defaults.default_moving_base, "mb");
     document.getElementById("mbEnable").checked = (defaults.default_moving_base.port || 0) > 0;
+    if (!defaults.lock_saved_connection) {
+      loadConnFormFromStorage();
+    }
     function syncHost(idTransport, idHost) {
       const tr = document.getElementById(idTransport).value;
-      document.getElementById(idHost).disabled = tr === "udp";
+      const hostEl = document.getElementById(idHost);
+      hostEl.disabled = false;
+      hostEl.placeholder = tr === "udp"
+        ? "optional bind IP (empty = all interfaces, broadcast OK)"
+        : "e.g. 192.0.2.10";
     }
     ["hTransport","mbTransport"].forEach((id, i) => {
       const host = i === 0 ? "hHost" : "mbHost";
@@ -176,7 +261,7 @@ func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []
         };
       }
       try {
-        const res = await fetch("/api/sessions", {
+        const res = await fetch(baselineURL("/api/sessions"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -184,6 +269,9 @@ func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []
         const text = await res.text();
         if (!res.ok) throw new Error(text || res.statusText);
         const out = JSON.parse(text);
+        if (!defaults.lock_saved_connection) {
+          saveConnFormToStorage();
+        }
         window.location.href = out.dashboard_path;
       } catch (e) {
         err.textContent = String(e.message || e);
@@ -191,10 +279,7 @@ func baselineConnectHTML(defaultHeading, defaultMoving baselineStreamRequest) []
     });
   </script>
 </body>
-</html>`, defaultHeading.Port, defaultMoving.Port, mustJSON(baselineConfigResponse{
-		DefaultHeading:    defaultHeading,
-		DefaultMovingBase: defaultMoving,
-	})))
+</html>`, cfg.DefaultHeading.Port, cfg.DefaultMovingBase.Port, string(prefixJSON), mustJSON(cfg)))
 }
 
 func mustJSON(v any) string {
@@ -217,16 +302,24 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 
-	eng := gsofbaseline.NewEngine(gsofbaseline.EngineConfig{
+	engCfg := gsofbaseline.EngineConfig{
 		MatchMaxTowDeltaSec:  cfg.MatchMaxTowDeltaSec,
 		RangeCheckTolM:       cfg.RangeCheckTolM,
 		ExpectedRangeM:       cfg.ExpectedRangeM,
 		MovingBaseConfigured: req.MovingBase != nil,
-	})
+		HeadingStream:        streamEndpointFromRequest(req.Heading),
+	}
+	if req.MovingBase != nil {
+		engCfg.MovingBaseStream = streamEndpointFromRequest(*req.MovingBase)
+	}
+	eng := gsofbaseline.NewEngine(engCfg)
 
 	chHeading := make(chan core.PacketEvent, 2000)
 	go func() {
-		_ = stream.StartListenerContext(ctx, streamReqToCfg(req.Heading, cfg.Verbose, cfg.IgnoreGap1), chHeading, nil, nil)
+		err := stream.StartListenerContext(ctx, streamReqToCfg(req.Heading, cfg.Verbose, cfg.IgnoreGap1), chHeading, nil, nil)
+		if err != nil && ctx.Err() == nil {
+			slog.Error("heading stream listener", "error", err)
+		}
 	}()
 	go func() {
 		for {
@@ -235,6 +328,7 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 				return
 			case pkt := <-chHeading:
 				if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+					eng.NoteHeadingRemoteAddr(pkt.RemoteAddr)
 					eng.IngestHeading(pkt.GSOFBuffer)
 				}
 			}
@@ -244,7 +338,10 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 	if req.MovingBase != nil {
 		chMB := make(chan core.PacketEvent, 2000)
 		go func() {
-			_ = stream.StartListenerContext(ctx, streamReqToCfg(*req.MovingBase, cfg.Verbose, cfg.IgnoreGap1), chMB, nil, nil)
+			err := stream.StartListenerContext(ctx, streamReqToCfg(*req.MovingBase, cfg.Verbose, cfg.IgnoreGap1), chMB, nil, nil)
+			if err != nil && ctx.Err() == nil {
+				slog.Error("moving-base stream listener", "error", err)
+			}
 		}()
 		go func() {
 			for {
@@ -253,6 +350,7 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 					return
 				case pkt := <-chMB:
 					if pkt.PacketType == 0x40 && len(pkt.GSOFBuffer) > 0 {
+						eng.NoteMovingBaseRemoteAddr(pkt.RemoteAddr)
 						eng.IngestMovingBase(pkt.GSOFBuffer)
 					}
 				}
@@ -272,7 +370,7 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 			case <-ctx.Done():
 				return
 			case <-t.C:
-				snap := eng.Snapshot(Version)
+				snap := eng.Snapshot(buildDisplayVersion())
 				data, err := json.Marshal(snap)
 				if err == nil {
 					broker.Publish(data)
@@ -283,7 +381,8 @@ func (h *baselineHub) startSession(req baselineCreateSessionRequest, cfg EngineS
 
 	return &baselineCreateSessionResponse{
 		ID:            id,
-		DashboardPath: "/s/" + id,
+		EventsPath:    publicPath(h.basePath, "/s/"+id+"/events"),
+		DashboardPath: publicPath(h.basePath, "/s/"+id),
 	}, nil
 }
 
@@ -295,13 +394,11 @@ type EngineSessionDefaults struct {
 	ExpectedRangeM     float64
 }
 
-func (h *baselineHub) handleConfig(w http.ResponseWriter, embedded bool, heading, mb baselineStreamRequest) {
+func (h *baselineHub) handleConfig(w http.ResponseWriter, embedded bool, cfg baselineConfigResponse) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(baselineConfigResponse{
-		EmbeddedStream:    embedded,
-		DefaultHeading:    heading,
-		DefaultMovingBase: mb,
-	})
+	out := cfg
+	out.EmbeddedStream = embedded
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (h *baselineHub) handleCreateSession(w http.ResponseWriter, r *http.Request, embedded bool, cfg EngineSessionDefaults) {
@@ -337,18 +434,24 @@ func (h *baselineHub) handleCreateSession(w http.ResponseWriter, r *http.Request
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-func (h *baselineHub) handleEvents(w http.ResponseWriter, r *http.Request, embedded bool, embeddedBroker *gsofbaseline.JSONBroker) {
-	if embedded {
-		embeddedBroker.ServeHTTP(w, r)
+func (h *baselineHub) handleHubEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id := strings.TrimPrefix(r.URL.Path, "/s/")
-	id = strings.TrimSuffix(id, "/events")
+	id := strings.TrimSpace(r.URL.Query().Get("session"))
 	if id == "" {
 		http.NotFound(w, r)
 		return
 	}
-	http.NotFound(w, r)
+	b := h.brokerForID(id)
+	if b == nil {
+		slog.Warn("sse session not found", "session", id, "path", r.URL.Path, "remote", r.RemoteAddr)
+		http.Error(w, "session not found or expired", http.StatusNotFound)
+		return
+	}
+	slog.Info("sse connected", "session", id, "path", r.URL.Path, "remote", r.RemoteAddr)
+	b.ServeHTTP(w, r)
 }
 
 func (h *baselineHub) handleSessionDelete(w http.ResponseWriter, r *http.Request) {
@@ -366,7 +469,9 @@ func (h *baselineHub) handleSessionDelete(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *baselineHub) serveSessionBranch(w http.ResponseWriter, r *http.Request, dashboardHTML []byte, brokerForID func(string) *gsofbaseline.JSONBroker) {
+// serveSessionBranch serves GET /s/{id}/ (session dashboard HTML).
+// SSE uses GET /s/{id}/events (preferred behind path-based proxies) or GET /events?session={id}.
+func (h *baselineHub) serveSessionBranch(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/s/")
 	path = strings.TrimSuffix(path, "/")
 	parts := strings.Split(path, "/")
@@ -376,19 +481,25 @@ func (h *baselineHub) serveSessionBranch(w http.ResponseWriter, r *http.Request,
 	}
 	id := parts[0]
 	if len(parts) == 2 && parts[1] == "events" {
-		b := brokerForID(id)
+		b := h.brokerForID(id)
 		if b == nil {
-			http.NotFound(w, r)
+			slog.Warn("sse session not found", "session", id, "path", r.URL.Path, "remote", r.RemoteAddr)
+			http.Error(w, "session not found or expired", http.StatusNotFound)
 			return
 		}
+		slog.Info("sse connected", "session", id, "path", r.URL.Path, "remote", r.RemoteAddr)
 		b.ServeHTTP(w, r)
 		return
 	}
 	if len(parts) == 1 {
+		if h.brokerForID(id) == nil {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("X-GSOF-Baseline-Version", Version)
-		_, _ = w.Write(dashboardHTML)
+		w.Header().Set("X-GSOF-Baseline-Version", buildDisplayVersion())
+		_, _ = w.Write(baselineDashboardHTML("/s/"+id+"/events", h.basePath))
 		return
 	}
 	http.NotFound(w, r)
@@ -409,6 +520,14 @@ func baselineDefaultStreamReq(c core.Config) baselineStreamRequest {
 		Transport: strings.ToLower(strings.TrimSpace(c.IP)),
 		Host:      strings.TrimSpace(c.Host),
 		Port:      c.Port,
+	}
+}
+
+func streamEndpointFromRequest(req baselineStreamRequest) gsofbaseline.StreamEndpoint {
+	return gsofbaseline.StreamEndpoint{
+		Mode: strings.ToLower(strings.TrimSpace(req.Transport)),
+		Host: strings.TrimSpace(req.Host),
+		Port: req.Port,
 	}
 }
 

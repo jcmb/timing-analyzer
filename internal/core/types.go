@@ -26,6 +26,9 @@ type Config struct {
 	// one missing GSOF transmission number between successive messages (Stats and DCOL parser).
 	// Default false: a single skipped id on TCP is still reported.
 	IgnoreTCPGSOFTransmissionGap1 bool
+
+	// Debug enables dashboard-visible sequence / transmission gap warnings (off by default).
+	Debug bool
 }
 
 type PacketEvent struct {

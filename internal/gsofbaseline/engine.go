@@ -3,7 +3,9 @@ package gsofbaseline
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
+	"time"
 
 	"timing-analyzer/internal/gsof"
 )
@@ -15,7 +17,10 @@ type MatchedPoint struct {
 	DeltaTowSec float64 `json:"delta_tow_s"`
 	HorizM      float64 `json:"horiz_m"`
 	SlantM      float64 `json:"slant_m"`
-	BearingDeg  float64 `json:"bearing_deg"`
+	BearingDeg  float64 `json:"bearing_deg"` // horizontal azimuth; same as YawDeg
+	YawDeg      float64 `json:"yaw_deg"`
+	PitchDeg    float64 `json:"pitch_deg"`
+	RollDeg     float64 `json:"roll_deg"`
 	SVsHeading  int     `json:"svs_heading"`
 	// SVsMovingBase is moving-base SV count when reference_source is moving_base; otherwise 0.
 	SVsMovingBase   int     `json:"svs_moving_base"`
@@ -34,6 +39,14 @@ type Base41TowSample struct {
 	HeightM   float64 `json:"height_m"`
 }
 
+// StreamEndpoint describes how a GSOF transport is configured and the last packet source.
+type StreamEndpoint struct {
+	Mode       string `json:"mode,omitempty"`        // tcp | udp
+	Port       int    `json:"port,omitempty"`
+	Host       string `json:"host,omitempty"`        // TCP dial host or UDP bind IP (empty = all interfaces)
+	RemoteAddr string `json:"remote_addr,omitempty"` // last GSOF packet peer (host:port)
+}
+
 // EngineConfig controls matching and optional range check.
 type EngineConfig struct {
 	MatchMaxTowDeltaSec  float64
@@ -41,6 +54,8 @@ type EngineConfig struct {
 	ExpectedRangeM     float64
 	// MovingBaseConfigured is true when a second transport is enabled (UI / status).
 	MovingBaseConfigured bool
+	HeadingStream        StreamEndpoint
+	MovingBaseStream     StreamEndpoint
 }
 
 // Engine merges heading GSOF with either type-41 (heading stream) or moving-base LLH.
@@ -54,14 +69,18 @@ type Engine struct {
 	bEpochs []EpochSample
 	bAtt    []AttitudeRangeSample
 
+	lastMovingBaseLLH *EpochSample
+
 	points []MatchedPoint
 
 	lastBase35Heading *gsof.ReceivedBaseInfo
 	lastBase41Heading *gsof.BasePositionQualityInfo
 	headingSerial     string
+	base35HeadingUpdates uint64
 
 	lastBase35Moving *gsof.ReceivedBaseInfo
 	lastBase41Moving *gsof.BasePositionQualityInfo
+	base35MovingUpdates uint64
 
 	lastHeadingRover  *EpochSample
 	lastHeading27     *gsof.AttitudePoint
@@ -69,6 +88,17 @@ type Engine struct {
 	lastHeading38Text    string
 	lastMovingBase38Text string
 	movingBaseSerial     string
+
+	headingRemoteAddr    string
+	movingBaseRemoteAddr string
+
+	headingDOPHistory    []gsof.DOPPoint
+	headingSigmaHistory  []gsof.SigmaPoint
+	movingBaseDOPHistory   []gsof.DOPPoint
+	movingBaseSigmaHistory []gsof.SigmaPoint
+
+	lastHeadingDOPAppend    time.Time
+	lastMovingBaseDOPAppend time.Time
 }
 
 func NewEngine(cfg EngineConfig) *Engine {
@@ -78,11 +108,49 @@ func NewEngine(cfg EngineConfig) *Engine {
 	return &Engine{cfg: cfg}
 }
 
+// NoteHeadingRemoteAddr records the transport peer for the last heading GSOF packet.
+func (e *Engine) NoteHeadingRemoteAddr(addr string) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return
+	}
+	e.mu.Lock()
+	e.headingRemoteAddr = addr
+	e.mu.Unlock()
+}
+
+// NoteMovingBaseRemoteAddr records the transport peer for the last moving-base GSOF packet.
+func (e *Engine) NoteMovingBaseRemoteAddr(addr string) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return
+	}
+	e.mu.Lock()
+	e.movingBaseRemoteAddr = addr
+	e.mu.Unlock()
+}
+
 func trimFront[T any](s []T, max int) []T {
 	if len(s) <= max {
 		return s
 	}
 	return s[len(s)-max:]
+}
+
+// appendDOPThrottled records DOP at most once per second per stream; within 1 s the latest sample replaces the last point.
+func appendDOPThrottled(dst *[]gsof.DOPPoint, pt gsof.DOPPoint, lastAt *time.Time) {
+	now := time.Now()
+	if !lastAt.IsZero() && now.Sub(*lastAt) < time.Second {
+		if len(*dst) > 0 {
+			(*dst)[len(*dst)-1] = pt
+		} else {
+			*dst = append(*dst, pt)
+		}
+		return
+	}
+	*lastAt = now
+	*dst = append(*dst, pt)
+	*dst = trimFront(*dst, maxRing)
 }
 
 func base41ToSample(b gsof.BasePositionQualityInfo) Base41TowSample {
@@ -102,6 +170,7 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 	if w.Base35 != nil {
 		cp := *w.Base35
 		e.lastBase35Heading = &cp
+		e.base35HeadingUpdates++
 	}
 	for _, b := range w.Base41Records {
 		e.heading41Ring = append(e.heading41Ring, base41ToSample(b))
@@ -143,12 +212,16 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 		h := HaversineM(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
 		s := SlantM(h, ep.HeightM, tgt.h)
 		br := InitialBearingDeg(ep.LatDeg, ep.LonDeg, tgt.lat, tgt.lon)
+		yaw, pitch, roll := BaselineAttitudeDeg(ep.LatDeg, ep.LonDeg, ep.HeightM, tgt.lat, tgt.lon, tgt.h)
 		pt := MatchedPoint{
 			GPSTOWSec:       ep.GPSTOWSec,
 			DeltaTowSec:     tgt.deltaTow,
 			HorizM:          h,
 			SlantM:          s,
 			BearingDeg:      br,
+			YawDeg:          yaw,
+			PitchDeg:        pitch,
+			RollDeg:         roll,
 			SVsHeading:      ep.SVsUsed,
 			SVsMovingBase:   tgt.svsMoving,
 			ReferenceSource: tgt.source,
@@ -168,6 +241,13 @@ func (e *Engine) IngestHeading(gsofBuffer []byte) {
 		e.points = append(e.points, pt)
 		e.points = trimFront(e.points, maxRing)
 	}
+	for _, pt := range w.DOPPoints {
+		appendDOPThrottled(&e.headingDOPHistory, pt, &e.lastHeadingDOPAppend)
+	}
+	for _, pt := range w.SigmaPoints {
+		e.headingSigmaHistory = append(e.headingSigmaHistory, pt)
+	}
+	e.headingSigmaHistory = trimFront(e.headingSigmaHistory, maxRing)
 }
 
 type resolvedTarget struct {
@@ -215,6 +295,7 @@ func (e *Engine) IngestMovingBase(gsofBuffer []byte) {
 	if w.Base35 != nil {
 		cp := *w.Base35
 		e.lastBase35Moving = &cp
+		e.base35MovingUpdates++
 	}
 	if len(w.Base41Records) > 0 {
 		last := w.Base41Records[len(w.Base41Records)-1]
@@ -230,8 +311,20 @@ func (e *Engine) IngestMovingBase(gsofBuffer []byte) {
 	}
 	e.bEpochs = append(e.bEpochs, w.Epochs...)
 	e.bEpochs = trimFront(e.bEpochs, maxRing)
+	if len(w.Epochs) > 0 {
+		le := w.Epochs[len(w.Epochs)-1]
+		cp := le
+		e.lastMovingBaseLLH = &cp
+	}
 	e.bAtt = append(e.bAtt, w.AttitudeRanges...)
 	e.bAtt = trimFront(e.bAtt, maxRing)
+	for _, pt := range w.DOPPoints {
+		appendDOPThrottled(&e.movingBaseDOPHistory, pt, &e.lastMovingBaseDOPAppend)
+	}
+	for _, pt := range w.SigmaPoints {
+		e.movingBaseSigmaHistory = append(e.movingBaseSigmaHistory, pt)
+	}
+	e.movingBaseSigmaHistory = trimFront(e.movingBaseSigmaHistory, maxRing)
 }
 
 func (e *Engine) nearestHeading41Locked(towH float64) (Base41TowSample, bool) {
@@ -306,13 +399,16 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 	snap := EngineSnapshot{
 		Version:              version,
 		Points:               append([]MatchedPoint(nil), e.points...),
-		Base35Heading:        e.lastBase35Heading,
-		Base41Heading:        e.lastBase41Heading,
+		Base35Heading:         e.lastBase35Heading,
+		Base35HeadingUpdates:  e.base35HeadingUpdates,
+		Base41Heading:         e.lastBase41Heading,
 		HeadingSerial:        e.headingSerial,
 		HeadingRover:         e.lastHeadingRover,
 		HeadingType27:        e.lastHeading27,
 		Base35Moving:         e.lastBase35Moving,
+		Base35MovingUpdates:  e.base35MovingUpdates,
 		Base41Moving:         e.lastBase41Moving,
+		MovingBaseLLH:        e.lastMovingBaseLLH,
 		MovingBaseSerial:     e.movingBaseSerial,
 		MovingBaseConfigured: e.cfg.MovingBaseConfigured,
 		HasHeadingType41Ring: len(e.heading41Ring) > 0,
@@ -325,23 +421,48 @@ func (e *Engine) Snapshot(version string) EngineSnapshot {
 	snap.HeadingCheck = e.computeHeadingCheckLocked()
 	snap.HeadingType38 = e.lastHeading38Text
 	snap.MovingBaseType38 = e.lastMovingBase38Text
+	snap.HeadingStream = e.cfg.HeadingStream
+	snap.HeadingStream.RemoteAddr = e.headingRemoteAddr
+	if e.cfg.MovingBaseConfigured {
+		snap.MovingBaseStream = e.cfg.MovingBaseStream
+		snap.MovingBaseStream.RemoteAddr = e.movingBaseRemoteAddr
+	}
+	if len(e.headingDOPHistory) > 0 {
+		snap.HeadingDOPHistory = append([]gsof.DOPPoint(nil), e.headingDOPHistory...)
+	}
+	if len(e.headingSigmaHistory) > 0 {
+		snap.HeadingSigmaHistory = append([]gsof.SigmaPoint(nil), e.headingSigmaHistory...)
+	}
+	if len(e.movingBaseDOPHistory) > 0 {
+		snap.MovingBaseDOPHistory = append([]gsof.DOPPoint(nil), e.movingBaseDOPHistory...)
+	}
+	if len(e.movingBaseSigmaHistory) > 0 {
+		snap.MovingBaseSigmaHistory = append([]gsof.SigmaPoint(nil), e.movingBaseSigmaHistory...)
+	}
 	return snap
 }
 
-// HeadingCheckResult compares the latest computed bearing to type-27 yaw when a
+// HeadingCheckResult compares computed baseline yaw/pitch/roll to type-27 when a
 // type-27 sample exists within the same TOW match window as the last solution.
 type HeadingCheckResult struct {
 	Available bool `json:"available"`
-	// ComputedBearingDeg is initial bearing heading → reference (0–360°, MatchedPoint).
+	// ComputedBearingDeg is initial bearing heading → reference (0–360°); same as ComputedYawDeg.
 	ComputedBearingDeg float64 `json:"computed_bearing_deg"`
+	ComputedYawDeg     float64 `json:"computed_yaw_deg"`
+	ComputedPitchDeg   float64 `json:"computed_pitch_deg"`
+	ComputedRollDeg    float64 `json:"computed_roll_deg"`
 	// Type27YawDeg is GSOF type-27 yaw (degrees).
 	Type27YawDeg float64 `json:"type27_yaw_deg"`
 	// Type27PitchDeg and Type27RollDeg are from the same type-27 record as yaw (when Available).
 	Type27PitchDeg float64 `json:"type27_pitch_deg"`
 	Type27RollDeg  float64 `json:"type27_roll_deg"`
-	// DeltaDeg is signed shortest angle (computed − yaw) in (−180, 180].
+	// DeltaDeg is signed shortest angle (computed yaw − type-27 yaw) in (−180, 180].
 	DeltaDeg        float64 `json:"delta_deg"`
 	AbsDeltaDeg     float64 `json:"abs_delta_deg"`
+	DeltaPitchDeg   float64 `json:"delta_pitch_deg"`
+	AbsDeltaPitchDeg float64 `json:"abs_delta_pitch_deg"`
+	DeltaRollDeg    float64 `json:"delta_roll_deg"`
+	AbsDeltaRollDeg float64 `json:"abs_delta_roll_deg"`
 	TowLastPointSec float64 `json:"tow_last_point_s"`
 	TowType27Sec    float64 `json:"tow_type27_s"`
 	TowDeltaSec     float64 `json:"tow_delta_s,omitempty"`
@@ -379,15 +500,24 @@ func (e *Engine) computeHeadingCheckLocked() *HeadingCheckResult {
 			TowLastPointSec: last.GPSTOWSec,
 		}
 	}
-	signed := AngleDiffDegSigned(last.BearingDeg, best.YawDeg)
+	signedYaw := AngleDiffDegSigned(last.YawDeg, best.YawDeg)
+	signedPitch := last.PitchDeg - best.PitchDeg
+	signedRoll := last.RollDeg - best.RollDeg
 	return &HeadingCheckResult{
 		Available:          true,
 		ComputedBearingDeg: last.BearingDeg,
+		ComputedYawDeg:     last.YawDeg,
+		ComputedPitchDeg:   last.PitchDeg,
+		ComputedRollDeg:  last.RollDeg,
 		Type27YawDeg:       best.YawDeg,
 		Type27PitchDeg:     best.PitchDeg,
 		Type27RollDeg:      best.RollDeg,
-		DeltaDeg:           signed,
-		AbsDeltaDeg:        math.Abs(signed),
+		DeltaDeg:           signedYaw,
+		AbsDeltaDeg:        math.Abs(signedYaw),
+		DeltaPitchDeg:      signedPitch,
+		AbsDeltaPitchDeg:   math.Abs(signedPitch),
+		DeltaRollDeg:       signedRoll,
+		AbsDeltaRollDeg:    math.Abs(signedRoll),
 		TowLastPointSec:    last.GPSTOWSec,
 		TowType27Sec:       best.GPSTOWSec,
 	}
@@ -469,13 +599,19 @@ type EngineSnapshot struct {
 	Points  []MatchedPoint `json:"points"`
 
 	Base35Heading *gsof.ReceivedBaseInfo        `json:"base_35_heading,omitempty"`
+	// Base35HeadingUpdates counts GSOF type-35 records ingested on the heading stream (type 35 has no GPS TOW).
+	Base35HeadingUpdates uint64 `json:"base_35_heading_updates,omitempty"`
 	Base41Heading *gsof.BasePositionQualityInfo `json:"base_41_heading,omitempty"`
 	HeadingSerial string                        `json:"heading_serial,omitempty"`
 	HeadingRover  *EpochSample                  `json:"heading_rover,omitempty"`
 	HeadingType27 *gsof.AttitudePoint           `json:"heading_type27,omitempty"`
 
 	Base35Moving *gsof.ReceivedBaseInfo        `json:"base_35_moving,omitempty"`
+	// Base35MovingUpdates counts GSOF type-35 records ingested on the moving-base stream.
+	Base35MovingUpdates uint64 `json:"base_35_moving_updates,omitempty"`
 	Base41Moving *gsof.BasePositionQualityInfo `json:"base_41_moving,omitempty"`
+	// MovingBaseLLH is the latest type-1/2 LLH epoch on the moving-base stream (bearing reference when heading type 41 is absent).
+	MovingBaseLLH *EpochSample `json:"moving_base_llh,omitempty"`
 
 	MovingBaseSerial     string `json:"moving_base_serial,omitempty"`
 	MovingBaseConfigured bool   `json:"moving_base_configured"`
@@ -491,4 +627,12 @@ type EngineSnapshot struct {
 	HeadingType38 string              `json:"heading_type38,omitempty"`
 	// MovingBaseType38 is the last GSOF type-38 decode on the moving-base stream (dual transport).
 	MovingBaseType38 string `json:"moving_base_type38,omitempty"`
+
+	HeadingStream    StreamEndpoint `json:"heading_stream,omitempty"`
+	MovingBaseStream StreamEndpoint `json:"moving_base_stream,omitempty"`
+
+	HeadingDOPHistory      []gsof.DOPPoint   `json:"heading_dop_history,omitempty"`
+	HeadingSigmaHistory    []gsof.SigmaPoint `json:"heading_sigma_history,omitempty"`
+	MovingBaseDOPHistory   []gsof.DOPPoint   `json:"moving_base_dop_history,omitempty"`
+	MovingBaseSigmaHistory []gsof.SigmaPoint `json:"moving_base_sigma_history,omitempty"`
 }

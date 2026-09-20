@@ -89,7 +89,7 @@ func main() {
 		cfg.IP = "tcp"
 	}
 
-	stats := gsofstats.NewStats(*suppress)
+	stats := gsofstats.NewStats(*suppress, false)
 	packetChan := make(chan core.PacketEvent, 1000)
 
 	go stream.StartListener(cfg, packetChan)

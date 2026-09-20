@@ -1,4 +1,5 @@
 package main
 
-// Version is semver-style; bump when changing the UI or wire JSON.
-const Version = "0.3.22"
+// Version is the semver base baked into the HTML banner. When the binary is built from Git,
+// buildDisplayVersion() also appends a short revision (see cmd/gsof-baseline/build_version.go).
+const Version = "0.3.31"

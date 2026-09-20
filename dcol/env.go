@@ -26,6 +26,8 @@ type Env struct {
 	TransportIsUDP bool
 	// IgnoreTCPGSOFTransmissionGap1 mirrors timing-analyzer core.Config: on TCP, suppress gap warning when exactly one transmission id was skipped.
 	IgnoreTCPGSOFTransmissionGap1 bool
+	// Debug enables dashboard-visible sequence / transmission gap warnings (off by default).
+	Debug bool
 
 	BestTime   time.Time
 	GoTime     time.Time

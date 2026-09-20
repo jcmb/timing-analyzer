@@ -26,6 +26,26 @@ func TestInitialBearingDeg_cardinal(t *testing.T) {
 	}
 }
 
+func TestBaselineAttitudeDeg_eastLevel(t *testing.T) {
+	yaw, pitch, roll := BaselineAttitudeDeg(0, 0, 10, 0, 0.001*180/math.Pi, 10)
+	if math.Abs(yaw-90) > 0.05 {
+		t.Fatalf("yaw want ~90, got %v", yaw)
+	}
+	if math.Abs(pitch) > 1e-6 {
+		t.Fatalf("pitch want ~0, got %v", pitch)
+	}
+	if roll != 0 {
+		t.Fatalf("roll want 0, got %v", roll)
+	}
+}
+
+func TestBaselineAttitudeDeg_uphill(t *testing.T) {
+	_, pitch, _ := BaselineAttitudeDeg(0, 0, 0, 0, 0.001*180/math.Pi, 100)
+	if pitch <= 0 || pitch >= 90 {
+		t.Fatalf("pitch want (0,90), got %v", pitch)
+	}
+}
+
 func TestTowAbsDiffSeconds_wrap(t *testing.T) {
 	d := TowAbsDiffSeconds(604800-1, 1)
 	if d > 2 {
